@@ -46,22 +46,19 @@ export async function POST(request: Request) {
 
     const { data, error } = await supabase
       .from("player_game_stats")
-      .upsert([payload], { onConflict: "game_id,player_id" })
+      .upsert([payload], {
+        onConflict: "game_id,player_id",
+        ignoreDuplicates: false,
+      })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("player_game_stats upsert error:", error);
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json(
-      { stat: data },
-      { status: 200 }
-    );
+    return NextResponse.json({ stat: data }, { status: 200 });
   } catch (error) {
     console.error("stats route crash:", error);
     return NextResponse.json(
