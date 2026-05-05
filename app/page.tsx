@@ -75,6 +75,8 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
+      <div id="home" />
+
       {/* Top result strip */}
       <div className="border-b border-slate-800 bg-slate-900">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3 text-sm">
@@ -107,7 +109,6 @@ export default async function HomePage() {
         <div className="mx-auto max-w-7xl px-6 py-12 md:py-16">
           <div className="grid gap-8 lg:grid-cols-[1.2fr,0.8fr] lg:items-center">
             <div>
-              {/* Logo area */}
               <div className="mb-6 flex items-center gap-4">
                 <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-orange-500/30 bg-slate-900 shadow-lg shadow-orange-950/20">
                   <span className="text-2xl font-black text-orange-400">F</span>
@@ -153,7 +154,6 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* Featured player */}
             <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-orange-950/20">
               <div className="mb-4 flex items-center justify-between">
                 <div>
@@ -186,7 +186,7 @@ export default async function HomePage() {
                     )}
 
                     <div className="min-w-0">
-                      <div className="rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-slate-950 inline-block">
+                      <div className="inline-block rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-slate-950">
                         #{featuredPlayer.jersey_number ?? "—"}
                       </div>
                       <div className="mt-3 text-2xl font-bold leading-tight">
@@ -220,8 +220,49 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* Tabs / jump nav */}
+      <section className="sticky top-[76px] z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur">
+        <div className="mx-auto max-w-7xl px-6 py-3">
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="#home"
+              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+            >
+              Home
+            </a>
+            <a
+              href="#featured"
+              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+            >
+              Featured
+            </a>
+            <a
+              href="#pog"
+              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+            >
+              Player of the Game
+            </a>
+            <a
+              href="#players"
+              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+            >
+              Players
+            </a>
+            <a
+              href="#games"
+              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+            >
+              Games
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* featured marker */}
+      <div id="featured" />
+
       {/* Player of the game banner */}
-      <section className="border-b border-slate-800 bg-slate-900/70">
+      <section id="pog" className="border-b border-slate-800 bg-slate-900/70">
         <div className="mx-auto max-w-7xl px-6 py-8">
           <div className="rounded-3xl border border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-slate-900 to-slate-900 p-6">
             <div className="mb-2 text-sm uppercase tracking-[0.2em] text-orange-300">
