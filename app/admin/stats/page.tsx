@@ -42,9 +42,7 @@ type FormState = {
   ft_attempted: string;
 };
 
-const initialForm: FormState = {
-  game_id: "",
-  player_id: "",
+const makeBlankStats = () => ({
   points: "0",
   rebounds: "0",
   offensive_rebounds: "0",
@@ -67,6 +65,12 @@ const initialForm: FormState = {
   three_attempted: "0",
   ft_made: "0",
   ft_attempted: "0",
+});
+
+const initialForm: FormState = {
+  game_id: "",
+  player_id: "",
+  ...makeBlankStats(),
 };
 
 export default function AdminStatsPage() {
@@ -75,6 +79,7 @@ export default function AdminStatsPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
     async function loadData() {
@@ -120,6 +125,13 @@ export default function AdminStatsPage() {
       }
 
       setMessage("Stats saved successfully.");
+
+      setForm({
+        game_id: form.game_id,
+        player_id: "",
+        ...makeBlankStats(),
+      });
+      setFormKey((k) => k + 1);
     } catch (error) {
       console.error(error);
       setMessage("Something went wrong while saving stats.");
@@ -133,6 +145,36 @@ export default function AdminStatsPage() {
       ...prev,
       [name]: value,
     }));
+  }
+
+  function handleGameChange(value: string) {
+    setForm({
+      game_id: value,
+      player_id: "",
+      ...makeBlankStats(),
+    });
+    setFormKey((k) => k + 1);
+    setMessage("");
+  }
+
+  function handlePlayerChange(value: string) {
+    setForm((prev) => ({
+      game_id: prev.game_id,
+      player_id: value,
+      ...makeBlankStats(),
+    }));
+    setFormKey((k) => k + 1);
+    setMessage("");
+  }
+
+  function clearCurrentStats() {
+    setForm((prev) => ({
+      game_id: prev.game_id,
+      player_id: prev.player_id,
+      ...makeBlankStats(),
+    }));
+    setFormKey((k) => k + 1);
+    setMessage("Stats fields cleared.");
   }
 
   return (
@@ -166,6 +208,7 @@ export default function AdminStatsPage() {
         </div>
 
         <form
+          key={formKey}
           onSubmit={handleSubmit}
           className="rounded-3xl border border-slate-800 bg-slate-900 p-6 space-y-6"
         >
@@ -174,7 +217,7 @@ export default function AdminStatsPage() {
               <span className="mb-2 block text-sm text-slate-300">Game</span>
               <select
                 value={form.game_id}
-                onChange={(e) => updateField("game_id", e.target.value)}
+                onChange={(e) => handleGameChange(e.target.value)}
                 className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"
                 required
               >
@@ -191,7 +234,7 @@ export default function AdminStatsPage() {
               <span className="mb-2 block text-sm text-slate-300">Player</span>
               <select
                 value={form.player_id}
-                onChange={(e) => updateField("player_id", e.target.value)}
+                onChange={(e) => handlePlayerChange(e.target.value)}
                 className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"
                 required
               >
@@ -238,13 +281,21 @@ export default function AdminStatsPage() {
             <span className="text-sm text-slate-300">Player of the Game</span>
           </label>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <button
               type="submit"
               disabled={loading}
               className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 hover:bg-orange-400 disabled:opacity-50"
             >
               {loading ? "Saving..." : "Save Stats"}
+            </button>
+
+            <button
+              type="button"
+              onClick={clearCurrentStats}
+              className="rounded-2xl border border-slate-700 px-5 py-3 font-semibold text-slate-200 hover:bg-slate-800"
+            >
+              Clear Stats
             </button>
 
             {message && <p className="text-sm text-emerald-300">{message}</p>}
