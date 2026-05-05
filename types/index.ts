@@ -1,0 +1,64 @@
+export type Player = {
+  id: string;
+  full_name: string;
+  jersey_number: string | null;
+  position: string | null;
+  nickname: string | null;
+  role: string | null;
+  age: string | null;
+  height: string | null;
+  dominant_hand: string | null;
+  current_team: string | null;
+  previous_teams: string | null;
+  highest_level: string | null;
+  years_played: string | null;
+  style_of_play: string | null;
+  strengths: string | null;
+  improvements: string | null;
+  instagram: string | null;
+  tiktok: string | null;
+  x_handle: string | null;
+  followers_range: string | null;
+  photo_url: string | null;
+  is_active: boolean;
+};
+
+export type Game = {
+  id: string;
+  team_name: string;
+  opponent: string;
+  game_date: string;
+  venue: string | null;
+  match_type: string | null;
+  notes: string | null;
+  team_score: number;
+  opponent_score: number;
+};
+
+export type PlayerGameStat = {
+  id: string;
+  game_id: string;
+  player_id: string;
+  points: number;
+  rebounds: number;
+  offensive_rebounds: number;
+  defensive_rebounds: number;
+  assists: number;
+  steals: number;
+  blocks: number;
+  turnovers: number;
+  fouls: number;
+  minutes: number;
+  plus_minus: number;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  player_of_game: boolean;
+  two_made: number;
+  two_attempted: number;
+  three_made: number;
+  three_attempted: number;
+  ft_made: number;
+  ft_attempted: number;
+};
