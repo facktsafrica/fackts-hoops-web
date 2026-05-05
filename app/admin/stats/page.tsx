@@ -79,7 +79,6 @@ export default function AdminStatsPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
     async function loadData() {
@@ -101,6 +100,65 @@ export default function AdminStatsPage() {
 
     loadData();
   }, []);
+
+  useEffect(() => {
+    async function loadExistingStats() {
+      if (!form.game_id || !form.player_id) return;
+
+      try {
+        const response = await fetch(
+          `/api/stats?game_id=${encodeURIComponent(form.game_id)}&player_id=${encodeURIComponent(form.player_id)}`
+        );
+        const result = await response.json();
+
+        if (!response.ok) {
+          setMessage(result.error || "Failed to load saved stats.");
+          return;
+        }
+
+        if (!result.stat) {
+          setForm((prev) => ({
+            game_id: prev.game_id,
+            player_id: prev.player_id,
+            ...makeBlankStats(),
+          }));
+          return;
+        }
+
+        const s = result.stat;
+        setForm({
+          game_id: s.game_id,
+          player_id: s.player_id,
+          points: String(s.points ?? 0),
+          rebounds: String(s.rebounds ?? 0),
+          offensive_rebounds: String(s.offensive_rebounds ?? 0),
+          defensive_rebounds: String(s.defensive_rebounds ?? 0),
+          assists: String(s.assists ?? 0),
+          steals: String(s.steals ?? 0),
+          blocks: String(s.blocks ?? 0),
+          turnovers: String(s.turnovers ?? 0),
+          fouls: String(s.fouls ?? 0),
+          minutes: String(s.minutes ?? 0),
+          plus_minus: String(s.plus_minus ?? 0),
+          q1: String(s.q1 ?? 0),
+          q2: String(s.q2 ?? 0),
+          q3: String(s.q3 ?? 0),
+          q4: String(s.q4 ?? 0),
+          player_of_game: Boolean(s.player_of_game),
+          two_made: String(s.two_made ?? 0),
+          two_attempted: String(s.two_attempted ?? 0),
+          three_made: String(s.three_made ?? 0),
+          three_attempted: String(s.three_attempted ?? 0),
+          ft_made: String(s.ft_made ?? 0),
+          ft_attempted: String(s.ft_attempted ?? 0),
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    loadExistingStats();
+  }, [form.game_id, form.player_id]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -125,13 +183,6 @@ export default function AdminStatsPage() {
       }
 
       setMessage("Stats saved successfully.");
-
-      setForm({
-        game_id: form.game_id,
-        player_id: "",
-        ...makeBlankStats(),
-      });
-      setFormKey((k) => k + 1);
     } catch (error) {
       console.error(error);
       setMessage("Something went wrong while saving stats.");
@@ -153,7 +204,6 @@ export default function AdminStatsPage() {
       player_id: "",
       ...makeBlankStats(),
     });
-    setFormKey((k) => k + 1);
     setMessage("");
   }
 
@@ -163,7 +213,6 @@ export default function AdminStatsPage() {
       player_id: value,
       ...makeBlankStats(),
     }));
-    setFormKey((k) => k + 1);
     setMessage("");
   }
 
@@ -173,7 +222,6 @@ export default function AdminStatsPage() {
       player_id: prev.player_id,
       ...makeBlankStats(),
     }));
-    setFormKey((k) => k + 1);
     setMessage("Stats fields cleared.");
   }
 
@@ -190,28 +238,17 @@ export default function AdminStatsPage() {
             </div>
 
             <div className="flex gap-3 flex-wrap">
-              <Link
-                href="/admin"
-                className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
-              >
+              <Link href="/admin" className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">
                 Player Admin
               </Link>
-
-              <Link
-                href="/admin/games"
-                className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
-              >
+              <Link href="/admin/games" className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">
                 Game Admin
               </Link>
             </div>
           </div>
         </div>
 
-        <form
-          key={formKey}
-          onSubmit={handleSubmit}
-          className="rounded-3xl border border-slate-800 bg-slate-900 p-6 space-y-6"
-        >
+        <form onSubmit={handleSubmit} className="rounded-3xl border border-slate-800 bg-slate-900 p-6 space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-sm text-slate-300">Game</span>
