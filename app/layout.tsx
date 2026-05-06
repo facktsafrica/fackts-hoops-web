@@ -27,23 +27,35 @@ export default function RootLayout({
                     FACKTS Hoops
                   </div>
                   <div className="text-xs text-slate-400">
-                    Basketball data • culture • visibility
+                    Basketball. Culture. Visibility.
                   </div>
                 </div>
               </Link>
 
               <nav className="hidden items-center gap-3 md:flex">
                 <Link
-                  href="/#players"
+                  href="/"
+                  className="rounded-2xl px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                >
+                  Home
+                </Link>
+                <Link
+                  href="/players"
                   className="rounded-2xl px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
                 >
                   Players
                 </Link>
                 <Link
-                  href="/#games"
+                  href="/games"
                   className="rounded-2xl px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
                 >
                   Games
+                </Link>
+                <Link
+                  href="/contact"
+                  className="rounded-2xl px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                >
+                  Contact
                 </Link>
                 <Link
                   href="/admin"
@@ -86,11 +98,17 @@ export default function RootLayout({
                     Explore
                   </div>
                   <div className="mt-4 flex flex-col gap-2 text-sm">
-                    <Link href="/#players" className="text-slate-400 hover:text-white">
+                    <Link href="/" className="text-slate-400 hover:text-white">
+                      Home
+                    </Link>
+                    <Link href="/players" className="text-slate-400 hover:text-white">
                       Players
                     </Link>
-                    <Link href="/#games" className="text-slate-400 hover:text-white">
+                    <Link href="/games" className="text-slate-400 hover:text-white">
                       Games
+                    </Link>
+                    <Link href="/contact" className="text-slate-400 hover:text-white">
+                      Contact
                     </Link>
                     <Link href="/admin" className="text-slate-400 hover:text-white">
                       Admin
@@ -100,17 +118,17 @@ export default function RootLayout({
 
                 <div>
                   <div className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                    Brand Direction
+                    Built For
                   </div>
                   <p className="mt-4 text-sm leading-6 text-slate-400">
-                    FACKTS is built around basketball, culture, media, and youth visibility — a
-                    broader platform direction also reflected in your planning documents. :contentReference[oaicite:0]{index=0}
+                    FACKTS basketball operations, player visibility, game tracking, and public
+                    presentation.
                   </p>
                 </div>
               </div>
 
               <div className="mt-8 border-t border-slate-800 pt-5 text-xs text-slate-500">
-                © FACKTS Hoops. Built for FACKTS basketball operations and public visibility.
+                © FACKTS Hoops. All rights reserved.
               </div>
             </div>
           </footer>
