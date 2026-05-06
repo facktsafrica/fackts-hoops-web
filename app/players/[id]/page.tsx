@@ -9,18 +9,14 @@ async function getPlayer(playerId: string) {
     .eq("id", playerId)
     .single();
 
-  if (error || !data) {
-    return null;
-  }
-
+  if (error || !data) return null;
   return data;
 }
 
 async function getPlayerStats(playerId: string) {
   const { data, error } = await supabase
     .from("player_game_stats")
-    .select(
-      `
+    .select(`
       *,
       games (
         id,
@@ -31,8 +27,7 @@ async function getPlayerStats(playerId: string) {
         opponent_score,
         match_type
       )
-    `
-    )
+    `)
     .eq("player_id", playerId)
     .order("created_at", { ascending: false });
 
@@ -51,7 +46,10 @@ export default async function PlayerDetailPage({
 }) {
   const { id } = await params;
 
-  const [player, stats] = await Promise.all([getPlayer(id), getPlayerStats(id)]);
+  const [player, stats] = await Promise.all([
+    getPlayer(id),
+    getPlayerStats(id),
+  ]);
 
   if (!player) {
     notFound();
@@ -136,7 +134,10 @@ export default async function PlayerDetailPage({
                 <InfoCard label="Dominant Hand" value={player.dominant_hand ?? "—"} />
                 <InfoCard label="Age" value={String(player.age ?? "—")} />
                 <InfoCard label="Level" value={player.highest_level ?? "—"} />
-                <InfoCard label="Years Played" value={String(player.years_played ?? "—")} />
+                <InfoCard
+                  label="Years Played"
+                  value={String(player.years_played ?? "—")}
+                />
                 <InfoCard label="Current Team" value={player.current_team ?? "—"} />
                 <InfoCard label="Followers" value={player.followers_range ?? "—"} />
               </div>
@@ -228,14 +229,9 @@ export default async function PlayerDetailPage({
                 </thead>
                 <tbody>
                   {stats.map((row: any) => (
-                    <tr
-                      key={row.id}
-                      className="border-t border-slate-800 text-slate-200"
-                    >
+                    <tr key={row.id} className="border-t border-slate-800 text-slate-200">
                       <td className="px-4 py-4">{row.games?.game_date ?? "—"}</td>
-                      <td className="px-4 py-4">
-                        {row.games?.opponent ?? "Unknown Opponent"}
-                      </td>
+                      <td className="px-4 py-4">{row.games?.opponent ?? "Unknown Opponent"}</td>
                       <td className="px-4 py-4">{row.games?.match_type ?? "Game"}</td>
                       <td className="px-4 py-4">{row.games?.venue ?? "—"}</td>
                       <td className="px-4 py-4">
@@ -282,11 +278,7 @@ function StatCard({
       }`}
     >
       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div
-        className={`mt-2 text-3xl font-black ${
-          subtle ? "text-white" : "text-orange-300"
-        }`}
-      >
+      <div className={`mt-2 text-3xl font-black ${subtle ? "text-white" : "text-orange-300"}`}>
         {value}
       </div>
     </div>

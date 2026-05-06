@@ -31,6 +31,23 @@ async function getGames() {
   return data ?? [];
 }
 
+async function getNextGame() {
+  const { data, error } = await supabase
+    .from("games")
+    .select("*")
+    .eq("is_upcoming", true)
+    .order("game_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error);
+    return null;
+  }
+
+  return data ?? null;
+}
+
 async function getLatestPOG(latestGameId?: string) {
   if (!latestGameId) return null;
 
@@ -64,9 +81,16 @@ async function getLatestPOG(latestGameId?: string) {
 }
 
 export default async function HomePage() {
-  const [players, games] = await Promise.all([getPlayers(), getGames()]);
-  const latestGame = games[0] ?? null;
-  const pog = await getLatestPOG(latestGame?.id);
+  const [players, games, nextGame] = await Promise.all([
+    getPlayers(),
+    getGames(),
+    getNextGame(),
+  ]);
+
+  const latestCompletedGame =
+    games.find((g: any) => g.is_upcoming !== true) ?? games[0] ?? null;
+
+  const pog = await getLatestPOG(latestCompletedGame?.id);
 
   const featuredPlayer =
     players.find((p: any) => p.is_featured === true) ??
@@ -74,9 +98,17 @@ export default async function HomePage() {
     players[0] ??
     null;
 
-  const wins = games.filter((g: any) => (g.team_score ?? 0) > (g.opponent_score ?? 0)).length;
-  const losses = games.filter((g: any) => (g.team_score ?? 0) < (g.opponent_score ?? 0)).length;
-  const draws = games.filter((g: any) => (g.team_score ?? 0) === (g.opponent_score ?? 0)).length;
+  const completedGames = games.filter((g: any) => g.is_upcoming !== true);
+
+  const wins = completedGames.filter(
+    (g: any) => (g.team_score ?? 0) > (g.opponent_score ?? 0)
+  ).length;
+  const losses = completedGames.filter(
+    (g: any) => (g.team_score ?? 0) < (g.opponent_score ?? 0)
+  ).length;
+  const draws = completedGames.filter(
+    (g: any) => (g.team_score ?? 0) === (g.opponent_score ?? 0)
+  ).length;
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -86,12 +118,13 @@ export default async function HomePage() {
             <span className="rounded-full bg-orange-500 px-3 py-1 font-bold text-slate-950">
               FACKTS LIVE
             </span>
-            {latestGame ? (
+            {latestCompletedGame ? (
               <span className="text-slate-300">
                 Latest Result:
                 <span className="ml-2 font-semibold text-white">
-                  FACKTS {latestGame.team_score ?? 0} - {latestGame.opponent_score ?? 0}{" "}
-                  {latestGame.opponent}
+                  FACKTS {latestCompletedGame.team_score ?? 0} -{" "}
+                  {latestCompletedGame.opponent_score ?? 0}{" "}
+                  {latestCompletedGame.opponent}
                 </span>
               </span>
             ) : (
@@ -156,7 +189,7 @@ export default async function HomePage() {
 
               <div className="mt-8 grid gap-4 sm:grid-cols-3">
                 <HeroStat label="Active Players" value={String(players.length)} />
-                <HeroStat label="Games Logged" value={String(games.length)} />
+                <HeroStat label="Games Logged" value={String(completedGames.length)} />
                 <HeroStat label="Record" value={`${wins}-${losses}-${draws}`} />
               </div>
             </div>
@@ -226,6 +259,74 @@ export default async function HomePage() {
               )}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="border-b border-slate-800 bg-slate-900/70">
+        <div className="mx-auto max-w-7xl px-6 py-8">
+          <div className="mb-6">
+            <div className="text-sm uppercase tracking-[0.2em] text-orange-300">
+              Next Game
+            </div>
+            <h2 className="mt-1 text-3xl font-bold">What’s coming next</h2>
+          </div>
+
+          {nextGame ? (
+            <div className="grid gap-6 lg:grid-cols-[1fr,1fr]">
+              <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900">
+                {nextGame.poster_url ? (
+                  <img
+                    src={nextGame.poster_url}
+                    alt={`Poster for FACKTS vs ${nextGame.opponent}`}
+                    className="h-full min-h-[320px] w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex min-h-[320px] flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-slate-950 p-10 text-center">
+                    <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
+                      Upcoming Match
+                    </div>
+                    <div className="mt-4 text-5xl font-black text-white">
+                      FACKTS
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-400">vs</div>
+                    <div className="mt-2 text-4xl font-black text-orange-400">
+                      {nextGame.opponent ?? "Opponent"}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-orange-500/20 bg-gradient-to-br from-slate-900 to-slate-950 p-6">
+                <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-300 w-fit">
+                  UPCOMING
+                </div>
+
+                <h3 className="mt-4 text-4xl font-black tracking-tight">
+                  FACKTS vs {nextGame.opponent ?? "Opponent"}
+                </h3>
+
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <InfoCard label="Date" value={nextGame.game_date ?? "TBA"} />
+                  <InfoCard label="Venue" value={nextGame.venue ?? "TBA"} />
+                  <InfoCard label="Type" value={nextGame.match_type ?? "Game"} />
+                  <InfoCard label="Status" value="Upcoming" />
+                </div>
+
+                <div className="mt-6">
+                  <Link
+                    href={`/games/${nextGame.id}`}
+                    className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400 inline-flex"
+                  >
+                    Open game page
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
+              No upcoming game has been marked yet.
+            </div>
+          )}
         </div>
       </section>
 
@@ -390,8 +491,8 @@ export default async function HomePage() {
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
             {games.slice(0, 4).map((game: any) => {
-              const won = (game.team_score ?? 0) > (game.opponent_score ?? 0);
-              const drew = (game.team_score ?? 0) === (game.opponent_score ?? 0);
+              const gameWon = (game.team_score ?? 0) > (game.opponent_score ?? 0);
+              const gameDrew = (game.team_score ?? 0) === (game.opponent_score ?? 0);
 
               return (
                 <Link
@@ -406,14 +507,16 @@ export default async function HomePage() {
 
                     <div
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        drew
+                        game.is_upcoming
+                          ? "bg-orange-500/15 text-orange-300"
+                          : gameDrew
                           ? "bg-slate-800 text-slate-300"
-                          : won
+                          : gameWon
                           ? "bg-emerald-500/15 text-emerald-300"
                           : "bg-rose-500/15 text-rose-300"
                       }`}
                     >
-                      {drew ? "DRAW" : won ? "WIN" : "LOSS"}
+                      {game.is_upcoming ? "UPCOMING" : gameDrew ? "DRAW" : gameWon ? "WIN" : "LOSS"}
                     </div>
                   </div>
 
@@ -424,12 +527,25 @@ export default async function HomePage() {
                     </div>
 
                     <div className="text-center">
-                      <div className="text-4xl font-black tracking-tight text-orange-400">
-                        {game.team_score ?? 0} - {game.opponent_score ?? 0}
-                      </div>
-                      <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                        Final Score
-                      </div>
+                      {game.is_upcoming ? (
+                        <>
+                          <div className="text-3xl font-black tracking-tight text-orange-400">
+                            VS
+                          </div>
+                          <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                            Upcoming
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-4xl font-black tracking-tight text-orange-400">
+                            {game.team_score ?? 0} - {game.opponent_score ?? 0}
+                          </div>
+                          <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                            Final Score
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <div className="text-right">
@@ -495,7 +611,7 @@ export default async function HomePage() {
               </div>
               <div className="mt-5 flex flex-col gap-3">
                 <a
-                  href="https://www.youtube.com/@facktsNBA"
+                  href="https://www.youtube.com/"
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
@@ -503,7 +619,7 @@ export default async function HomePage() {
                   YouTube
                 </a>
                 <a
-                  href="https://www.instagram.com/facktsafrica_nba?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw=="
+                  href="https://www.instagram.com/"
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
@@ -554,6 +670,15 @@ function SmallStat({ label, value }: { label: string; value: number }) {
     <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-center">
       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 text-2xl font-bold text-orange-300">{value}</div>
+    </div>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-2 font-medium text-white">{value}</div>
     </div>
   );
 }
