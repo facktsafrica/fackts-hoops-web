@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 async function getPlayers() {
   const { data, error } = await supabase
     .from("players")
@@ -8,11 +11,7 @@ async function getPlayers() {
     .eq("is_active", true)
     .order("jersey_number", { ascending: true });
 
-  if (error) {
-    console.error(error);
-    return [];
-  }
-
+  if (error) return [];
   return data ?? [];
 }
 
@@ -23,11 +22,7 @@ async function getGames() {
     .order("game_date", { ascending: false })
     .limit(8);
 
-  if (error) {
-    console.error(error);
-    return [];
-  }
-
+  if (error) return [];
   return data ?? [];
 }
 
@@ -40,57 +35,98 @@ async function getNextGame() {
     .limit(1)
     .maybeSingle();
 
-  if (error) {
-    console.error(error);
-    return null;
-  }
-
+  if (error) return null;
   return data ?? null;
 }
 
-async function getLatestPOG(latestGameId?: string) {
-  if (!latestGameId) return null;
-
-  const { data, error } = await supabase
+async function getHomepagePOG() {
+  const { data: statRow, error: statError } = await supabase
     .from("player_game_stats")
-    .select(
-      `
-      *,
-      players (
-        id,
-        full_name,
-        jersey_number,
-        position,
-        role,
-        nickname,
-        photo_url
-      )
-    `
-    )
-    .eq("game_id", latestGameId)
-    .eq("player_of_game", true)
+    .select("*")
+    .eq("is_homepage_pog", true)
     .limit(1)
     .maybeSingle();
 
-  if (error) {
-    console.error(error);
-    return null;
+  if (statError || !statRow) return null;
+
+  const { data: playerData } = await supabase
+    .from("players")
+    .select("*")
+    .eq("id", statRow.player_id)
+    .maybeSingle();
+
+  const { data: gameData } = await supabase
+    .from("games")
+    .select("*")
+    .eq("id", statRow.game_id)
+    .maybeSingle();
+
+  return {
+    ...statRow,
+    player: playerData ?? null,
+    game: gameData ?? null,
+  };
+}
+
+async function getPlayerAverages(playerId: string) {
+  const { data, error } = await supabase
+    .from("player_game_stats")
+    .select("*")
+    .eq("player_id", playerId);
+
+  if (error || !data || data.length === 0) {
+    return {
+      games: 0,
+      ppg: "0.0",
+      rpg: "0.0",
+      apg: "0.0",
+      spg: "0.0",
+      bpg: "0.0",
+    };
   }
 
-  return data ?? null;
+  const games = data.length;
+
+  const totals = data.reduce(
+    (acc: any, row: any) => {
+      acc.points += Number(row.points ?? 0);
+      acc.rebounds += Number(row.rebounds ?? 0);
+      acc.assists += Number(row.assists ?? 0);
+      acc.steals += Number(row.steals ?? 0);
+      acc.blocks += Number(row.blocks ?? 0);
+      return acc;
+    },
+    {
+      points: 0,
+      rebounds: 0,
+      assists: 0,
+      steals: 0,
+      blocks: 0,
+    }
+  );
+
+  const avg = (value: number) => (value / games).toFixed(1);
+
+  return {
+    games,
+    ppg: avg(totals.points),
+    rpg: avg(totals.rebounds),
+    apg: avg(totals.assists),
+    spg: avg(totals.steals),
+    bpg: avg(totals.blocks),
+  };
 }
 
 export default async function HomePage() {
-  const [players, games, nextGame] = await Promise.all([
+  const [players, games, nextGame, homepagePOG] = await Promise.all([
     getPlayers(),
     getGames(),
     getNextGame(),
+    getHomepagePOG(),
   ]);
 
-  const latestCompletedGame =
-    games.find((g: any) => g.is_upcoming !== true) ?? games[0] ?? null;
-
-  const pog = await getLatestPOG(latestCompletedGame?.id);
+  const completedGames = games.filter((g: any) => g.is_upcoming !== true);
+  const latestCompletedGame = completedGames[0] ?? null;
 
   const featuredPlayer =
     players.find((p: any) => p.is_featured === true) ??
@@ -98,26 +134,46 @@ export default async function HomePage() {
     players[0] ??
     null;
 
-  const completedGames = games.filter((g: any) => g.is_upcoming !== true);
+  const featuredAverages = featuredPlayer
+    ? await getPlayerAverages(featuredPlayer.id)
+    : null;
 
   const wins = completedGames.filter(
-    (g: any) => (g.team_score ?? 0) > (g.opponent_score ?? 0)
+    (g: any) =>
+      g.team_score !== null &&
+      g.opponent_score !== null &&
+      Number(g.team_score) > Number(g.opponent_score)
   ).length;
+
   const losses = completedGames.filter(
-    (g: any) => (g.team_score ?? 0) < (g.opponent_score ?? 0)
+    (g: any) =>
+      g.team_score !== null &&
+      g.opponent_score !== null &&
+      Number(g.team_score) < Number(g.opponent_score)
   ).length;
-  const draws = completedGames.filter(
-    (g: any) => (g.team_score ?? 0) === (g.opponent_score ?? 0)
-  ).length;
+
+  const heroImage =
+    nextGame?.poster_url ??
+    latestCompletedGame?.poster_url ??
+    homepagePOG?.player?.photo_url ??
+    featuredPlayer?.photo_url ??
+    null;
+
+  const pogBackground =
+    homepagePOG?.game?.poster_url ??
+    homepagePOG?.player?.photo_url ??
+    heroImage ??
+    null;
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <div className="border-b border-slate-800 bg-slate-900">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3 text-sm">
           <div className="flex items-center gap-3">
-            <span className="rounded-full bg-orange-500 px-3 py-1 font-bold text-slate-950">
+            <span className="animate-pulse rounded-full bg-orange-500 px-3 py-1 font-bold text-slate-950">
               FACKTS LIVE
             </span>
+
             {latestCompletedGame ? (
               <span className="text-slate-300">
                 Latest Result:
@@ -139,49 +195,62 @@ export default async function HomePage() {
             <span>
               L: <span className="font-semibold text-rose-300">{losses}</span>
             </span>
-            <span>
-              D: <span className="font-semibold text-slate-200">{draws}</span>
-            </span>
           </div>
         </div>
       </div>
 
-      <section className="border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/30">
-        <div className="mx-auto max-w-7xl px-6 py-12 md:py-16">
-          <div className="grid gap-8 lg:grid-cols-[1.2fr,0.8fr] lg:items-center">
+      <section className="relative overflow-hidden border-b border-slate-800">
+        {heroImage ? (
+          <div className="absolute inset-0">
+            <img
+              src={heroImage}
+              alt="FACKTS basketball hero"
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-slate-950/78" />
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/85 to-orange-950/40" />
+          </div>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/30" />
+        )}
+
+        <div className="absolute -left-10 top-10 h-40 w-40 rounded-full bg-orange-500/20 blur-3xl" />
+        <div className="absolute right-0 top-0 h-56 w-56 rounded-full bg-orange-400/10 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-orange-500/10 blur-3xl" />
+
+        <div className="relative z-10 mx-auto max-w-7xl px-6 py-14 md:py-20">
+          <div className="grid gap-8 lg:grid-cols-[1.1fr,0.9fr] lg:items-center">
             <div>
-              <div className="mb-6 flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-orange-500/30 bg-slate-900 shadow-lg shadow-orange-950/20">
-                  <span className="text-2xl font-black text-orange-400">F</span>
-                </div>
-                <div>
-                  <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
-                    FACKTS Hoops
-                  </div>
-                  <div className="text-sm text-slate-400">Basketball. Culture. Visibility.</div>
-                </div>
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-orange-400/30 bg-slate-900/70 px-4 py-2 text-sm backdrop-blur">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-orange-400" />
+                <span className="font-medium text-orange-300">
+                  FACKTS Hoops Platform
+                </span>
               </div>
 
-              <h1 className="text-4xl font-black tracking-tight md:text-6xl">
+              <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
                 The home of
-                <span className="block text-orange-400">FACKTS basketball data</span>
+                <span className="block text-orange-400">
+                  FACKTS basketball data
+                </span>
               </h1>
 
               <p className="mt-5 max-w-2xl text-base text-slate-300 md:text-lg">
-                Follow players, game results, and performance stories in one branded FACKTS
-                experience.
+                Player profiles, game results, standout performances, court
+                stories, and the culture around Kenyan basketball.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
                   href="/players"
-                  className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400"
+                  className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition duration-300 hover:scale-[1.02] hover:bg-orange-400"
                 >
                   Explore Players
                 </Link>
+
                 <Link
                   href="/games"
-                  className="rounded-2xl border border-slate-700 px-5 py-3 font-semibold text-slate-200 transition hover:bg-slate-800"
+                  className="rounded-2xl border border-slate-600 bg-slate-900/60 px-5 py-3 font-semibold text-slate-200 backdrop-blur transition duration-300 hover:scale-[1.02] hover:bg-slate-800"
                 >
                   Explore Games
                 </Link>
@@ -189,204 +258,312 @@ export default async function HomePage() {
 
               <div className="mt-8 grid gap-4 sm:grid-cols-3">
                 <HeroStat label="Active Players" value={String(players.length)} />
-                <HeroStat label="Games Logged" value={String(completedGames.length)} />
-                <HeroStat label="Record" value={`${wins}-${losses}-${draws}`} />
+                <HeroStat
+                  label="Games Logged"
+                  value={String(completedGames.length)}
+                />
+                <HeroStat label="Record" value={`${wins}-${losses}`} />
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-orange-950/20">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <div className="text-sm uppercase tracking-wide text-slate-400">
-                    Featured Player
-                  </div>
-                  <div className="mt-1 text-2xl font-bold">Spotlight</div>
-                </div>
-                <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-300">
-                  FACKTS
-                </div>
-              </div>
-
-              {featuredPlayer ? (
-                <Link
-                  href={`/players/${featuredPlayer.id}`}
-                  className="block rounded-3xl border border-slate-800 bg-slate-950 p-5 transition hover:border-orange-400/40"
-                >
-                  <div className="flex items-center gap-4">
-                    {featuredPlayer.photo_url ? (
-                      <img
-                        src={featuredPlayer.photo_url}
-                        alt={featuredPlayer.full_name}
-                        className="h-24 w-24 rounded-3xl border border-slate-700 object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-800 text-4xl">
-                        🏀
+            <div className="grid gap-5">
+              <div className="overflow-hidden rounded-[2rem] border border-orange-500/25 bg-slate-900/75 shadow-2xl shadow-orange-950/20 backdrop-blur">
+                {nextGame?.poster_url ? (
+                  <div className="relative h-64">
+                    <img
+                      src={nextGame.poster_url}
+                      alt={`Poster for FACKTS vs ${nextGame.opponent}`}
+                      className="h-full w-full object-cover"
+                      style={{
+                        objectPosition: nextGame.poster_position ?? "center center",
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent" />
+                    <div className="absolute left-5 top-5 rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-slate-950">
+                      NEXT GAME
+                    </div>
+                    <div className="absolute bottom-5 left-5 right-5">
+                      <div className="text-3xl font-black">
+                        FACKTS vs {nextGame.opponent ?? "Opponent"}
                       </div>
-                    )}
-
-                    <div className="min-w-0">
-                      <div className="inline-block rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-slate-950">
-                        #{featuredPlayer.jersey_number ?? "—"}
-                      </div>
-                      <div className="mt-3 text-2xl font-bold leading-tight">
-                        {featuredPlayer.full_name}
-                      </div>
-                      <div className="mt-1 text-sm text-orange-300">
-                        {featuredPlayer.nickname
-                          ? `"${featuredPlayer.nickname}"`
-                          : "FACKTS Player"}
-                      </div>
-                      <div className="mt-2 text-sm text-slate-400">
-                        {featuredPlayer.position ?? "—"} • {featuredPlayer.role ?? "—"}
+                      <div className="mt-1 text-sm text-slate-300">
+                        {nextGame.game_date ?? "TBA"} •{" "}
+                        {nextGame.venue ?? "Venue TBA"}
                       </div>
                     </div>
                   </div>
-
-                  <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                    <MiniInfo label="Height" value={featuredPlayer.height ?? "—"} />
-                    <MiniInfo label="Level" value={featuredPlayer.highest_level ?? "—"} />
+                ) : (
+                  <div className="relative min-h-64 bg-gradient-to-br from-slate-900 via-slate-950 to-orange-950/40 p-6">
+                    <div className="absolute right-6 top-6 text-7xl opacity-10">🏀</div>
+                    <div className="rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-slate-950 w-fit">
+                      NEXT GAME
+                    </div>
+                    <div className="mt-8 text-3xl font-black">
+                      {nextGame
+                        ? `FACKTS vs ${nextGame.opponent ?? "Opponent"}`
+                        : "Next game not set"}
+                    </div>
+                    <div className="mt-2 text-sm text-slate-400">
+                      {nextGame
+                        ? `${nextGame.game_date ?? "TBA"} • ${
+                            nextGame.venue ?? "Venue TBA"
+                          }`
+                        : "Mark an upcoming game in admin."}
+                    </div>
                   </div>
+                )}
 
-                  <div className="mt-5 text-sm font-semibold text-orange-300">
-                    Open featured profile →
+                {nextGame ? (
+                  <div className="p-5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <MiniInfo label="Type" value={nextGame.match_type ?? "Game"} />
+                      <MiniInfo label="Status" value="Upcoming" />
+                    </div>
+
+                    <div className="mt-5">
+                      <Link
+                        href={`/games/${nextGame.id}`}
+                        className="inline-flex rounded-2xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-orange-400"
+                      >
+                        Open upcoming game →
+                      </Link>
+                    </div>
                   </div>
-                </Link>
-              ) : (
-                <div className="rounded-3xl border border-slate-800 bg-slate-950 p-5 text-slate-400">
-                  No featured player yet.
+                ) : null}
+              </div>
+
+              <div className="rounded-3xl border border-slate-800 bg-slate-900/75 p-6 shadow-2xl shadow-orange-950/20 backdrop-blur">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm uppercase tracking-wide text-slate-400">
+                      Featured Player
+                    </div>
+                    <div className="mt-1 text-2xl font-bold">Spotlight</div>
+                  </div>
+                  <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-300">
+                    FACKTS
+                  </div>
                 </div>
-              )}
+
+                {featuredPlayer ? (
+                  <Link
+                    href={`/players/${featuredPlayer.id}`}
+                    className="block rounded-3xl border border-slate-800 bg-slate-950/90 p-5 transition hover:border-orange-400/40 hover:bg-slate-950"
+                  >
+                    <div className="flex items-center gap-4">
+                      {featuredPlayer.photo_url ? (
+                        <img
+                          src={featuredPlayer.photo_url}
+                          alt={featuredPlayer.full_name}
+                          className="h-24 w-24 rounded-3xl border border-slate-700 object-cover"
+                          style={{
+                            objectPosition:
+                              featuredPlayer.photo_position ?? "center center",
+                          }}
+                        />
+                      ) : (
+                        <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-800 text-4xl">
+                          🏀
+                        </div>
+                      )}
+
+                      <div className="min-w-0">
+                        <div className="inline-block rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-slate-950">
+                          #{featuredPlayer.jersey_number ?? "—"}
+                        </div>
+                        <div className="mt-3 text-2xl font-bold leading-tight">
+                          {featuredPlayer.full_name}
+                        </div>
+                        <div className="mt-1 text-sm text-orange-300">
+                          {featuredPlayer.nickname
+                            ? `"${featuredPlayer.nickname}"`
+                            : "FACKTS Player"}
+                        </div>
+                        <div className="mt-2 text-sm text-slate-400">
+                          {featuredPlayer.position ?? "—"} •{" "}
+                          {featuredPlayer.role ?? "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
+                      <FeaturedStat
+                        label="Games"
+                        value={String(featuredAverages?.games ?? 0)}
+                      />
+                      <FeaturedStat
+                        label="PPG"
+                        value={featuredAverages?.ppg ?? "0.0"}
+                      />
+                      <FeaturedStat
+                        label="RPG"
+                        value={featuredAverages?.rpg ?? "0.0"}
+                      />
+                      <FeaturedStat
+                        label="APG"
+                        value={featuredAverages?.apg ?? "0.0"}
+                      />
+                      <FeaturedStat
+                        label="SPG"
+                        value={featuredAverages?.spg ?? "0.0"}
+                      />
+                      <FeaturedStat
+                        label="BPG"
+                        value={featuredAverages?.bpg ?? "0.0"}
+                      />
+                    </div>
+
+                    <div className="mt-5 text-sm font-semibold text-orange-300">
+                      Open featured profile →
+                    </div>
+                  </Link>
+                ) : (
+                  <div className="rounded-3xl border border-slate-800 bg-slate-950 p-5 text-slate-400">
+                    No featured player yet.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="border-b border-slate-800 bg-slate-900/70">
-        <div className="mx-auto max-w-7xl px-6 py-8">
-          <div className="mb-6">
-            <div className="text-sm uppercase tracking-[0.2em] text-orange-300">
-              Next Game
+      <section className="relative overflow-hidden border-b border-slate-800 bg-slate-950">
+        {pogBackground ? (
+          <div className="absolute inset-0">
+            <img
+              src={pogBackground}
+              alt="Player of the Game background"
+              className="h-full w-full object-cover"
+              style={{
+                objectPosition:
+                  homepagePOG?.player?.photo_position ?? "center center",
+              }}
+            />
+            <div className="absolute inset-0 bg-slate-950/82" />
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-orange-950/50" />
+          </div>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/20" />
+        )}
+
+        <div className="absolute left-0 top-0 h-64 w-64 rounded-full bg-orange-500/10 blur-3xl" />
+        <div className="absolute right-0 bottom-0 h-64 w-64 rounded-full bg-orange-400/10 blur-3xl" />
+
+        <div className="relative mx-auto max-w-7xl px-6 py-12">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
+                MVP Spotlight
+              </div>
+              <h2 className="mt-1 text-4xl font-black">Player of the Game</h2>
             </div>
-            <h2 className="mt-1 text-3xl font-bold">What’s coming next</h2>
+
+            <div className="animate-pulse rounded-full border border-orange-400/30 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-300">
+              HOT PERFORMANCE
+            </div>
           </div>
 
-          {nextGame ? (
-            <div className="grid gap-6 lg:grid-cols-[1fr,1fr]">
-              <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900">
-                {nextGame.poster_url ? (
-                  <img
-                    src={nextGame.poster_url}
-                    alt={`Poster for FACKTS vs ${nextGame.opponent}`}
-                    className="h-full min-h-[320px] w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex min-h-[320px] flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-slate-950 p-10 text-center">
-                    <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
-                      Upcoming Match
-                    </div>
-                    <div className="mt-4 text-5xl font-black text-white">
-                      FACKTS
-                    </div>
-                    <div className="mt-2 text-2xl font-semibold text-slate-400">vs</div>
-                    <div className="mt-2 text-4xl font-black text-orange-400">
-                      {nextGame.opponent ?? "Opponent"}
+          {homepagePOG?.player ? (
+            <div className="rounded-[2rem] border border-orange-500/25 bg-slate-900/75 p-6 shadow-2xl shadow-orange-950/30 backdrop-blur">
+              <div className="grid gap-6 lg:grid-cols-[0.9fr,1.1fr] lg:items-center">
+                <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/85 p-5">
+                  <div className="flex items-center gap-4">
+                    {homepagePOG.player.photo_url ? (
+                      <img
+                        src={homepagePOG.player.photo_url}
+                        alt={homepagePOG.player.full_name}
+                        className="h-32 w-32 rounded-3xl border-2 border-orange-400/40 object-cover shadow-lg shadow-orange-950/20"
+                        style={{
+                          objectPosition:
+                            homepagePOG.player.photo_position ?? "center center",
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-32 w-32 items-center justify-center rounded-3xl bg-slate-800 text-4xl">
+                        🏀
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="inline-flex rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-slate-950">
+                        PLAYER OF THE GAME
+                      </div>
+
+                      <div className="mt-3 text-3xl font-black leading-tight">
+                        #{homepagePOG.player.jersey_number ?? "—"}{" "}
+                        {homepagePOG.player.full_name}
+                      </div>
+
+                      <div className="mt-2 text-sm text-orange-300">
+                        {homepagePOG.player.nickname
+                          ? `"${homepagePOG.player.nickname}"`
+                          : "FACKTS standout"}
+                      </div>
+
+                      <div className="mt-2 text-sm text-slate-400">
+                        {homepagePOG.player.position ?? "—"} •{" "}
+                        {homepagePOG.player.role ?? "—"}
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
 
-              <div className="rounded-3xl border border-orange-500/20 bg-gradient-to-br from-slate-900 to-slate-950 p-6">
-                <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-300 w-fit">
-                  UPCOMING
+                  <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Performance came from
+                    </div>
+                    <div className="mt-2 text-xl font-bold">
+                      FACKTS vs {homepagePOG.game?.opponent ?? "Opponent"}
+                    </div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      {homepagePOG.game?.game_date ?? "Date TBA"} •{" "}
+                      {homepagePOG.game?.venue ?? "Venue TBA"}
+                    </div>
+                  </div>
                 </div>
 
-                <h3 className="mt-4 text-4xl font-black tracking-tight">
-                  FACKTS vs {nextGame.opponent ?? "Opponent"}
-                </h3>
+                <div>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <FlashStat label="PTS" value={homepagePOG.points ?? 0} />
+                    <FlashStat label="REB" value={homepagePOG.rebounds ?? 0} />
+                    <FlashStat label="AST" value={homepagePOG.assists ?? 0} />
+                    <FlashStat label="+/-" value={homepagePOG.plus_minus ?? 0} />
+                  </div>
 
-                <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                  <InfoCard label="Date" value={nextGame.game_date ?? "TBA"} />
-                  <InfoCard label="Venue" value={nextGame.venue ?? "TBA"} />
-                  <InfoCard label="Type" value={nextGame.match_type ?? "Game"} />
-                  <InfoCard label="Status" value="Upcoming" />
-                </div>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link
+                      href={`/players/${homepagePOG.player.id}`}
+                      className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition duration-300 hover:scale-[1.02] hover:bg-orange-400"
+                    >
+                      Open player profile
+                    </Link>
 
-                <div className="mt-6">
-                  <Link
-                    href={`/games/${nextGame.id}`}
-                    className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400 inline-flex"
-                  >
-                    Open game page
-                  </Link>
+                    {homepagePOG.game?.id ? (
+                      <Link
+                        href={`/games/${homepagePOG.game.id}`}
+                        className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-3 font-semibold text-slate-200 transition duration-300 hover:scale-[1.02] hover:bg-slate-800"
+                      >
+                        Open game details
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
           ) : (
             <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
-              No upcoming game has been marked yet.
+              No homepage Player of the Game has been selected yet.
             </div>
           )}
-        </div>
-      </section>
-
-      <section className="border-b border-slate-800 bg-slate-900/70">
-        <div className="mx-auto max-w-7xl px-6 py-8">
-          <div className="rounded-3xl border border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-slate-900 to-slate-900 p-6">
-            <div className="mb-2 text-sm uppercase tracking-[0.2em] text-orange-300">
-              Player of the Game
-            </div>
-
-            {pog?.players ? (
-              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-4">
-                  {pog.players.photo_url ? (
-                    <img
-                      src={pog.players.photo_url}
-                      alt={pog.players.full_name}
-                      className="h-20 w-20 rounded-3xl border border-slate-700 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-slate-800 text-3xl">
-                      🏀
-                    </div>
-                  )}
-
-                  <div>
-                    <div className="text-2xl font-black">
-                      #{pog.players.jersey_number ?? "—"} {pog.players.full_name}
-                    </div>
-                    <div className="mt-1 text-sm text-slate-400">
-                      {pog.players.position ?? "—"} • {pog.players.role ?? "—"}
-                    </div>
-                    <div className="mt-2 text-orange-300">
-                      {pog.players.nickname
-                        ? `"${pog.players.nickname}"`
-                        : "FACKTS standout"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-4">
-                  <SmallStat label="PTS" value={pog.points ?? 0} />
-                  <SmallStat label="REB" value={pog.rebounds ?? 0} />
-                  <SmallStat label="AST" value={pog.assists ?? 0} />
-                  <SmallStat label="+/-" value={pog.plus_minus ?? 0} />
-                </div>
-              </div>
-            ) : (
-              <div className="text-slate-400">
-                No player of the game has been marked for the latest game yet.
-              </div>
-            )}
-          </div>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 py-12">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="text-sm uppercase tracking-wide text-orange-300">Roster</div>
+            <div className="text-sm uppercase tracking-wide text-orange-300">
+              Roster
+            </div>
             <h2 className="mt-1 text-3xl font-bold">Players</h2>
             <p className="mt-2 text-slate-400">
               Explore the FACKTS roster and open full player pages.
@@ -411,7 +588,7 @@ export default async function HomePage() {
               <Link
                 key={player.id}
                 href={`/players/${player.id}`}
-                className="group overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 transition hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
+                className="group overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
               >
                 <div className="relative">
                   <div className="absolute left-4 top-4 z-10 rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-slate-950">
@@ -423,6 +600,9 @@ export default async function HomePage() {
                       src={player.photo_url}
                       alt={player.full_name}
                       className="h-72 w-full object-cover"
+                      style={{
+                        objectPosition: player.photo_position ?? "center center",
+                      }}
                     />
                   ) : (
                     <div className="flex h-72 w-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-6xl">
@@ -491,73 +671,97 @@ export default async function HomePage() {
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
             {games.slice(0, 4).map((game: any) => {
-              const gameWon = (game.team_score ?? 0) > (game.opponent_score ?? 0);
-              const gameDrew = (game.team_score ?? 0) === (game.opponent_score ?? 0);
+              const hasScore =
+                game.team_score !== null && game.opponent_score !== null;
+
+              const gameWon =
+                hasScore && Number(game.team_score) > Number(game.opponent_score);
 
               return (
                 <Link
                   key={game.id}
                   href={`/games/${game.id}`}
-                  className="rounded-3xl border border-slate-800 bg-slate-900 p-5 transition hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
+                  className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm text-slate-400">
-                      {game.game_date} • {game.venue ?? "Venue TBA"}
-                    </div>
+                  {game.poster_url ? (
+                    <img
+                      src={game.poster_url}
+                      alt={`Poster for FACKTS vs ${game.opponent}`}
+                      className="h-56 w-full object-cover"
+                      style={{
+                        objectPosition: game.poster_position ?? "center center",
+                      }}
+                    />
+                  ) : null}
 
-                    <div
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        game.is_upcoming
-                          ? "bg-orange-500/15 text-orange-300"
-                          : gameDrew
-                          ? "bg-slate-800 text-slate-300"
+                  <div className="p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="text-sm text-slate-400">
+                        {game.game_date} • {game.venue ?? "Venue TBA"}
+                      </div>
+
+                      <div
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          game.is_upcoming
+                            ? "bg-orange-500/15 text-orange-300"
+                            : !hasScore
+                            ? "bg-slate-800 text-slate-300"
+                            : gameWon
+                            ? "bg-emerald-500/15 text-emerald-300"
+                            : "bg-rose-500/15 text-rose-300"
+                        }`}
+                      >
+                        {game.is_upcoming
+                          ? "UPCOMING"
+                          : !hasScore
+                          ? "FINAL"
                           : gameWon
-                          ? "bg-emerald-500/15 text-emerald-300"
-                          : "bg-rose-500/15 text-rose-300"
-                      }`}
-                    >
-                      {game.is_upcoming ? "UPCOMING" : gameDrew ? "DRAW" : gameWon ? "WIN" : "LOSS"}
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-sm text-slate-400">Team</div>
-                      <div className="text-2xl font-bold">FACKTS</div>
+                          ? "WIN"
+                          : "LOSS"}
+                      </div>
                     </div>
 
-                    <div className="text-center">
-                      {game.is_upcoming ? (
-                        <>
-                          <div className="text-3xl font-black tracking-tight text-orange-400">
-                            VS
-                          </div>
-                          <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                            Upcoming
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-4xl font-black tracking-tight text-orange-400">
-                            {game.team_score ?? 0} - {game.opponent_score ?? 0}
-                          </div>
-                          <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                            Final Score
-                          </div>
-                        </>
-                      )}
+                    <div className="mt-5 flex items-center justify-between gap-4">
+                      <div>
+                        <div className="text-sm text-slate-400">Team</div>
+                        <div className="text-2xl font-bold">FACKTS</div>
+                      </div>
+
+                      <div className="text-center">
+                        {game.is_upcoming ? (
+                          <>
+                            <div className="text-3xl font-black tracking-tight text-orange-400">
+                              VS
+                            </div>
+                            <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                              Upcoming
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-4xl font-black tracking-tight text-orange-400">
+                              {game.team_score ?? 0} - {game.opponent_score ?? 0}
+                            </div>
+                            <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                              Final Score
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-sm text-slate-400">Opponent</div>
+                        <div className="text-2xl font-bold">{game.opponent}</div>
+                      </div>
                     </div>
 
-                    <div className="text-right">
-                      <div className="text-sm text-slate-400">Opponent</div>
-                      <div className="text-2xl font-bold">{game.opponent}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm text-slate-400">{game.match_type ?? "Game"}</div>
-                    <div className="text-sm font-semibold text-orange-300">
-                      Open game details →
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                      <div className="text-sm text-slate-400">
+                        {game.match_type ?? "Game"}
+                      </div>
+                      <div className="text-sm font-semibold text-orange-300">
+                        Open game details →
+                      </div>
                     </div>
                   </div>
                 </Link>
@@ -571,10 +775,13 @@ export default async function HomePage() {
         <div className="mx-auto max-w-7xl px-6 py-12">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <div className="text-sm uppercase tracking-wide text-orange-300">Contact</div>
+              <div className="text-sm uppercase tracking-wide text-orange-300">
+                Contact
+              </div>
               <h2 className="mt-1 text-3xl font-bold">Talk to FACKTS</h2>
               <p className="mt-2 text-slate-400">
-                Partnerships, player visibility, basketball media, and content collaboration.
+                Partnerships, player visibility, basketball media, and content
+                collaboration.
               </p>
             </div>
 
@@ -588,18 +795,26 @@ export default async function HomePage() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-              <div className="text-sm uppercase tracking-wide text-orange-300">Details</div>
+              <div className="text-sm uppercase tracking-wide text-orange-300">
+                Details
+              </div>
               <div className="mt-5 space-y-4 text-slate-300">
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Email</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Email
+                  </div>
                   <div className="mt-1">facktsafrica@gmail.com</div>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Phone</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Phone
+                  </div>
                   <div className="mt-1">+254 711 468 303</div>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Location</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Location
+                  </div>
                   <div className="mt-1">Westlands, Nairobi, Kenya</div>
                 </div>
               </div>
@@ -649,9 +864,27 @@ export default async function HomePage() {
 
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+    <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4 backdrop-blur">
       <div className="text-sm text-slate-400">{label}</div>
       <div className="mt-2 text-2xl font-bold text-white">{value}</div>
+    </div>
+  );
+}
+
+function FeaturedStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-3 text-center">
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-xl font-black text-orange-300">{value}</div>
+    </div>
+  );
+}
+
+function FlashStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-3xl border border-orange-500/20 bg-slate-900/80 p-5 text-center shadow-lg shadow-orange-950/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40">
+      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</div>
+      <div className="mt-2 text-4xl font-black text-orange-300">{value}</div>
     </div>
   );
 }
@@ -661,24 +894,6 @@ function MiniInfo({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl bg-slate-950 p-3">
       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 font-medium text-slate-200">{value}</div>
-    </div>
-  );
-}
-
-function SmallStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-center">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-orange-300">{value}</div>
-    </div>
-  );
-}
-
-function InfoCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-2 font-medium text-white">{value}</div>
     </div>
   );
 }

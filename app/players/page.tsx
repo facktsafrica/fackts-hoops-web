@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 async function getPlayers() {
   const { data, error } = await supabase
     .from("players")
@@ -8,86 +11,162 @@ async function getPlayers() {
     .eq("is_active", true)
     .order("jersey_number", { ascending: true });
 
-  if (error) {
-    console.error(error);
-    return [];
+  if (error) return [];
+  return data ?? [];
+}
+
+async function getPlayerAverages(playerId: string) {
+  const { data, error } = await supabase
+    .from("player_game_stats")
+    .select("*")
+    .eq("player_id", playerId);
+
+  if (error || !data || data.length === 0) {
+    return {
+      games: 0,
+      ppg: "0.0",
+      rpg: "0.0",
+      apg: "0.0",
+    };
   }
 
-  return data ?? [];
+  const games = data.length;
+
+  const totals = data.reduce(
+    (acc: any, row: any) => {
+      acc.points += Number(row.points ?? 0);
+      acc.rebounds += Number(row.rebounds ?? 0);
+      acc.assists += Number(row.assists ?? 0);
+      return acc;
+    },
+    {
+      points: 0,
+      rebounds: 0,
+      assists: 0,
+    }
+  );
+
+  const avg = (value: number) => (value / games).toFixed(1);
+
+  return {
+    games,
+    ppg: avg(totals.points),
+    rpg: avg(totals.rebounds),
+    apg: avg(totals.assists),
+  };
 }
 
 export default async function PlayersPage() {
   const players = await getPlayers();
 
-  const starters = players.filter((p: any) => (p.role ?? "").toLowerCase() === "starter");
-  const bench = players.filter((p: any) => (p.role ?? "").toLowerCase() !== "starter");
+  const playersWithAverages = await Promise.all(
+    players.map(async (player: any) => {
+      const averages = await getPlayerAverages(player.id);
+      return {
+        ...player,
+        averages,
+      };
+    })
+  );
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <section className="border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/20">
-        <div className="mx-auto max-w-7xl px-6 py-12">
+      <section className="relative overflow-hidden border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/30">
+        <div className="absolute -left-20 top-10 h-60 w-60 rounded-full bg-orange-500/10 blur-3xl" />
+        <div className="absolute right-0 bottom-0 h-60 w-60 rounded-full bg-orange-400/10 blur-3xl" />
+
+        <div className="relative mx-auto max-w-7xl px-6 py-12">
           <div className="max-w-3xl">
             <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
               FACKTS Hoops
             </div>
+
             <h1 className="mt-3 text-4xl font-black tracking-tight md:text-5xl">
               Player Roster
             </h1>
-            <p className="mt-4 text-lg text-slate-300">
-              Explore the full FACKTS roster, player roles, profiles, and public performance pages.
-            </p>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Total Players</div>
-                <div className="mt-1 text-2xl font-bold">{players.length}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Starters</div>
-                <div className="mt-1 text-2xl font-bold text-orange-300">{starters.length}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Bench</div>
-                <div className="mt-1 text-2xl font-bold">{bench.length}</div>
-              </div>
-            </div>
+            <p className="mt-4 text-lg text-slate-300">
+              Explore the FACKTS player portfolio, profiles, averages, and player stories.
+            </p>
           </div>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 py-12">
-        <div className="mb-5">
-          <div className="text-sm uppercase tracking-wide text-orange-300">Starting Unit</div>
-          <h2 className="mt-1 text-2xl font-bold">Starters</h2>
-        </div>
-
-        {starters.length === 0 ? (
+        {playersWithAverages.length === 0 ? (
           <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
-            No starters marked yet.
+            No active players found.
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {starters.map((player: any) => (
-              <PlayerCard key={player.id} player={player} />
-            ))}
-          </div>
-        )}
-      </section>
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            {playersWithAverages.map((player: any) => (
+              <Link
+                key={player.id}
+                href={`/players/${player.id}`}
+                className="group overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
+              >
+                <div className="relative">
+                  <div className="absolute left-4 top-4 z-10 rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-slate-950">
+                    #{player.jersey_number ?? "—"}
+                  </div>
 
-      <section className="mx-auto max-w-7xl px-6 pb-14">
-        <div className="mb-5">
-          <div className="text-sm uppercase tracking-wide text-orange-300">Depth</div>
-          <h2 className="mt-1 text-2xl font-bold">Bench</h2>
-        </div>
+                  {player.is_featured ? (
+                    <div className="absolute right-4 top-4 z-10 rounded-full bg-slate-950/80 px-3 py-1 text-xs font-bold text-orange-300 backdrop-blur">
+                      FEATURED
+                    </div>
+                  ) : null}
 
-        {bench.length === 0 ? (
-          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
-            No bench players marked yet.
-          </div>
-        ) : (
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {bench.map((player: any) => (
-              <PlayerCard key={player.id} player={player} />
+                  {player.photo_url ? (
+                    <img
+                      src={player.photo_url}
+                      alt={player.full_name}
+                      className="h-80 w-full object-cover"
+                      style={{
+                        objectPosition: player.photo_position ?? "center center",
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-80 w-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-6xl">
+                      🏀
+                    </div>
+                  )}
+
+                  <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-slate-950 to-transparent" />
+                </div>
+
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-2xl font-black group-hover:text-orange-300">
+                        {player.full_name}
+                      </h2>
+
+                      <p className="mt-1 text-sm text-orange-300">
+                        {player.nickname ? `"${player.nickname}"` : "FACKTS Player"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
+                      {player.role ?? "Player"}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-sm text-slate-400">
+                    {player.position ?? "Position TBA"} • {player.height ?? "Height TBA"}
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-4 gap-3">
+                    <StatMini label="GP" value={String(player.averages.games)} />
+                    <StatMini label="PPG" value={player.averages.ppg} />
+                    <StatMini label="RPG" value={player.averages.rpg} />
+                    <StatMini label="APG" value={player.averages.apg} />
+                  </div>
+
+                  <div className="mt-5 text-sm font-semibold text-orange-300">
+                    Open full profile →
+                  </div>
+                </div>
+              </Link>
             ))}
           </div>
         )}
@@ -96,66 +175,11 @@ export default async function PlayersPage() {
   );
 }
 
-function PlayerCard({ player }: { player: any }) {
+function StatMini({ label, value }: { label: string; value: string }) {
   return (
-    <Link
-      href={`/players/${player.id}`}
-      className="group overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 transition hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
-    >
-      <div className="relative">
-        <div className="absolute left-4 top-4 z-10 rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-slate-950">
-          #{player.jersey_number ?? "—"}
-        </div>
-
-        {player.photo_url ? (
-          <img
-            src={player.photo_url}
-            alt={player.full_name}
-            className="h-72 w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-72 w-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-6xl">
-            🏀
-          </div>
-        )}
-      </div>
-
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-2xl font-bold group-hover:text-orange-300">
-              {player.full_name}
-            </h3>
-            <p className="mt-1 text-sm text-slate-400">
-              {player.nickname ? `"${player.nickname}"` : "FACKTS Player"}
-            </p>
-          </div>
-
-          <div className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
-            {player.role ?? "Bench"}
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-          <MiniInfo label="Position" value={player.position ?? "—"} />
-          <MiniInfo label="Height" value={player.height ?? "—"} />
-          <MiniInfo label="Hand" value={player.dominant_hand ?? "—"} />
-          <MiniInfo label="Level" value={player.highest_level ?? "—"} />
-        </div>
-
-        <div className="mt-5 inline-flex items-center text-sm font-semibold text-orange-300">
-          Open player page →
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function MiniInfo({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl bg-slate-950 p-3">
+    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-center">
       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 font-medium text-slate-200">{value}</div>
+      <div className="mt-1 text-lg font-black text-orange-300">{value}</div>
     </div>
   );
 }
