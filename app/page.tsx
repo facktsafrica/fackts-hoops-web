@@ -36,7 +36,8 @@ async function getLatestPOG(latestGameId?: string) {
 
   const { data, error } = await supabase
     .from("player_game_stats")
-    .select(`
+    .select(
+      `
       *,
       players (
         id,
@@ -47,7 +48,8 @@ async function getLatestPOG(latestGameId?: string) {
         nickname,
         photo_url
       )
-    `)
+    `
+    )
     .eq("game_id", latestGameId)
     .eq("player_of_game", true)
     .limit(1)
@@ -67,7 +69,10 @@ export default async function HomePage() {
   const pog = await getLatestPOG(latestGame?.id);
 
   const featuredPlayer =
-    players.find((p: any) => p.role?.toLowerCase() === "starter") ?? players[0] ?? null;
+    players.find((p: any) => p.is_featured === true) ??
+    players.find((p: any) => p.role?.toLowerCase() === "starter") ??
+    players[0] ??
+    null;
 
   const wins = games.filter((g: any) => (g.team_score ?? 0) > (g.opponent_score ?? 0)).length;
   const losses = games.filter((g: any) => (g.team_score ?? 0) < (g.opponent_score ?? 0)).length;
@@ -75,9 +80,6 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <div id="home" />
-
-      {/* Top result strip */}
       <div className="border-b border-slate-800 bg-slate-900">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3 text-sm">
           <div className="flex items-center gap-3">
@@ -88,7 +90,8 @@ export default async function HomePage() {
               <span className="text-slate-300">
                 Latest Result:
                 <span className="ml-2 font-semibold text-white">
-                  FACKTS {latestGame.team_score ?? 0} - {latestGame.opponent_score ?? 0} {latestGame.opponent}
+                  FACKTS {latestGame.team_score ?? 0} - {latestGame.opponent_score ?? 0}{" "}
+                  {latestGame.opponent}
                 </span>
               </span>
             ) : (
@@ -97,14 +100,19 @@ export default async function HomePage() {
           </div>
 
           <div className="flex items-center gap-4 text-slate-400">
-            <span>W: <span className="font-semibold text-emerald-300">{wins}</span></span>
-            <span>L: <span className="font-semibold text-rose-300">{losses}</span></span>
-            <span>D: <span className="font-semibold text-slate-200">{draws}</span></span>
+            <span>
+              W: <span className="font-semibold text-emerald-300">{wins}</span>
+            </span>
+            <span>
+              L: <span className="font-semibold text-rose-300">{losses}</span>
+            </span>
+            <span>
+              D: <span className="font-semibold text-slate-200">{draws}</span>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Hero */}
       <section className="border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/30">
         <div className="mx-auto max-w-7xl px-6 py-12 md:py-16">
           <div className="grid gap-8 lg:grid-cols-[1.2fr,0.8fr] lg:items-center">
@@ -117,9 +125,7 @@ export default async function HomePage() {
                   <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
                     FACKTS Hoops
                   </div>
-                  <div className="text-sm text-slate-400">
-                    Basketball. Culture. Visibility.
-                  </div>
+                  <div className="text-sm text-slate-400">Basketball. Culture. Visibility.</div>
                 </div>
               </div>
 
@@ -129,18 +135,19 @@ export default async function HomePage() {
               </h1>
 
               <p className="mt-5 max-w-2xl text-base text-slate-300 md:text-lg">
-                Follow players, game results, and performance stories in one branded FACKTS experience.
+                Follow players, game results, and performance stories in one branded FACKTS
+                experience.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
-                  href="#players"
+                  href="/players"
                   className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400"
                 >
                   Explore Players
                 </Link>
                 <Link
-                  href="#games"
+                  href="/games"
                   className="rounded-2xl border border-slate-700 px-5 py-3 font-semibold text-slate-200 transition hover:bg-slate-800"
                 >
                   Explore Games
@@ -177,7 +184,7 @@ export default async function HomePage() {
                       <img
                         src={featuredPlayer.photo_url}
                         alt={featuredPlayer.full_name}
-                        className="h-24 w-24 rounded-3xl object-cover border border-slate-700"
+                        className="h-24 w-24 rounded-3xl border border-slate-700 object-cover"
                       />
                     ) : (
                       <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-800 text-4xl">
@@ -193,7 +200,9 @@ export default async function HomePage() {
                         {featuredPlayer.full_name}
                       </div>
                       <div className="mt-1 text-sm text-orange-300">
-                        {featuredPlayer.nickname ? `"${featuredPlayer.nickname}"` : "FACKTS Player"}
+                        {featuredPlayer.nickname
+                          ? `"${featuredPlayer.nickname}"`
+                          : "FACKTS Player"}
                       </div>
                       <div className="mt-2 text-sm text-slate-400">
                         {featuredPlayer.position ?? "—"} • {featuredPlayer.role ?? "—"}
@@ -220,49 +229,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Tabs / jump nav */}
-      <section className="sticky top-[76px] z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-6 py-3">
-          <div className="flex flex-wrap gap-3">
-            <a
-              href="#home"
-              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
-            >
-              Home
-            </a>
-            <a
-              href="#featured"
-              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
-            >
-              Featured
-            </a>
-            <a
-              href="#pog"
-              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
-            >
-              Player of the Game
-            </a>
-            <a
-              href="#players"
-              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
-            >
-              Players
-            </a>
-            <a
-              href="#games"
-              className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
-            >
-              Games
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* featured marker */}
-      <div id="featured" />
-
-      {/* Player of the game banner */}
-      <section id="pog" className="border-b border-slate-800 bg-slate-900/70">
+      <section className="border-b border-slate-800 bg-slate-900/70">
         <div className="mx-auto max-w-7xl px-6 py-8">
           <div className="rounded-3xl border border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-slate-900 to-slate-900 p-6">
             <div className="mb-2 text-sm uppercase tracking-[0.2em] text-orange-300">
@@ -276,7 +243,7 @@ export default async function HomePage() {
                     <img
                       src={pog.players.photo_url}
                       alt={pog.players.full_name}
-                      className="h-20 w-20 rounded-3xl object-cover border border-slate-700"
+                      className="h-20 w-20 rounded-3xl border border-slate-700 object-cover"
                     />
                   ) : (
                     <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-slate-800 text-3xl">
@@ -292,7 +259,9 @@ export default async function HomePage() {
                       {pog.players.position ?? "—"} • {pog.players.role ?? "—"}
                     </div>
                     <div className="mt-2 text-orange-300">
-                      {pog.players.nickname ? `"${pog.players.nickname}"` : "FACKTS standout"}
+                      {pog.players.nickname
+                        ? `"${pog.players.nickname}"`
+                        : "FACKTS standout"}
                     </div>
                   </div>
                 </div>
@@ -313,14 +282,22 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Players */}
-      <section id="players" className="mx-auto max-w-7xl px-6 py-12">
-        <div className="mb-6">
-          <div className="text-sm uppercase tracking-wide text-orange-300">Roster</div>
-          <h2 className="mt-1 text-3xl font-bold">Player Cards</h2>
-          <p className="mt-2 text-slate-400">
-            A cleaner FACKTS roster with stronger visuals and fast access to profiles.
-          </p>
+      <section className="mx-auto max-w-7xl px-6 py-12">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-sm uppercase tracking-wide text-orange-300">Roster</div>
+            <h2 className="mt-1 text-3xl font-bold">Players</h2>
+            <p className="mt-2 text-slate-400">
+              Explore the FACKTS roster and open full player pages.
+            </p>
+          </div>
+
+          <Link
+            href="/players"
+            className="rounded-2xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+          >
+            View all players
+          </Link>
         </div>
 
         {players.length === 0 ? (
@@ -329,7 +306,7 @@ export default async function HomePage() {
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {players.map((player: any) => (
+            {players.slice(0, 6).map((player: any) => (
               <Link
                 key={player.id}
                 href={`/players/${player.id}`}
@@ -386,14 +363,24 @@ export default async function HomePage() {
         )}
       </section>
 
-      {/* Games */}
-      <section id="games" className="mx-auto max-w-7xl px-6 pb-14">
-        <div className="mb-6">
-          <div className="text-sm uppercase tracking-wide text-orange-300">Fixtures & Results</div>
-          <h2 className="mt-1 text-3xl font-bold">Game Cards</h2>
-          <p className="mt-2 text-slate-400">
-            Recent FACKTS match results with a stronger branded scoreboard feel.
-          </p>
+      <section className="mx-auto max-w-7xl px-6 pb-14">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-sm uppercase tracking-wide text-orange-300">
+              Fixtures & Results
+            </div>
+            <h2 className="mt-1 text-3xl font-bold">Games</h2>
+            <p className="mt-2 text-slate-400">
+              Recent FACKTS match results and detailed game pages.
+            </p>
+          </div>
+
+          <Link
+            href="/games"
+            className="rounded-2xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+          >
+            View all games
+          </Link>
         </div>
 
         {games.length === 0 ? (
@@ -402,7 +389,7 @@ export default async function HomePage() {
           </div>
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
-            {games.map((game: any) => {
+            {games.slice(0, 4).map((game: any) => {
               const won = (game.team_score ?? 0) > (game.opponent_score ?? 0);
               const drew = (game.team_score ?? 0) === (game.opponent_score ?? 0);
 
@@ -412,7 +399,7 @@ export default async function HomePage() {
                   href={`/games/${game.id}`}
                   className="rounded-3xl border border-slate-800 bg-slate-900 p-5 transition hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
                 >
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="text-sm text-slate-400">
                       {game.game_date} • {game.venue ?? "Venue TBA"}
                     </div>
@@ -451,10 +438,8 @@ export default async function HomePage() {
                     </div>
                   </div>
 
-                  <div className="mt-5 flex items-center justify-between gap-3 flex-wrap">
-                    <div className="text-sm text-slate-400">
-                      {game.match_type ?? "Game"}
-                    </div>
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm text-slate-400">{game.match_type ?? "Game"}</div>
                     <div className="text-sm font-semibold text-orange-300">
                       Open game details →
                     </div>
@@ -464,6 +449,83 @@ export default async function HomePage() {
             })}
           </div>
         )}
+      </section>
+
+      <section className="border-t border-slate-800 bg-slate-900/50">
+        <div className="mx-auto max-w-7xl px-6 py-12">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <div className="text-sm uppercase tracking-wide text-orange-300">Contact</div>
+              <h2 className="mt-1 text-3xl font-bold">Talk to FACKTS</h2>
+              <p className="mt-2 text-slate-400">
+                Partnerships, player visibility, basketball media, and content collaboration.
+              </p>
+            </div>
+
+            <Link
+              href="/contact"
+              className="rounded-2xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+            >
+              Open contact page
+            </Link>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+              <div className="text-sm uppercase tracking-wide text-orange-300">Details</div>
+              <div className="mt-5 space-y-4 text-slate-300">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Email</div>
+                  <div className="mt-1">facktsafrica@gmail.com</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Phone</div>
+                  <div className="mt-1">+254 711 468 303</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Location</div>
+                  <div className="mt-1">Westlands, Nairobi, Kenya</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+              <div className="text-sm uppercase tracking-wide text-orange-300">
+                Platform Links
+              </div>
+              <div className="mt-5 flex flex-col gap-3">
+                <a
+                  href="https://www.youtube.com/@facktsNBA"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
+                >
+                  YouTube
+                </a>
+                <a
+                  href="https://www.instagram.com/facktsafrica_nba?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw=="
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
+                >
+                  Instagram
+                </a>
+                <Link
+                  href="/players"
+                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
+                >
+                  Explore Players
+                </Link>
+                <Link
+                  href="/games"
+                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
+                >
+                  Explore Games
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
   );
