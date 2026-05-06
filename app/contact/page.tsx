@@ -87,14 +87,6 @@ export default function ContactPage() {
             </div>
           </div>
         </div>
-
-        <div className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-6">
-          <div className="text-sm uppercase tracking-wide text-orange-300">What this platform is for</div>
-          <p className="mt-3 max-w-4xl text-slate-300">
-            FACKTS is building a youth culture platform around basketball, music, media, and community.
-            That broader direction is consistent with your operating structure and identity work across the brand. :contentReference[oaicite:0]{index=0}
-          </p>
-        </div>
       </section>
     </main>
   );
