@@ -42,6 +42,13 @@ export default function PublicHeader() {
           </Link>
 
           <Link
+            href="/leaderboards"
+            className="rounded-2xl px-4 py-2 text-slate-300 transition hover:bg-slate-900 hover:text-orange-300"
+          >
+            Leaderboards
+          </Link>
+
+          <Link
             href="/contact"
             className="rounded-2xl px-4 py-2 text-slate-300 transition hover:bg-slate-900 hover:text-orange-300"
           >

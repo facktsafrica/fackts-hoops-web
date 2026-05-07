@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 
 type StatForm = {
   points: string;
+  three_pointers_made: string;
   rebounds: string;
   assists: string;
   steals: string;
@@ -15,6 +16,7 @@ type StatForm = {
 
 const emptyStatForm: StatForm = {
   points: "0",
+  three_pointers_made: "0",
   rebounds: "0",
   assists: "0",
   steals: "0",
@@ -44,7 +46,10 @@ export default function AdminStatsPage() {
         .select("*")
         .eq("is_active", true)
         .order("jersey_number", { ascending: true }),
-      supabase.from("game_rosters").select("*").order("created_at", { ascending: true }),
+      supabase
+        .from("game_rosters")
+        .select("*")
+        .order("created_at", { ascending: true }),
     ]);
 
     if (gamesResult.error) {
@@ -106,6 +111,7 @@ export default function AdminStatsPage() {
 
       nextForms[player.id] = {
         points: String(existing?.points ?? 0),
+        three_pointers_made: String(existing?.three_pointers_made ?? 0),
         rebounds: String(existing?.rebounds ?? 0),
         assists: String(existing?.assists ?? 0),
         steals: String(existing?.steals ?? 0),
@@ -193,6 +199,7 @@ export default function AdminStatsPage() {
       game_id: selectedGameId,
       player_id: playerId,
       points: toNumber(form.points),
+      three_pointers_made: toNumber(form.three_pointers_made),
       rebounds: toNumber(form.rebounds),
       assists: toNumber(form.assists),
       steals: toNumber(form.steals),
@@ -242,6 +249,7 @@ export default function AdminStatsPage() {
         game_id: selectedGameId,
         player_id: player.id,
         points: toNumber(form.points),
+        three_pointers_made: toNumber(form.three_pointers_made),
         rebounds: toNumber(form.rebounds),
         assists: toNumber(form.assists),
         steals: toNumber(form.steals),
@@ -327,6 +335,7 @@ export default function AdminStatsPage() {
     (acc: any, player: any) => {
       const form = forms[player.id] ?? emptyStatForm;
       acc.points += toNumber(form.points);
+      acc.three_pointers_made += toNumber(form.three_pointers_made);
       acc.rebounds += toNumber(form.rebounds);
       acc.assists += toNumber(form.assists);
       acc.steals += toNumber(form.steals);
@@ -335,6 +344,7 @@ export default function AdminStatsPage() {
     },
     {
       points: 0,
+      three_pointers_made: 0,
       rebounds: 0,
       assists: 0,
       steals: 0,
@@ -343,7 +353,7 @@ export default function AdminStatsPage() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-950 px-6 py-8 text-white">
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white md:px-6 md:py-8">
       <div className="mx-auto max-w-7xl">
         <div className="mb-8">
           <Link
@@ -357,12 +367,12 @@ export default function AdminStatsPage() {
             FACKTS Admin
           </div>
 
-          <h1 className="mt-2 text-4xl font-black tracking-tight">
+          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
             Game Stats
           </h1>
 
           <p className="mt-3 text-slate-400">
-            Enter player stats using the confirmed roster for each game.
+            Enter player stats using the confirmed roster for each game. This now includes 3-pointers made.
           </p>
         </div>
 
@@ -378,7 +388,7 @@ export default function AdminStatsPage() {
           </div>
         ) : (
           <>
-            <section className="mb-8 rounded-3xl border border-slate-800 bg-slate-900 p-6">
+            <section className="mb-8 rounded-3xl border border-slate-800 bg-slate-900 p-5 md:p-6">
               <div className="grid gap-5 lg:grid-cols-[1fr,1fr] lg:items-end">
                 <label className="block">
                   <div className="mb-2 text-sm font-medium text-slate-300">
@@ -446,8 +456,9 @@ export default function AdminStatsPage() {
                       {selectedGame.match_type ?? "Game"}
                     </div>
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-5">
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
                       <Summary label="PTS" value={String(totals.points)} />
+                      <Summary label="3PM" value={String(totals.three_pointers_made)} />
                       <Summary label="REB" value={String(totals.rebounds)} />
                       <Summary label="AST" value={String(totals.assists)} />
                       <Summary label="STL" value={String(totals.steals)} />
@@ -458,7 +469,7 @@ export default function AdminStatsPage() {
               ) : null}
             </section>
 
-            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 md:p-6">
               <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <div className="text-sm uppercase tracking-wide text-orange-300">
@@ -539,12 +550,23 @@ export default function AdminStatsPage() {
                           </div>
 
                           <div>
-                            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
                               <StatInput
                                 label="PTS"
                                 value={form.points}
                                 onChange={(value) =>
                                   updateStatField(player.id, "points", value)
+                                }
+                              />
+                              <StatInput
+                                label="3PM"
+                                value={form.three_pointers_made}
+                                onChange={(value) =>
+                                  updateStatField(
+                                    player.id,
+                                    "three_pointers_made",
+                                    value
+                                  )
                                 }
                               />
                               <StatInput
