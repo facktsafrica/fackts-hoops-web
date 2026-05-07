@@ -37,6 +37,17 @@ async function getGameRoster(gameId: string) {
   return data ?? [];
 }
 
+async function getGameGuestRoster(gameId: string) {
+  const { data, error } = await supabase
+    .from("game_guest_rosters")
+    .select("*")
+    .eq("game_id", gameId)
+    .order("created_at", { ascending: true });
+
+  if (error) return [];
+  return data ?? [];
+}
+
 async function getPlayersByIds(playerIds: string[]) {
   if (playerIds.length === 0) return {};
 
@@ -49,6 +60,22 @@ async function getPlayersByIds(playerIds: string[]) {
 
   return (data ?? []).reduce((acc: Record<string, any>, player: any) => {
     acc[player.id] = player;
+    return acc;
+  }, {});
+}
+
+async function getGuestHoopersByIds(guestIds: string[]) {
+  if (guestIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("guest_hoopers")
+    .select("*")
+    .in("id", guestIds);
+
+  if (error) return {};
+
+  return (data ?? []).reduce((acc: Record<string, any>, guest: any) => {
+    acc[guest.id] = guest;
     return acc;
   }, {});
 }
@@ -100,9 +127,10 @@ export default async function GameDetailPage({
     );
   }
 
-  const [stats, rosterRows] = await Promise.all([
+  const [stats, rosterRows, guestRosterRows] = await Promise.all([
     getGameStats(game.id),
     getGameRoster(game.id),
+    getGameGuestRoster(game.id),
   ]);
 
   const playerIds = Array.from(
@@ -112,7 +140,16 @@ export default async function GameDetailPage({
     ])
   );
 
-  const playersMap = await getPlayersByIds(playerIds);
+  const guestIds = Array.from(
+    new Set(
+      guestRosterRows.map((row: any) => row.guest_hooper_id).filter(Boolean)
+    )
+  );
+
+  const [playersMap, guestMap] = await Promise.all([
+    getPlayersByIds(playerIds),
+    getGuestHoopersByIds(guestIds),
+  ]);
 
   const resultLabel = getResultLabel(game);
 
@@ -139,9 +176,28 @@ export default async function GameDetailPage({
     (row: any) => row.roster_status === "unavailable"
   );
 
+  const guestStarters = guestRosterRows.filter(
+    (row: any) =>
+      row.roster_role === "starter" && row.roster_status === "confirmed"
+  );
+
+  const guestBench = guestRosterRows.filter(
+    (row: any) =>
+      row.roster_role === "bench" && row.roster_status === "confirmed"
+  );
+
+  const guestPending = guestRosterRows.filter(
+    (row: any) => row.roster_status === "pending"
+  );
+
+  const guestUnavailable = guestRosterRows.filter(
+    (row: any) => row.roster_status === "unavailable"
+  );
+
   const teamTotals = stats.reduce(
     (acc: any, row: any) => {
       acc.points += Number(row.points ?? 0);
+      acc.three_pointers_made += Number(row.three_pointers_made ?? 0);
       acc.rebounds += Number(row.rebounds ?? 0);
       acc.assists += Number(row.assists ?? 0);
       acc.steals += Number(row.steals ?? 0);
@@ -150,6 +206,7 @@ export default async function GameDetailPage({
     },
     {
       points: 0,
+      three_pointers_made: 0,
       rebounds: 0,
       assists: 0,
       steals: 0,
@@ -157,7 +214,10 @@ export default async function GameDetailPage({
     }
   );
 
-  const confirmedCount = starters.length + bench.length;
+  const confirmedCount =
+    starters.length + bench.length + guestStarters.length + guestBench.length;
+
+  const totalListed = rosterRows.length + guestRosterRows.length;
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -180,7 +240,7 @@ export default async function GameDetailPage({
         )}
 
         <div className="absolute -left-20 top-10 h-60 w-60 rounded-full bg-orange-500/10 blur-3xl" />
-        <div className="absolute right-0 bottom-0 h-60 w-60 rounded-full bg-orange-400/10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-60 w-60 rounded-full bg-orange-400/10 blur-3xl" />
 
         <div className="relative mx-auto max-w-7xl px-6 py-12 md:py-16">
           <Link
@@ -205,9 +265,15 @@ export default async function GameDetailPage({
                   {game.match_type ?? "Game"}
                 </span>
 
-                {rosterRows.length > 0 ? (
+                {totalListed > 0 ? (
                   <span className="rounded-full border border-slate-600 bg-slate-900/70 px-4 py-2 text-sm font-semibold text-slate-200">
                     {confirmedCount} Confirmed
+                  </span>
+                ) : null}
+
+                {guestRosterRows.length > 0 ? (
+                  <span className="rounded-full border border-orange-400/30 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-300">
+                    {guestRosterRows.length} Guest Hoopers
                   </span>
                 ) : null}
               </div>
@@ -255,7 +321,7 @@ export default async function GameDetailPage({
                   </div>
                   <div className="mt-2 text-sm text-slate-400">
                     {confirmedCount > 0
-                      ? `${confirmedCount} players confirmed for this game.`
+                      ? `${confirmedCount} players and guest hoopers confirmed for this game.`
                       : "Roster has not been confirmed yet."}
                   </div>
                 </div>
@@ -296,6 +362,12 @@ export default async function GameDetailPage({
           pending={pending}
           unavailable={unavailable}
           playersMap={playersMap}
+          guestRosterRows={guestRosterRows}
+          guestStarters={guestStarters}
+          guestBench={guestBench}
+          guestPending={guestPending}
+          guestUnavailable={guestUnavailable}
+          guestMap={guestMap}
         />
       ) : null}
 
@@ -308,7 +380,9 @@ export default async function GameDetailPage({
                   <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
                     Match Award
                   </div>
-                  <h2 className="mt-1 text-3xl font-black">Player of the Game</h2>
+                  <h2 className="mt-1 text-3xl font-black">
+                    Player of the Game
+                  </h2>
                 </div>
 
                 <span className="animate-pulse rounded-full bg-orange-500 px-4 py-2 text-sm font-black text-slate-950">
@@ -359,10 +433,22 @@ export default async function GameDetailPage({
                 </Link>
 
                 <div className="grid gap-4 sm:grid-cols-4">
-                  <FlashStat label="PTS" value={String(playerOfGame.points ?? 0)} />
-                  <FlashStat label="REB" value={String(playerOfGame.rebounds ?? 0)} />
-                  <FlashStat label="AST" value={String(playerOfGame.assists ?? 0)} />
-                  <FlashStat label="+/-" value={String(playerOfGame.plus_minus ?? 0)} />
+                  <FlashStat
+                    label="PTS"
+                    value={String(playerOfGame.points ?? 0)}
+                  />
+                  <FlashStat
+                    label="3PM"
+                    value={String(playerOfGame.three_pointers_made ?? 0)}
+                  />
+                  <FlashStat
+                    label="REB"
+                    value={String(playerOfGame.rebounds ?? 0)}
+                  />
+                  <FlashStat
+                    label="+/-"
+                    value={String(playerOfGame.plus_minus ?? 0)}
+                  />
                 </div>
               </div>
             </div>
@@ -380,8 +466,12 @@ export default async function GameDetailPage({
               <h2 className="mt-1 text-3xl font-black">FACKTS Game Totals</h2>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
               <BigStat label="PTS" value={String(teamTotals.points)} />
+              <BigStat
+                label="3PM"
+                value={String(teamTotals.three_pointers_made)}
+              />
               <BigStat label="REB" value={String(teamTotals.rebounds)} />
               <BigStat label="AST" value={String(teamTotals.assists)} />
               <BigStat label="STL" value={String(teamTotals.steals)} />
@@ -395,6 +485,12 @@ export default async function GameDetailPage({
                 Player Stats
               </div>
               <h2 className="mt-1 text-3xl font-black">Game Performance</h2>
+              {guestRosterRows.length > 0 ? (
+                <p className="mt-2 text-slate-400">
+                  Stats are recorded for FACKTS players. Guest hoopers appear in
+                  the confirmed roster section below.
+                </p>
+              ) : null}
             </div>
 
             {stats.length === 0 ? (
@@ -452,10 +548,22 @@ export default async function GameDetailPage({
                         </div>
 
                         <div className="grid grid-cols-4 gap-3">
-                          <SmallStat label="PTS" value={String(row.points ?? 0)} />
-                          <SmallStat label="REB" value={String(row.rebounds ?? 0)} />
-                          <SmallStat label="AST" value={String(row.assists ?? 0)} />
-                          <SmallStat label="+/-" value={String(row.plus_minus ?? 0)} />
+                          <SmallStat
+                            label="PTS"
+                            value={String(row.points ?? 0)}
+                          />
+                          <SmallStat
+                            label="3PM"
+                            value={String(row.three_pointers_made ?? 0)}
+                          />
+                          <SmallStat
+                            label="REB"
+                            value={String(row.rebounds ?? 0)}
+                          />
+                          <SmallStat
+                            label="+/-"
+                            value={String(row.plus_minus ?? 0)}
+                          />
                         </div>
                       </div>
                     </Link>
@@ -472,6 +580,12 @@ export default async function GameDetailPage({
             pending={pending}
             unavailable={unavailable}
             playersMap={playersMap}
+            guestRosterRows={guestRosterRows}
+            guestStarters={guestStarters}
+            guestBench={guestBench}
+            guestPending={guestPending}
+            guestUnavailable={guestUnavailable}
+            guestMap={guestMap}
           />
         </>
       ) : null}
@@ -486,6 +600,12 @@ function ConfirmedRosterSection({
   pending,
   unavailable,
   playersMap,
+  guestRosterRows,
+  guestStarters,
+  guestBench,
+  guestPending,
+  guestUnavailable,
+  guestMap,
 }: {
   rosterRows: any[];
   starters: any[];
@@ -493,7 +613,15 @@ function ConfirmedRosterSection({
   pending: any[];
   unavailable: any[];
   playersMap: Record<string, any>;
+  guestRosterRows: any[];
+  guestStarters: any[];
+  guestBench: any[];
+  guestPending: any[];
+  guestUnavailable: any[];
+  guestMap: Record<string, any>;
 }) {
+  const totalListed = rosterRows.length + guestRosterRows.length;
+
   return (
     <section className="border-b border-slate-800 bg-slate-950">
       <div className="mx-auto max-w-7xl px-6 py-10">
@@ -504,35 +632,99 @@ function ConfirmedRosterSection({
             </div>
             <h2 className="mt-1 text-3xl font-black">FACKTS Game Squad</h2>
             <p className="mt-2 text-slate-400">
-              Confirmed players, starters, bench, pending, and unavailable list for this game.
+              Confirmed FACKTS players, guest hoopers, starters, bench, pending,
+              and unavailable list for this game.
             </p>
           </div>
 
           <div className="rounded-full border border-orange-400/30 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-300">
-            {rosterRows.length} listed
+            {totalListed} listed
           </div>
         </div>
 
-        {rosterRows.length === 0 ? (
+        {totalListed === 0 ? (
           <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
             No public roster has been added for this game yet.
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-2">
-            <RosterGroup title="Starters" rows={starters} playersMap={playersMap} />
-            <RosterGroup title="Bench" rows={bench} playersMap={playersMap} />
+          <div className="space-y-8">
+            <div>
+              <div className="mb-4 text-sm uppercase tracking-[0.25em] text-slate-500">
+                FACKTS Players
+              </div>
 
-            {pending.length > 0 ? (
-              <RosterGroup title="Pending" rows={pending} playersMap={playersMap} />
-            ) : null}
+              {rosterRows.length === 0 ? (
+                <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-500">
+                  No FACKTS players listed yet.
+                </div>
+              ) : (
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <RosterGroup
+                    title="Starters"
+                    rows={starters}
+                    playersMap={playersMap}
+                  />
+                  <RosterGroup title="Bench" rows={bench} playersMap={playersMap} />
 
-            {unavailable.length > 0 ? (
-              <RosterGroup
-                title="Unavailable"
-                rows={unavailable}
-                playersMap={playersMap}
-              />
-            ) : null}
+                  {pending.length > 0 ? (
+                    <RosterGroup
+                      title="Pending"
+                      rows={pending}
+                      playersMap={playersMap}
+                    />
+                  ) : null}
+
+                  {unavailable.length > 0 ? (
+                    <RosterGroup
+                      title="Unavailable"
+                      rows={unavailable}
+                      playersMap={playersMap}
+                    />
+                  ) : null}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="mb-4 text-sm uppercase tracking-[0.25em] text-orange-300">
+                Guest Hoopers
+              </div>
+
+              {guestRosterRows.length === 0 ? (
+                <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-500">
+                  No guest hoopers listed for this game.
+                </div>
+              ) : (
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <GuestRosterGroup
+                    title="Guest Starters"
+                    rows={guestStarters}
+                    guestMap={guestMap}
+                  />
+                  <GuestRosterGroup
+                    title="Guest Bench"
+                    rows={guestBench}
+                    guestMap={guestMap}
+                  />
+
+                  {guestPending.length > 0 ? (
+                    <GuestRosterGroup
+                      title="Guest Pending"
+                      rows={guestPending}
+                      guestMap={guestMap}
+                    />
+                  ) : null}
+
+                  {guestUnavailable.length > 0 ? (
+                    <GuestRosterGroup
+                      title="Guest Unavailable"
+                      rows={guestUnavailable}
+                      guestMap={guestMap}
+                    />
+                  ) : null}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -600,10 +792,84 @@ function RosterGroup({
                   </div>
 
                   {row.notes ? (
-                    <div className="mt-1 text-xs text-slate-500">{row.notes}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {row.notes}
+                    </div>
                   ) : null}
                 </div>
               </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GuestRosterGroup({
+  title,
+  rows,
+  guestMap,
+}: {
+  title: string;
+  rows: any[];
+  guestMap: Record<string, any>;
+}) {
+  return (
+    <div className="rounded-3xl border border-orange-500/20 bg-slate-900 p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-xl font-black">{title}</h3>
+        <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs text-orange-300">
+          {rows.length}
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">
+          No guest hoopers in this group yet.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((row) => {
+            const guest = guestMap[row.guest_hooper_id];
+
+            return (
+              <div
+                key={row.id}
+                className="flex items-center gap-4 rounded-2xl border border-slate-800 bg-slate-950 p-4"
+              >
+                {guest?.photo_url ? (
+                  <img
+                    src={guest.photo_url}
+                    alt={guest.full_name}
+                    className="h-16 w-16 rounded-2xl border border-slate-700 object-cover"
+                    style={{
+                      objectPosition: guest.photo_position ?? "center center",
+                    }}
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-800 text-2xl">
+                    🏀
+                  </div>
+                )}
+
+                <div className="min-w-0">
+                  <div className="font-bold">
+                    {guest?.full_name ?? "Unknown Guest Hooper"}
+                  </div>
+
+                  <div className="mt-1 text-sm text-orange-300">
+                    Guest Hooper • {guest?.position ?? "Position TBA"} •{" "}
+                    {row.roster_status ?? "confirmed"}
+                  </div>
+
+                  {row.notes ? (
+                    <div className="mt-1 text-xs text-slate-500">
+                      {row.notes}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             );
           })}
         </div>
@@ -637,7 +903,9 @@ function FlashStat({ label, value }: { label: string; value: string }) {
 function SmallStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-center">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
       <div className="mt-1 text-lg font-black text-orange-300">{value}</div>
     </div>
   );
