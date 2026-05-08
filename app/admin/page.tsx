@@ -34,13 +34,12 @@ export default function AdminHomePage() {
     {
       title: "Stats",
       description:
-        "Enter player game stats, 3PM, steals, blocks, and Player of the Game.",
+        "Enter player game stats, threes made, steals, blocks, and Player of the Game.",
       href: "/admin/stats",
     },
     {
       title: "Highlights",
-      description:
-        "Choose the Player of the Game shown on the homepage.",
+      description: "Choose the Player of the Game shown on the homepage.",
       href: "/admin/highlights",
     },
     {
@@ -60,20 +59,9 @@ export default function AdminHomePage() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white md:px-6 md:py-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
-            FACKTS Admin
-          </div>
-
-          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
-            Dashboard
-          </h1>
-
-          <p className="mt-3 max-w-3xl text-slate-400">
-            Manage FACKTS players, guest hoopers, games, rosters, guest game
-            appearances, stats, highlights, leaderboards, and 1-on-1 matchups.
-          </p>
-        </div>
+        <p className="mb-8 max-w-3xl text-slate-400">
+          Manage players, games, rosters, stats, highlights, leaderboards, guest hoopers, and 1-on-1 matchups.
+        </p>
 
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {cards.map((card) => (
@@ -83,11 +71,7 @@ export default function AdminHomePage() {
               prefetch={card.href.startsWith("/admin") ? false : undefined}
               className="rounded-3xl border border-slate-800 bg-slate-900 p-6 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
             >
-              <div className="text-sm uppercase tracking-wide text-orange-300">
-                Admin
-              </div>
-
-              <h2 className="mt-2 text-2xl font-bold">{card.title}</h2>
+              <h2 className="text-2xl font-bold">{card.title}</h2>
 
               <p className="mt-3 text-sm leading-6 text-slate-400">
                 {card.description}

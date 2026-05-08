@@ -275,8 +275,7 @@ export default async function HomePage() {
                       alt={`Poster for FACKTS vs ${nextGame.opponent}`}
                       className="h-full w-full object-cover"
                       style={{
-                        objectPosition:
-                          nextGame.poster_position ?? "center center",
+                        objectPosition: nextGame.poster_position ?? "center center",
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent" />
@@ -295,10 +294,8 @@ export default async function HomePage() {
                   </div>
                 ) : (
                   <div className="relative min-h-64 bg-gradient-to-br from-slate-900 via-slate-950 to-orange-950/40 p-6">
-                    <div className="absolute right-6 top-6 text-7xl opacity-10">
-                      🏀
-                    </div>
-                    <div className="w-fit rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-slate-950">
+                    <div className="absolute right-6 top-6 text-7xl opacity-10">🏀</div>
+                    <div className="rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-slate-950 w-fit">
                       NEXT GAME
                     </div>
                     <div className="mt-8 text-3xl font-black">
@@ -451,7 +448,7 @@ export default async function HomePage() {
         )}
 
         <div className="absolute left-0 top-0 h-64 w-64 rounded-full bg-orange-500/10 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-orange-400/10 blur-3xl" />
+        <div className="absolute right-0 bottom-0 h-64 w-64 rounded-full bg-orange-400/10 blur-3xl" />
 
         <div className="relative mx-auto max-w-7xl px-6 py-12">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -621,9 +618,7 @@ export default async function HomePage() {
                         {player.full_name}
                       </h3>
                       <p className="mt-1 text-sm text-slate-400">
-                        {player.nickname
-                          ? `"${player.nickname}"`
-                          : "FACKTS Player"}
+                        {player.nickname ? `"${player.nickname}"` : "FACKTS Player"}
                       </p>
                     </div>
 
@@ -680,8 +675,7 @@ export default async function HomePage() {
                 game.team_score !== null && game.opponent_score !== null;
 
               const gameWon =
-                hasScore &&
-                Number(game.team_score) > Number(game.opponent_score);
+                hasScore && Number(game.team_score) > Number(game.opponent_score);
 
               return (
                 <Link
@@ -786,8 +780,8 @@ export default async function HomePage() {
               </div>
               <h2 className="mt-1 text-3xl font-bold">Talk to FACKTS</h2>
               <p className="mt-2 text-slate-400">
-                For games, collaborations, player features, sponsorships, and
-                media partnerships.
+                Partnerships, player visibility, basketball media, and content
+                collaboration.
               </p>
             </div>
 
@@ -809,38 +803,19 @@ export default async function HomePage() {
                   <div className="text-xs uppercase tracking-wide text-slate-500">
                     Email
                   </div>
-                  <a
-                    href="mailto:facktsafrica@gmail.com"
-                    className="mt-1 block text-orange-300 hover:text-orange-200"
-                  >
-                    facktsafrica@gmail.com
-                  </a>
+                  <div className="mt-1">facktsafrica@gmail.com</div>
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Phone / WhatsApp
+                    Phone
                   </div>
-                  <a
-                    href="https://wa.me/254711468303"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 block text-orange-300 hover:text-orange-200"
-                  >
-                    +254 711 468 303
-                  </a>
+                  <div className="mt-1">+254 711 468 303</div>
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">
                     Location
                   </div>
-                  <a
-                    href="https://www.google.com/maps/search/?api=1&query=Krishna%20Center%2012%20Woodvale%20Grove%20Nairobi"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 block text-slate-300 hover:text-orange-300"
-                  >
-                    Krishna Center, 12 Woodvale Grv, Nairobi, 3rd floor, suite E05
-                  </a>
+                  <div className="mt-1">Westlands, Nairobi, Kenya</div>
                 </div>
               </div>
             </div>
@@ -851,55 +826,32 @@ export default async function HomePage() {
               </div>
               <div className="mt-5 flex flex-col gap-3">
                 <a
-                  href="https://wa.me/254711468303"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl bg-orange-500 px-4 py-3 font-black text-slate-950 transition hover:bg-orange-400"
-                >
-                  WhatsApp FACKTS
-                </a>
-
-                <a
-                  href="https://www.youtube.com/@facktsNBA"
+                  href="https://www.youtube.com/"
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
                 >
                   YouTube
                 </a>
-
                 <a
-                  href="https://www.instagram.com/facktsafrica_nba?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw=="
+                  href="https://www.instagram.com/"
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
                 >
                   Instagram
                 </a>
-
-                <a
-                  href="https://www.tiktok.com/@facktsafricanba?is_from_webapp=1&sender_device=pc"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
-                >
-                  TikTok
-                </a>
-
-                <a
-                  href="https://www.facebook.com/people/Fackts-Africa/61583843182510/#"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
-                >
-                  Facebook
-                </a>
-
                 <Link
-                  href="/contact"
-                  className="rounded-2xl border border-orange-500/40 px-4 py-3 text-orange-300 transition hover:bg-orange-500/10"
+                  href="/players"
+                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
                 >
-                  Full Contact Page
+                  Explore Players
+                </Link>
+                <Link
+                  href="/games"
+                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
+                >
+                  Explore Games
                 </Link>
               </div>
             </div>
@@ -922,9 +874,7 @@ function HeroStat({ label, value }: { label: string; value: string }) {
 function FeaturedStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900 p-3 text-center">
-      <div className="text-xs uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 text-xl font-black text-orange-300">{value}</div>
     </div>
   );
@@ -933,9 +883,7 @@ function FeaturedStat({ label, value }: { label: string; value: string }) {
 function FlashStat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-3xl border border-orange-500/20 bg-slate-900/80 p-5 text-center shadow-lg shadow-orange-950/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40">
-      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
-        {label}
-      </div>
+      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</div>
       <div className="mt-2 text-4xl font-black text-orange-300">{value}</div>
     </div>
   );
@@ -944,9 +892,7 @@ function FlashStat({ label, value }: { label: string; value: number }) {
 function MiniInfo({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-slate-950 p-3">
-      <div className="text-xs uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 font-medium text-slate-200">{value}</div>
     </div>
   );

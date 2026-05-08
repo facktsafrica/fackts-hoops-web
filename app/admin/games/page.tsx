@@ -20,23 +20,28 @@ const emptyForm: GameForm = {
   opponent: "",
   game_date: "",
   venue: "",
-  match_type: "",
+  match_type: "Friendly",
   team_score: "",
   opponent_score: "",
-  is_upcoming: false,
+  is_upcoming: true,
   poster_url: "",
   poster_position: "center center",
 };
 
 const matchTypes = [
-  "League Game",
   "Friendly",
+  "League Game",
   "Tournament",
   "Playoff",
   "Final",
-  "Court Takeover",
+  "1st Leg",
+  "2nd Leg",
+  "Game 1",
+  "Game 2",
+  "Game 3",
+  "Game 4",
+  "Game 5",
   "Scrimmage",
-  "Exhibition",
 ];
 
 const imagePositions = [
@@ -55,13 +60,13 @@ export default function AdminGamesPage() {
   const [games, setGames] = useState<any[]>([]);
   const [form, setForm] = useState<GameForm>(emptyForm);
   const [editingGameId, setEditingGameId] = useState<string | null>(null);
+  const [loadingPage, setLoadingPage] = useState(true);
   const [loading, setLoading] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
-  const [loadingGames, setLoadingGames] = useState(true);
   const [message, setMessage] = useState("");
 
   async function loadGames() {
-    setLoadingGames(true);
+    setLoadingPage(true);
     setMessage("");
 
     const { data, error } = await supabase
@@ -70,14 +75,13 @@ export default function AdminGamesPage() {
       .order("game_date", { ascending: false });
 
     if (error) {
-      console.error("Load games error:", error);
       setMessage(`Failed to load games: ${error.message}`);
-      setLoadingGames(false);
+      setLoadingPage(false);
       return;
     }
 
     setGames(data ?? []);
-    setLoadingGames(false);
+    setLoadingPage(false);
   }
 
   useEffect(() => {
@@ -91,6 +95,12 @@ export default function AdminGamesPage() {
     }));
   }
 
+  function resetForm() {
+    setForm(emptyForm);
+    setEditingGameId(null);
+    setMessage("");
+  }
+
   function startEdit(game: any) {
     setEditingGameId(game.id);
 
@@ -98,22 +108,22 @@ export default function AdminGamesPage() {
       opponent: game.opponent ?? "",
       game_date: game.game_date ?? "",
       venue: game.venue ?? "",
-      match_type: game.match_type ?? "",
-      team_score: game.team_score?.toString() ?? "",
-      opponent_score: game.opponent_score?.toString() ?? "",
+      match_type: game.match_type ?? "Friendly",
+      team_score:
+        game.team_score === null || game.team_score === undefined
+          ? ""
+          : String(game.team_score),
+      opponent_score:
+        game.opponent_score === null || game.opponent_score === undefined
+          ? ""
+          : String(game.opponent_score),
       is_upcoming: game.is_upcoming ?? false,
       poster_url: game.poster_url ?? "",
       poster_position: game.poster_position ?? "center center",
     });
 
-    setMessage(`Editing: FACKTS vs ${game.opponent}`);
+    setMessage(`Editing FACKTS vs ${game.opponent}. Make changes above, then click Update Game.`);
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function resetForm() {
-    setForm(emptyForm);
-    setEditingGameId(null);
-    setMessage("");
   }
 
   async function handlePosterUpload(file: File) {
@@ -130,9 +140,9 @@ export default function AdminGamesPage() {
 
     const safeOpponent = form.opponent
       ? form.opponent.replace(/[^a-zA-Z0-9-_]/g, "-").toLowerCase()
-      : "game";
+      : "opponent";
 
-    const filePath = `${Date.now()}-${safeOpponent}-${cleanName}.${fileExt}`;
+    const filePath = `games/${Date.now()}-fackts-vs-${safeOpponent}-${cleanName}.${fileExt}`;
 
     const { error: uploadError } = await supabase.storage
       .from("game-posters")
@@ -142,7 +152,6 @@ export default function AdminGamesPage() {
       });
 
     if (uploadError) {
-      console.error("Poster upload error:", uploadError);
       setMessage(`Poster upload failed: ${uploadError.message}`);
       setUploadingPoster(false);
       return;
@@ -151,46 +160,57 @@ export default function AdminGamesPage() {
     const { data } = supabase.storage.from("game-posters").getPublicUrl(filePath);
 
     updateField("poster_url", data.publicUrl);
-    setMessage("Poster uploaded successfully. Remember to click Update Game or Create Game.");
+    setMessage("Poster uploaded. Remember to click Create Game or Update Game.");
     setUploadingPoster(false);
+  }
+
+  function buildPayload() {
+    const isUpcoming = form.is_upcoming;
+
+    return {
+      opponent: form.opponent.trim(),
+      game_date: form.game_date || null,
+      venue: form.venue.trim() || null,
+      match_type: form.match_type || "Friendly",
+      is_upcoming: isUpcoming,
+
+      // Very important:
+      // Upcoming games must not have scores.
+      // Completed games may have scores, but blank scores stay null.
+      team_score: isUpcoming
+        ? null
+        : form.team_score === ""
+        ? null
+        : Number(form.team_score),
+
+      opponent_score: isUpcoming
+        ? null
+        : form.opponent_score === ""
+        ? null
+        : Number(form.opponent_score),
+
+      poster_url: form.poster_url.trim() || null,
+      poster_position: form.poster_position || "center center",
+    };
   }
 
   async function handleSaveGame(e: React.FormEvent) {
     e.preventDefault();
+
     setLoading(true);
     setMessage("");
 
-    const payload = {
-      opponent: form.opponent.trim(),
-      game_date: form.game_date || null,
-      venue: form.venue.trim() || null,
-      match_type: form.match_type.trim() || null,
-      team_score: form.team_score === "" ? null : Number(form.team_score),
-      opponent_score: form.opponent_score === "" ? null : Number(form.opponent_score),
-      is_upcoming: form.is_upcoming,
-      poster_url: form.poster_url.trim() || null,
-      poster_position: form.poster_position || "center center",
-    };
-
-    if (!payload.opponent) {
-      setMessage("Opponent is required.");
+    if (!form.opponent.trim()) {
+      setMessage("Opponent name is required.");
       setLoading(false);
       return;
     }
 
-    if (form.is_upcoming) {
-      const clearUpcoming = await supabase
-        .from("games")
-        .update({ is_upcoming: false })
-        .neq("id", editingGameId ?? "00000000-0000-0000-0000-000000000000");
+    const payload = buildPayload();
 
-      if (clearUpcoming.error) {
-        console.error("Clear upcoming error:", clearUpcoming.error);
-        setMessage(`Failed to reset current upcoming game: ${clearUpcoming.error.message}`);
-        setLoading(false);
-        return;
-      }
-    }
+    // Important:
+    // We are NOT clearing other upcoming games.
+    // This allows a full season schedule to have many upcoming games.
 
     if (editingGameId) {
       const result = await supabase
@@ -199,7 +219,6 @@ export default function AdminGamesPage() {
         .eq("id", editingGameId);
 
       if (result.error) {
-        console.error("Update game error:", result.error);
         setMessage(`Failed to update game: ${result.error.message}`);
         setLoading(false);
         return;
@@ -210,7 +229,6 @@ export default function AdminGamesPage() {
       const result = await supabase.from("games").insert([payload]);
 
       if (result.error) {
-        console.error("Create game error:", result.error);
         setMessage(`Failed to create game: ${result.error.message}`);
         setLoading(false);
         return;
@@ -231,7 +249,6 @@ export default function AdminGamesPage() {
     const result = await supabase.from("games").delete().eq("id", gameId);
 
     if (result.error) {
-      console.error("Delete game error:", result.error);
       setMessage(`Failed to delete game: ${result.error.message}`);
       return;
     }
@@ -240,304 +257,342 @@ export default function AdminGamesPage() {
     await loadGames();
   }
 
-  return (
-    <main className="min-h-screen bg-slate-950 px-6 py-8 text-white">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <Link
-            href="/admin"
-            className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
-          >
-            ← Back to Admin
-          </Link>
+  function getGameLabel(game: any) {
+    if (game.is_upcoming) return "UPCOMING";
 
-          <div className="mt-4 text-sm uppercase tracking-[0.25em] text-orange-300">
-            FACKTS Admin
+    const hasScores =
+      game.team_score !== null &&
+      game.team_score !== undefined &&
+      game.opponent_score !== null &&
+      game.opponent_score !== undefined;
+
+    if (!hasScores) return "FINAL";
+
+    const facktsScore = Number(game.team_score);
+    const opponentScore = Number(game.opponent_score);
+
+    if (facktsScore > opponentScore) return "WIN";
+    if (opponentScore > facktsScore) return "LOSS";
+
+    // Basketball should not end in a draw.
+    return "CHECK SCORE";
+  }
+
+  function getGameLabelClass(label: string) {
+    if (label === "UPCOMING") return "bg-orange-500 text-slate-950";
+    if (label === "WIN") return "bg-emerald-500 text-slate-950";
+    if (label === "LOSS") return "bg-rose-500 text-white";
+    if (label === "CHECK SCORE") return "bg-yellow-400 text-slate-950";
+    return "bg-slate-700 text-slate-200";
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white md:px-6 md:py-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <Link
+              href="/admin"
+              className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
+            >
+              ← Back to Admin
+            </Link>
+
+            <div className="mt-4 text-sm uppercase tracking-[0.25em] text-orange-300">
+              FACKTS Admin
+            </div>
+
+            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
+              Games
+            </h1>
+
+            <p className="mt-3 max-w-3xl text-slate-400">
+              Create games, upload posters, edit past games, and add as many upcoming games as needed.
+            </p>
           </div>
 
-          <h1 className="mt-2 text-4xl font-black tracking-tight">
-            Game Management
-          </h1>
-
-          <p className="mt-3 text-slate-400">
-            Create games, edit old games, upload posters, update scores, and control upcoming games.
-          </p>
+          <Link
+            href="/"
+            className="rounded-2xl border border-orange-500/40 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/10"
+          >
+            View Public Home →
+          </Link>
         </div>
 
-        <div className="grid gap-8 xl:grid-cols-[1fr,1fr]">
-          <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-sm uppercase tracking-wide text-orange-300">
-                  {editingGameId ? "Edit Existing Game" : "New Game"}
-                </div>
-                <h2 className="mt-1 text-2xl font-bold">
-                  {editingGameId ? "Update game details" : "Create game"}
-                </h2>
-              </div>
+        {message ? (
+          <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300">
+            {message}
+          </div>
+        ) : null}
 
-              {editingGameId ? (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
-                >
-                  Cancel Edit
-                </button>
-              ) : null}
-            </div>
-
-            <form onSubmit={handleSaveGame} className="space-y-4">
-              <FormInput
-                label="Opponent"
-                value={form.opponent}
-                onChange={(v) => updateField("opponent", v)}
-                required
-              />
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormInput
-                  label="Game Date"
-                  value={form.game_date}
-                  onChange={(v) => updateField("game_date", v)}
-                  type="date"
-                />
-
-                <FormInput
-                  label="Venue"
-                  value={form.venue}
-                  onChange={(v) => updateField("venue", v)}
-                />
-              </div>
-
-              <label className="block">
-                <div className="mb-2 text-sm font-medium text-slate-300">
-                  Match Type
-                </div>
-                <select
-                  value={form.match_type}
-                  onChange={(e) => updateField("match_type", e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                >
-                  <option value="">Select match type</option>
-                  {matchTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormInput
-                  label="FACKTS Score"
-                  value={form.team_score}
-                  onChange={(v) => updateField("team_score", v)}
-                  type="number"
-                />
-
-                <FormInput
-                  label="Opponent Score"
-                  value={form.opponent_score}
-                  onChange={(v) => updateField("opponent_score", v)}
-                  type="number"
-                />
-              </div>
-
-              <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4">
-                <div className="mb-2 text-sm font-medium text-slate-300">
-                  Game Poster Upload
-                </div>
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handlePosterUpload(file);
-                  }}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300"
-                />
-
-                {uploadingPoster ? (
-                  <div className="mt-3 text-sm text-orange-300">
-                    Uploading poster...
+        {loadingPage ? (
+          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
+            Loading games...
+          </div>
+        ) : (
+          <div className="grid gap-8 xl:grid-cols-[0.9fr,1.1fr]">
+            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 md:p-6">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm uppercase tracking-wide text-orange-300">
+                    {editingGameId ? "Edit Game" : "New Game"}
                   </div>
+
+                  <h2 className="mt-1 text-2xl font-bold">
+                    {editingGameId ? "Update game" : "Create game"}
+                  </h2>
+                </div>
+
+                {editingGameId ? (
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                  >
+                    Cancel Edit
+                  </button>
                 ) : null}
+              </div>
 
-                {form.poster_url ? (
-                  <div className="mt-4">
-                    <div className="mb-2 text-xs uppercase tracking-wide text-slate-500">
-                      Current Poster Preview
-                    </div>
+              <form onSubmit={handleSaveGame} className="space-y-4">
+                <FormInput
+                  label="Opponent"
+                  value={form.opponent}
+                  onChange={(value) => updateField("opponent", value)}
+                  required
+                />
 
-                    <img
-                      src={form.poster_url}
-                      alt="Game poster preview"
-                      className="h-72 w-full rounded-2xl border border-slate-700 object-cover"
-                      style={{ objectPosition: form.poster_position }}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormInput
+                    label="Game Date"
+                    value={form.game_date}
+                    onChange={(value) => updateField("game_date", value)}
+                    type="date"
+                  />
+
+                  <FormInput
+                    label="Venue"
+                    value={form.venue}
+                    onChange={(value) => updateField("venue", value)}
+                  />
+                </div>
+
+                <label className="block">
+                  <div className="mb-2 text-sm font-medium text-slate-300">
+                    Match Type
+                  </div>
+
+                  <select
+                    value={form.match_type}
+                    onChange={(e) => updateField("match_type", e.target.value)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
+                  >
+                    {matchTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="flex items-center gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={form.is_upcoming}
+                    onChange={(e) => updateField("is_upcoming", e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  This is an upcoming game
+                </label>
+
+                {!form.is_upcoming ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FormInput
+                      label="FACKTS Score"
+                      value={form.team_score}
+                      onChange={(value) => updateField("team_score", value)}
+                      type="number"
                     />
 
-                    <div className="mt-3 text-sm text-slate-400">
-                      You can upload a new poster for old games too. Then click Update Game.
-                    </div>
+                    <FormInput
+                      label="Opponent Score"
+                      value={form.opponent_score}
+                      onChange={(value) => updateField("opponent_score", value)}
+                      type="number"
+                    />
                   </div>
                 ) : (
-                  <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-500">
-                    No poster added yet.
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
+                    Upcoming games do not use scores. Scores will remain blank until the game is completed.
                   </div>
                 )}
-              </div>
 
-              <FormInput
-                label="Poster URL"
-                value={form.poster_url}
-                onChange={(v) => updateField("poster_url", v)}
-              />
+                <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4">
+                  <div className="mb-2 text-sm font-medium text-slate-300">
+                    Game Poster Upload
+                  </div>
 
-              <label className="block">
-                <div className="mb-2 text-sm font-medium text-slate-300">
-                  Poster Focus Position
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handlePosterUpload(file);
+                    }}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300"
+                  />
+
+                  {uploadingPoster ? (
+                    <div className="mt-3 text-sm text-orange-300">
+                      Uploading poster...
+                    </div>
+                  ) : null}
+
+                  {form.poster_url ? (
+                    <div className="mt-4">
+                      <div className="mb-2 text-xs uppercase tracking-wide text-slate-500">
+                        Poster Preview
+                      </div>
+
+                      <img
+                        src={form.poster_url}
+                        alt="Game poster preview"
+                        className="h-72 w-full rounded-2xl border border-slate-700 object-cover"
+                        style={{ objectPosition: form.poster_position }}
+                      />
+
+                      <div className="mt-3 text-sm text-slate-500">
+                        Poster uploaded. Adjust focus below if needed, then save the game.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-500">
+                      No poster uploaded yet.
+                    </div>
+                  )}
                 </div>
-                <select
-                  value={form.poster_position}
-                  onChange={(e) => updateField("poster_position", e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                >
-                  {imagePositions.map((position) => (
-                    <option key={position.value} value={position.value}>
-                      {position.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
 
-              <label className="flex items-center gap-3 rounded-2xl border border-slate-700 p-4 text-sm text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={form.is_upcoming}
-                  onChange={(e) => updateField("is_upcoming", e.target.checked)}
-                  className="h-4 w-4"
+                <FormInput
+                  label="Poster URL"
+                  value={form.poster_url}
+                  onChange={(value) => updateField("poster_url", value)}
                 />
-                Mark as next upcoming game
-              </label>
 
-              {message ? (
-                <div className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-300">
-                  {message}
+                <label className="block">
+                  <div className="mb-2 text-sm font-medium text-slate-300">
+                    Poster Focus Position
+                  </div>
+
+                  <select
+                    value={form.poster_position}
+                    onChange={(e) =>
+                      updateField("poster_position", e.target.value)
+                    }
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
+                  >
+                    {imagePositions.map((position) => (
+                      <option key={position.value} value={position.value}>
+                        {position.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={loading || uploadingPoster}
+                  className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60 md:w-auto"
+                >
+                  {loading
+                    ? "Saving..."
+                    : editingGameId
+                    ? "Update Game"
+                    : "Create Game"}
+                </button>
+              </form>
+            </section>
+
+            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 md:p-6">
+              <div className="mb-5">
+                <div className="text-sm uppercase tracking-wide text-orange-300">
+                  Game List
                 </div>
-              ) : null}
 
-              <button
-                type="submit"
-                disabled={loading || uploadingPoster}
-                className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading
-                  ? "Saving..."
-                  : editingGameId
-                  ? "Update Game"
-                  : "Create Game"}
-              </button>
-            </form>
-          </section>
+                <h2 className="mt-1 text-2xl font-bold">All Games</h2>
 
-          <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-            <div className="mb-5">
-              <div className="text-sm uppercase tracking-wide text-orange-300">
-                Game List
+                <p className="mt-2 text-sm text-slate-500">
+                  You can keep many games as upcoming at the same time.
+                </p>
               </div>
-              <h2 className="mt-1 text-2xl font-bold">All Games</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Click Edit on any old game to add or replace its poster.
-              </p>
-            </div>
 
-            {loadingGames ? (
-              <div className="text-slate-400">Loading games...</div>
-            ) : games.length === 0 ? (
-              <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
-                No games found yet.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {games.map((game) => {
-                  const hasScore =
-                    game.team_score !== null && game.opponent_score !== null;
+              {games.length === 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
+                  No games created yet.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {games.map((game) => {
+                    const label = getGameLabel(game);
 
-                  const won =
-                    hasScore &&
-                    Number(game.team_score) > Number(game.opponent_score);
+                    return (
+                      <div
+                        key={game.id}
+                        className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950"
+                      >
+                        {game.poster_url ? (
+                          <img
+                            src={game.poster_url}
+                            alt={`FACKTS vs ${game.opponent}`}
+                            className="h-56 w-full object-cover"
+                            style={{
+                              objectPosition:
+                                game.poster_position ?? "center center",
+                            }}
+                          />
+                        ) : null}
 
-                  return (
-                    <div
-                      key={game.id}
-                      className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950"
-                    >
-                      {game.poster_url ? (
-                        <img
-                          src={game.poster_url}
-                          alt={`Poster for FACKTS vs ${game.opponent}`}
-                          className="h-56 w-full object-cover"
-                          style={{
-                            objectPosition: game.poster_position ?? "center center",
-                          }}
-                        />
-                      ) : (
-                        <div className="flex h-40 w-full items-center justify-center bg-gradient-to-br from-slate-900 to-slate-950 text-sm text-slate-500">
-                          No poster added
-                        </div>
-                      )}
+                        <div className="p-4">
+                          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-black ${getGameLabelClass(
+                                label
+                              )}`}
+                            >
+                              {label}
+                            </span>
 
-                      <div className="p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-xl font-bold">
-                                FACKTS vs {game.opponent}
-                              </div>
-
-                              {game.is_upcoming ? (
-                                <span className="rounded-full bg-orange-500 px-2 py-1 text-xs font-bold text-slate-950">
-                                  UPCOMING
-                                </span>
-                              ) : (
-                                <span
-                                  className={`rounded-full px-2 py-1 text-xs font-bold ${
-                                    !hasScore
-                                      ? "bg-slate-800 text-slate-300"
-                                      : won
-                                      ? "bg-emerald-500/15 text-emerald-300"
-                                      : "bg-rose-500/15 text-rose-300"
-                                  }`}
-                                >
-                                  {!hasScore ? "FINAL" : won ? "WIN" : "LOSS"}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="mt-2 text-sm text-slate-400">
-                              {game.game_date ?? "—"} • {game.venue ?? "—"} •{" "}
-                              {game.match_type ?? "Game"}
-                            </div>
-
-                            <div className="mt-1 text-sm text-slate-500">
-                              {game.is_upcoming
-                                ? "Upcoming game"
-                                : `Score: ${game.team_score ?? 0} - ${
-                                    game.opponent_score ?? 0
-                                  }`}
-                            </div>
-
-                            <div className="mt-1 text-xs text-slate-600">
-                              Poster focus: {game.poster_position ?? "center center"}
+                            <div className="text-sm text-slate-400">
+                              {game.game_date ?? "Date TBA"} •{" "}
+                              {game.venue ?? "Venue TBA"}
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
+                          <div className="text-2xl font-black">
+                            FACKTS vs {game.opponent ?? "Opponent"}
+                          </div>
+
+                          <div className="mt-2 text-sm text-slate-400">
+                            {game.match_type ?? "Game"}
+                          </div>
+
+                          {!game.is_upcoming ? (
+                            <div className="mt-4 inline-flex rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-lg font-black">
+                              <span className="text-orange-300">
+                                {game.team_score ?? "-"}
+                              </span>
+                              <span className="mx-3 text-slate-500">-</span>
+                              <span>{game.opponent_score ?? "-"}</span>
+                            </div>
+                          ) : (
+                            <div className="mt-4 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-3 text-sm text-orange-300">
+                              Upcoming game. No score recorded yet.
+                            </div>
+                          )}
+
+                          <div className="mt-4 flex flex-wrap gap-2">
                             <Link
                               href={`/games/${game.id}`}
-                              className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                              className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
                             >
                               View
                             </Link>
@@ -560,13 +615,13 @@ export default function AdminGamesPage() {
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
       </div>
     </main>
   );
