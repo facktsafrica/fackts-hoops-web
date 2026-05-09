@@ -1,20 +1,28 @@
 /* =========================================================
    FACKTS HOOPS MOTION PACK
-   Global cinematic motion layer
+   Clean animation layer - safe for hero content
    ========================================================= */
 
 html {
   scroll-behavior: smooth;
 }
 
+body {
+  background: #020617;
+}
+
+/* =========================================================
+   PAGE ENTRANCE
+   ========================================================= */
+
 main {
-  animation: facktsPageRise 420ms ease-out both;
+  animation: facktsPageRise 320ms ease-out both;
 }
 
 @keyframes facktsPageRise {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(8px);
   }
 
   to {
@@ -24,8 +32,59 @@ main {
 }
 
 /* =========================================================
+   SECTION REVEAL
+   Do not touch z-index here. Keeps hero text visible.
+   ========================================================= */
+
+main > section {
+  animation: facktsSectionReveal 420ms ease-out both;
+}
+
+@keyframes facktsSectionReveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* =========================================================
+   BACKGROUND IMAGE MOTION
+   Gentle only. No stacking interference.
+   ========================================================= */
+
+section > .absolute.inset-0 img {
+  animation: facktsSlowZoom 24s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes facktsSlowZoom {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.025);
+  }
+}
+
+/* =========================================================
+   HEADLINE WARMTH
+   ========================================================= */
+
+h1 span,
+h2 span {
+  text-shadow:
+    0 0 12px rgba(249, 115, 22, 0.14),
+    0 0 24px rgba(249, 115, 22, 0.08);
+}
+
+/* =========================================================
    FACKTS LIVE TICKER
-   Broadcast-style movement strip
    ========================================================= */
 
 .fackts-ticker-track {
@@ -48,7 +107,7 @@ main {
 }
 
 /* =========================================================
-   BUTTONS, CARDS & IMAGE MOTION
+   CARDS AND BUTTONS
    ========================================================= */
 
 a.rounded-2xl,
@@ -59,7 +118,8 @@ article.rounded-3xl {
     transform 180ms ease,
     box-shadow 180ms ease,
     border-color 180ms ease,
-    background-color 180ms ease;
+    background-color 180ms ease,
+    color 180ms ease;
 }
 
 a.rounded-2xl:hover,
@@ -70,31 +130,55 @@ button.rounded-2xl:hover {
 a.rounded-3xl:hover,
 article.rounded-3xl:hover {
   transform: translateY(-3px);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.3),
+    0 0 20px rgba(249, 115, 22, 0.1);
 }
 
+/* Admin pages stay calmer */
+main:has(form) a.rounded-3xl:hover,
+main:has(form) article.rounded-3xl:hover {
+  transform: translateY(-1px);
+}
+
+/* Orange button glow */
 a.bg-orange-500,
 button.bg-orange-500 {
-  box-shadow: 0 10px 28px rgba(249, 115, 22, 0.14);
+  box-shadow: 0 8px 22px rgba(249, 115, 22, 0.12);
 }
 
 a.bg-orange-500:hover,
 button.bg-orange-500:hover {
   box-shadow:
-    0 14px 35px rgba(249, 115, 22, 0.22),
-    0 0 18px rgba(249, 115, 22, 0.18);
+    0 12px 28px rgba(249, 115, 22, 0.2),
+    0 0 14px rgba(249, 115, 22, 0.14);
 }
+
+/* Tap feel */
+a:active,
+button:active {
+  transform: scale(0.985);
+}
+
+/* =========================================================
+   IMAGES
+   ========================================================= */
 
 article img,
 a img {
   transition:
     transform 520ms ease,
-    opacity 320ms ease,
-    filter 320ms ease;
+    opacity 280ms ease,
+    filter 280ms ease;
 }
 
 article:hover img,
 a:hover img {
-  filter: saturate(1.08) contrast(1.04);
+  filter: saturate(1.06) contrast(1.03);
+}
+
+#media-stories article:hover img {
+  transform: scale(1.035);
 }
 
 /* =========================================================
@@ -102,13 +186,13 @@ a:hover img {
    ========================================================= */
 
 #media-stories iframe {
-  animation: facktsVideoOpen 260ms ease-out both;
+  animation: facktsVideoOpen 220ms ease-out both;
 }
 
 @keyframes facktsVideoOpen {
   from {
     opacity: 0;
-    transform: scale(0.985);
+    transform: scale(0.99);
   }
 
   to {
@@ -118,7 +202,38 @@ a:hover img {
 }
 
 /* =========================================================
-   FORM FOCUS POLISH
+   MOBILE SIDEBAR DRAWER
+   ========================================================= */
+
+aside {
+  animation: facktsDrawerSlide 190ms ease-out both;
+}
+
+@keyframes facktsDrawerSlide {
+  from {
+    opacity: 0.9;
+    transform: translateX(22px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+aside nav a {
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+aside nav a:hover {
+  transform: translateX(-1px);
+}
+
+/* =========================================================
+   FORMS
    ========================================================= */
 
 input:focus,
@@ -143,12 +258,16 @@ textarea:focus {
 }
 
 /* =========================================================
-   MOBILE TUNING
+   MOBILE
    ========================================================= */
 
 @media (max-width: 768px) {
   main {
-    animation-duration: 300ms;
+    animation-duration: 260ms;
+  }
+
+  main > section {
+    animation-duration: 340ms;
   }
 
   .fackts-ticker-track {
@@ -158,5 +277,9 @@ textarea:focus {
   a.rounded-3xl:hover,
   article.rounded-3xl:hover {
     transform: translateY(-2px);
+  }
+
+  section > .absolute.inset-0 img {
+    animation-duration: 26s;
   }
 }
