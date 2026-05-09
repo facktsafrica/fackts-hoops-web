@@ -24,6 +24,20 @@ const adminSections = [
     tag: "Data",
   },
   {
+    title: "Media Stories",
+    description:
+      "Manage homepage videos, interviews, documentaries, playlists, and thumbnails.",
+    href: "/admin/media-stories",
+    tag: "Stories",
+  },
+  {
+    title: "Live Ticker",
+    description:
+      "Manage short moving announcements shown across public pages.",
+    href: "/admin/ticker",
+    tag: "Announcements",
+  },
+  {
     title: "Leaderboards",
     description:
       "View public rankings driven by points, rebounds, assists, steals, blocks, and averages.",
@@ -65,13 +79,6 @@ const adminSections = [
     href: "/admin/highlights",
     tag: "Media",
   },
-  {
-    title: "Media Stories",
-    description:
-      "Manage homepage videos, interviews, documentaries, playlists, and thumbnails.",
-    href: "/admin/media-stories",
-    tag: "Stories",
-  },
 ];
 
 export default function AdminDashboardPage() {
@@ -90,8 +97,9 @@ export default function AdminDashboardPage() {
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 md:text-base">
-                Manage players, games, stats, media stories, rosters, guests,
-                and public platform content from one place.
+                Manage players, games, stats, media stories, live
+                announcements, rosters, guests, and public platform content
+                from one place.
               </p>
             </div>
 

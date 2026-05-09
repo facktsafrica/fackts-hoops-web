@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./fackts-motion.css";
 import PublicHeader from "./components/PublicHeader";
-import PublicMobileNav from "./components/PublicMobileNav";
+import MobileNav from "./components/MobileNav";
+import FacktsTicker from "./components/FacktsTicker";
 
 export const metadata: Metadata = {
   title: "FACKTS Hoops",
   description:
-    "FACKTS Hoops basketball platform for players, games, rosters, stats, and performance stories.",
+    "FACKTS Hoops is a basketball agency and digital platform helping Kenyan basketball talent become visible, documented, marketable, and commercially valued.",
 };
 
 export default function RootLayout({
@@ -16,10 +18,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="bg-slate-950 pb-24 text-white md:pb-0">
+      <body>
         <PublicHeader />
+        <MobileNav />
+        <FacktsTicker />
         {children}
-        <PublicMobileNav />
       </body>
     </html>
   );
