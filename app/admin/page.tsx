@@ -1,89 +1,145 @@
 import Link from "next/link";
+import AdminLogoutButton from "../components/AdminLogoutButton";
 
-export default function AdminHomePage() {
-  const cards = [
-    {
-      title: "Players",
-      description: "Create, edit, activate, and feature FACKTS players.",
-      href: "/admin/players",
-    },
-    {
-      title: "Guest Hoopers",
-      description:
-        "Create and manage guest hoopers, challengers, and visiting ballers.",
-      href: "/admin/guest-hoopers",
-    },
-    {
-      title: "Games",
-      description:
-        "Create games, edit old games, upload posters, and mark upcoming games.",
-      href: "/admin/games",
-    },
-    {
-      title: "Rosters",
-      description:
-        "Choose confirmed FACKTS players, starters, bench, pending, and unavailable players for each game.",
-      href: "/admin/rosters",
-    },
-    {
-      title: "Game Guests",
-      description:
-        "Add guest hoopers to normal games and manage their roster status.",
-      href: "/admin/game-guests",
-    },
-    {
-      title: "Stats",
-      description:
-        "Enter player game stats, threes made, steals, blocks, and Player of the Game.",
-      href: "/admin/stats",
-    },
-    {
-      title: "Highlights",
-      description: "Choose the Player of the Game shown on the homepage.",
-      href: "/admin/highlights",
-    },
-    {
-      title: "1-on-1",
-      description:
-        "Create and edit 1-on-1 matchups, posters, scores, guests, and results.",
-      href: "/admin/one-on-one",
-    },
-    {
-      title: "Leaderboards",
-      description:
-        "Review public leaderboard data generated from player stats and performances.",
-      href: "/leaderboards",
-    },
-  ];
+const adminSections = [
+  {
+    title: "Players",
+    description:
+      "Add and manage player profiles, photos, positions, roles, and jersey numbers.",
+    href: "/admin/players",
+    tag: "Roster",
+  },
+  {
+    title: "Games",
+    description:
+      "Add fixtures, results, venues, scores, posters, and upcoming games.",
+    href: "/admin/games",
+    tag: "Fixtures",
+  },
+  {
+    title: "Stats",
+    description:
+      "Enter player game stats, box score data, and performance records.",
+    href: "/admin/stats",
+    tag: "Data",
+  },
+  {
+    title: "Leaderboards",
+    description:
+      "View public rankings driven by points, rebounds, assists, steals, blocks, and averages.",
+    href: "/leaderboards",
+    tag: "Public",
+  },
+  {
+    title: "1-on-1 Battles",
+    description:
+      "Manage 1-on-1 player battles, challengers, results, and community matchups.",
+    href: "/admin/one-on-one",
+    tag: "Battles",
+  },
+  {
+    title: "Guest Hoopers",
+    description:
+      "Manage visiting players, guest hoopers, and community talent.",
+    href: "/admin/guest-hoopers",
+    tag: "Community",
+  },
+  {
+    title: "Game Guests",
+    description:
+      "Manage guest lists, game attendance, and event participation records.",
+    href: "/admin/game-guests",
+    tag: "Attendance",
+  },
+  {
+    title: "Rosters",
+    description:
+      "Manage game rosters, lineups, and player availability.",
+    href: "/admin/rosters",
+    tag: "Lineups",
+  },
+  {
+    title: "Highlights",
+    description:
+      "Manage highlight links, game clips, and media references.",
+    href: "/admin/highlights",
+    tag: "Media",
+  },
+  {
+    title: "Media Stories",
+    description:
+      "Manage homepage videos, interviews, documentaries, playlists, and thumbnails.",
+    href: "/admin/media-stories",
+    tag: "Stories",
+  },
+];
 
+export default function AdminDashboardPage() {
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white md:px-6 md:py-8">
-      <div className="mx-auto max-w-7xl">
-        <p className="mb-8 max-w-3xl text-slate-400">
-          Manage players, games, rosters, stats, highlights, leaderboards, guest hoopers, and 1-on-1 matchups.
-        </p>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <section className="border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/20">
+        <div className="mx-auto max-w-7xl px-4 py-8 md:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
+                FACKTS Hoops
+              </div>
 
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {cards.map((card) => (
+              <h1 className="mt-2 text-3xl font-black md:text-5xl">
+                Dashboard
+              </h1>
+
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 md:text-base">
+                Manage players, games, stats, media stories, rosters, guests,
+                and public platform content from one place.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/"
+                className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-orange-400"
+              >
+                Back Home
+              </Link>
+
+              <AdminLogoutButton />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-8 md:px-6">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {adminSections.map((section) => (
             <Link
-              key={card.href}
-              href={card.href}
-              prefetch={card.href.startsWith("/admin") ? false : undefined}
-              className="rounded-3xl border border-slate-800 bg-slate-900 p-6 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-xl hover:shadow-orange-950/10"
+              key={section.href}
+              href={section.href}
+              className="group rounded-3xl border border-slate-800 bg-slate-900 p-4 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:bg-slate-900/90 hover:shadow-orange-950/20"
             >
-              <h2 className="text-2xl font-bold">{card.title}</h2>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="w-fit rounded-full border border-orange-500/25 bg-orange-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-300">
+                    {section.tag}
+                  </div>
+
+                  <h2 className="mt-3 text-xl font-black text-white group-hover:text-orange-300">
+                    {section.title}
+                  </h2>
+                </div>
+
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-orange-300 ring-1 ring-slate-800 transition group-hover:bg-orange-500 group-hover:text-slate-950">
+                  →
+                </div>
+              </div>
 
               <p className="mt-3 text-sm leading-6 text-slate-400">
-                {card.description}
+                {section.description}
               </p>
-
-              <div className="mt-5 text-sm font-semibold text-orange-300">
-                Open →
-              </div>
             </Link>
           ))}
         </div>
-      </div>
+      </section>
     </main>
   );
 }

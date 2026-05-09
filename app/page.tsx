@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import FacktsNetwork from "./components/FacktsNetwork";
+import FacktsStories from "./components/FacktsStories";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -167,7 +169,176 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <div className="border-b border-slate-800 bg-slate-900">
+      <section className="relative overflow-hidden border-b border-slate-800 bg-slate-950">
+        {heroImage ? (
+          <div className="absolute inset-0">
+            <img
+              src={heroImage}
+              alt="FACKTS basketball platform"
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-slate-950/82" />
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-orange-950/45" />
+          </div>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/30" />
+        )}
+
+        <div className="absolute -left-20 top-20 h-72 w-72 rounded-full bg-orange-500/20 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-orange-400/10 blur-3xl" />
+        <div className="absolute left-1/2 top-0 h-56 w-56 rounded-full bg-white/5 blur-3xl" />
+
+        <div className="relative mx-auto max-w-7xl px-6 py-16 md:py-24">
+          <div className="grid gap-10 lg:grid-cols-[1.1fr,0.9fr] lg:items-center">
+            <div>
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-orange-400/30 bg-slate-900/75 px-4 py-2 text-sm shadow-xl shadow-black/20 backdrop-blur">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-orange-400" />
+                <span className="font-semibold text-orange-300">
+                  FACKTS Hoops
+                </span>
+              </div>
+
+              <h1 className="max-w-5xl text-4xl font-black leading-tight tracking-tight md:text-6xl lg:text-7xl">
+                Where Kenyan Basketball Gets{" "}
+                <span className="text-orange-400">
+                  Seen, Recorded, and Remembered.
+                </span>
+              </h1>
+
+              <p className="mt-6 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
+                FACKTS Hoops is a basketball agency and digital platform helping
+                Kenyan basketball talent become visible, documented, marketable,
+                and commercially valued.
+              </p>
+
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-400 md:text-base">
+                The platform powers player profiles, game records, rankings,
+                highlights, 1-on-1 battles, guest hoopers, media features, and
+                partnership opportunities in one place.
+              </p>
+
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link
+                  href="/players"
+                  className="rounded-2xl bg-orange-500 px-5 py-3 font-black text-slate-950 transition duration-300 hover:scale-[1.02] hover:bg-orange-400"
+                >
+                  Explore Hoops App
+                </Link>
+
+                <Link
+                  href="/leaderboards"
+                  className="rounded-2xl border border-slate-600 bg-slate-900/70 px-5 py-3 font-semibold text-slate-200 backdrop-blur transition duration-300 hover:scale-[1.02] hover:bg-slate-800"
+                >
+                  See Leaderboards
+                </Link>
+
+                <Link
+                  href="/contact"
+                  className="rounded-2xl border border-orange-500/40 px-5 py-3 font-semibold text-orange-300 transition duration-300 hover:scale-[1.02] hover:bg-orange-500/10"
+                >
+                  Partner With Us
+                </Link>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-[2rem] border border-orange-500/25 bg-slate-900/80 shadow-2xl shadow-orange-950/25 backdrop-blur">
+              <div className="border-b border-slate-800 bg-slate-950/70 p-5">
+                <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
+                  Agency Model
+                </div>
+
+                <h2 className="mt-2 text-3xl font-black leading-tight">
+                  From visibility to opportunity.
+                </h2>
+
+                <p className="mt-3 text-sm leading-7 text-slate-400">
+                  The app is not the whole business. It is the proof layer that
+                  helps FACKTS package players, performances, media, and
+                  partnerships into real basketball value.
+                </p>
+              </div>
+
+              <div className="grid gap-3 p-5">
+                <AgencyStep
+                  number="01"
+                  title="Profile the talent"
+                  text="Build player identity through profiles, images, positions, stats, and basketball stories."
+                />
+                <AgencyStep
+                  number="02"
+                  title="Track the proof"
+                  text="Record games, points, rebounds, assists, steals, blocks, leaderboards, and 1-on-1 battles."
+                />
+                <AgencyStep
+                  number="03"
+                  title="Package the story"
+                  text="Turn performances into highlights, interviews, documentaries, features, and sponsor-ready content."
+                />
+                <AgencyStep
+                  number="04"
+                  title="Open commercial doors"
+                  text="Create pathways for sponsorships, events, collaborations, representation, and basketball partnerships."
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-slate-800 bg-slate-950">
+        <div className="mx-auto max-w-7xl px-6 py-12">
+          <div className="mb-8 max-w-3xl">
+            <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
+              Why FACKTS Exists
+            </div>
+
+            <h2 className="mt-2 text-3xl font-black md:text-4xl">
+              Kenyan basketball needs more than clips. It needs structure.
+            </h2>
+
+            <p className="mt-4 text-sm leading-7 text-slate-400 md:text-base">
+              Kenyan basketball has talent, stories, rivalries, and performances
+              that often disappear after the final whistle. Players need more
+              than scattered clips and word-of-mouth recognition. They need
+              profiles, records, visibility, media, and pathways to opportunity.
+            </p>
+
+            <p className="mt-3 text-sm leading-7 text-slate-400 md:text-base">
+              FACKTS Hoops exists to help build that structure. We document the
+              game, profile the players, track the numbers, tell the stories,
+              and create a platform where basketball talent can be seen,
+              followed, represented, and valued.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <LandingCard
+              title="Player Visibility"
+              text="Profiles, performance records, media exposure, and career positioning for basketball talent."
+              href="/players"
+            />
+            <LandingCard
+              title="Performance Records"
+              text="Stats, games, leaderboards, 1-on-1 battles, player history, and court performance tracking."
+              href="/leaderboards"
+            />
+            <LandingCard
+              title="Media & Storytelling"
+              text="Highlights, interviews, documentaries, game coverage, and basketball culture."
+              href="#media-stories"
+            />
+            <LandingCard
+              title="Commercial Pathways"
+              text="Sponsorships, events, brand collaborations, representation pathways, teams, venues, and community projects."
+              href="/contact"
+            />
+          </div>
+        </div>
+      </section>
+
+      <FacktsStories />
+
+      <section className="border-b border-slate-800 bg-slate-900">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3 text-sm">
           <div className="flex items-center gap-3">
             <span className="animate-pulse rounded-full bg-orange-500 px-3 py-1 font-bold text-slate-950">
@@ -197,7 +368,7 @@ export default async function HomePage() {
             </span>
           </div>
         </div>
-      </div>
+      </section>
 
       <section className="relative overflow-hidden border-b border-slate-800">
         {heroImage ? (
@@ -224,20 +395,21 @@ export default async function HomePage() {
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-orange-400/30 bg-slate-900/70 px-4 py-2 text-sm backdrop-blur">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-orange-400" />
                 <span className="font-medium text-orange-300">
-                  FACKTS Hoops Platform
+                  Live Platform Preview
                 </span>
               </div>
 
-              <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
-                The home of
+              <h2 className="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
+                Follow the players,
                 <span className="block text-orange-400">
-                  FACKTS basketball data
+                  games, rankings, and moments.
                 </span>
-              </h1>
+              </h2>
 
               <p className="mt-5 max-w-2xl text-base text-slate-300 md:text-lg">
-                Player profiles, game results, standout performances, court
-                stories, and the culture around Kenyan basketball.
+                Explore real player profiles, game results, standout
+                performances, court stories, and the culture around Kenyan
+                basketball.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
@@ -777,6 +949,8 @@ export default async function HomePage() {
         )}
       </section>
 
+      <FacktsNetwork />
+
       <section className="border-t border-slate-800 bg-slate-900/50">
         <div className="mx-auto max-w-7xl px-6 py-12">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -907,6 +1081,55 @@ export default async function HomePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function AgencyStep({
+  number,
+  title,
+  text,
+}: {
+  number: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-800 bg-slate-950 p-4 transition duration-300 hover:border-orange-400/40 hover:bg-slate-900">
+      <div className="flex gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-sm font-black text-slate-950">
+          {number}
+        </div>
+        <div>
+          <h3 className="text-base font-black text-white">{title}</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-400">{text}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LandingCard({
+  title,
+  text,
+  href,
+}: {
+  title: string;
+  text: string;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-orange-950/20"
+    >
+      <div className="text-xs uppercase tracking-[0.22em] text-orange-300">
+        {title}
+      </div>
+      <p className="mt-3 text-sm leading-7 text-slate-400">{text}</p>
+      <div className="mt-4 text-sm font-bold text-orange-300">
+        Explore →
+      </div>
+    </Link>
   );
 }
 
