@@ -1,10 +1,9 @@
 "use client";
 
 import { FormEvent, Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 function AdminLoginContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const redirectedFrom = searchParams.get("redirectedFrom") || "/admin";
@@ -45,8 +44,7 @@ function AdminLoginContent() {
 
       setMessage("Login successful. Opening dashboard...");
 
-      router.replace(redirectedFrom);
-      router.refresh();
+      window.location.href = redirectedFrom;
     } catch {
       setErrorMessage("Login failed. Please try again.");
       setLoading(false);
@@ -74,8 +72,8 @@ function AdminLoginContent() {
               <h1 className="mt-2 text-3xl font-black">Admin Login</h1>
 
               <p className="mt-3 text-sm leading-6 text-slate-400">
-                Login to manage players, games, stats, media stories, and
-                dashboard content.
+                Login to manage players, games, stats, media stories, live
+                ticker, and dashboard content.
               </p>
             </div>
           </div>

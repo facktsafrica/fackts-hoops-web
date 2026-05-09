@@ -18,6 +18,10 @@ const fallbackItems = [
   "On Their Turf",
   "Liam Still Unbeaten",
   "Beyond Injury Out Now",
+  "Court Takeover Energy",
+  "Player Stories Live",
+  "FACKTS Leads 1-0",
+  "Kenyan Hoops Rising",
 ];
 
 export default function FacktsTicker() {
@@ -57,11 +61,11 @@ export default function FacktsTicker() {
     return null;
   }
 
-  const repeatedItems = [...items, ...items, ...items];
+  const repeatedItems = [...items, ...items, ...items, ...items];
 
   return (
-    <div className="overflow-hidden border-b border-orange-500/20 bg-slate-950/95 text-white shadow-lg shadow-black/20 backdrop-blur">
-      <div className="relative flex h-10 items-center">
+    <section className="relative z-30 block w-full overflow-hidden border-y border-orange-500/20 bg-slate-950 text-white shadow-lg shadow-black/20">
+      <div className="relative flex h-11 items-center">
         <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-16 bg-gradient-to-r from-slate-950 to-transparent" />
         <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-16 bg-gradient-to-l from-slate-950 to-transparent" />
 
@@ -72,7 +76,7 @@ export default function FacktsTicker() {
             return (
               <div
                 key={`${item}-${index}`}
-                className="flex items-center gap-4 text-[11px] font-black uppercase tracking-[0.2em] text-slate-300"
+                className="flex items-center gap-4 text-[11px] font-black uppercase tracking-[0.18em] text-slate-300"
               >
                 <span
                   className={
@@ -90,6 +94,6 @@ export default function FacktsTicker() {
           })}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
