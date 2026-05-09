@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function AdminLoginPage() {
+function AdminLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -143,5 +143,23 @@ export default function AdminLoginPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function AdminLoginFallback() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
+      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">
+        Loading admin login...
+      </div>
+    </main>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={<AdminLoginFallback />}>
+      <AdminLoginContent />
+    </Suspense>
   );
 }
