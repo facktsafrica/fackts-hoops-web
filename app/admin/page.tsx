@@ -24,6 +24,27 @@ const adminSections = [
     tag: "Data",
   },
   {
+    title: "Rosters",
+    description:
+      "Build game rosters, assign starters, bench players, availability, and notes.",
+    href: "/admin/rosters",
+    tag: "Lineups",
+  },
+  {
+    title: "Roster Announcements",
+    description:
+      "Open public roster pages and copy WhatsApp-ready squad announcements.",
+    href: "/admin/roster-announcements",
+    tag: "Share",
+  },
+  {
+    title: "Match Previews",
+    description:
+      "Create game storylines, players to watch, preview images, and video links before tip-off.",
+    href: "/admin/match-previews",
+    tag: "Preview",
+  },
+  {
     title: "Media Stories",
     description:
       "Manage homepage videos, interviews, documentaries, playlists, and thumbnails.",
@@ -66,13 +87,6 @@ const adminSections = [
     tag: "Attendance",
   },
   {
-    title: "Rosters",
-    description:
-      "Manage game rosters, lineups, and player availability.",
-    href: "/admin/rosters",
-    tag: "Lineups",
-  },
-  {
     title: "Highlights",
     description:
       "Manage highlight links, game clips, and media references.",
@@ -97,9 +111,9 @@ export default function AdminDashboardPage() {
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 md:text-base">
-                Manage players, games, stats, media stories, live
-                announcements, rosters, guests, and public platform content
-                from one place.
+                Manage players, games, stats, rosters, roster announcements,
+                match previews, media stories, live announcements, guests, and
+                public platform content from one place.
               </p>
             </div>
 

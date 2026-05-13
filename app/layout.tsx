@@ -4,6 +4,7 @@ import "./fackts-motion.css";
 import PublicHeader from "./components/PublicHeader";
 import MobileNav from "./components/MobileNav";
 import FacktsTicker from "./components/FacktsTicker";
+import PublicRosterCta from "./components/PublicRosterCta";
 
 export const metadata: Metadata = {
   title: "FACKTS Hoops",
@@ -22,6 +23,7 @@ export default function RootLayout({
         <PublicHeader />
         <MobileNav />
         <FacktsTicker />
+        <PublicRosterCta />
         {children}
       </body>
     </html>

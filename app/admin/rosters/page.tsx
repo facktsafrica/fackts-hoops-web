@@ -36,11 +36,12 @@ export default function AdminRostersPage() {
   const [players, setPlayers] = useState<any[]>([]);
   const [rosters, setRosters] = useState<any[]>([]);
   const [form, setForm] = useState<RosterForm>(emptyForm);
+
   const [loading, setLoading] = useState(false);
   const [loadingPage, setLoadingPage] = useState(true);
   const [message, setMessage] = useState("");
 
-  async function loadPageData() {
+  async function loadPageData(keepGameId?: string) {
     setLoadingPage(true);
     setMessage("");
 
@@ -48,7 +49,8 @@ export default function AdminRostersPage() {
       supabase
         .from("games")
         .select("*")
-        .order("game_date", { ascending: false }),
+        .eq("is_upcoming", true)
+        .order("game_date", { ascending: true }),
 
       supabase
         .from("players")
@@ -80,18 +82,40 @@ export default function AdminRostersPage() {
       return;
     }
 
-    setGames(gamesResult.data ?? []);
+    const upcomingGames = gamesResult.data ?? [];
+
+    setGames(upcomingGames);
     setPlayers(playersResult.data ?? []);
     setRosters(rostersResult.data ?? []);
 
-    const firstGame = gamesResult.data?.[0];
+    const currentGameStillExists = upcomingGames.some(
+      (game) => game.id === keepGameId
+    );
+
+    const nextGameId = currentGameStillExists
+      ? keepGameId
+      : upcomingGames[0]?.id ?? "";
 
     setForm((prev) => ({
       ...prev,
-      game_id: prev.game_id || firstGame?.id || "",
+      game_id: nextGameId || "",
     }));
 
     setLoadingPage(false);
+  }
+
+  async function refreshRostersOnly() {
+    const { data, error } = await supabase
+      .from("game_rosters")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setMessage(`Failed to refresh rosters: ${error.message}`);
+      return;
+    }
+
+    setRosters(data ?? []);
   }
 
   useEffect(() => {
@@ -131,13 +155,23 @@ export default function AdminRostersPage() {
     setMessage("");
 
     if (!form.game_id) {
-      setMessage("Please select a game.");
+      setMessage("Please select an upcoming game.");
       setLoading(false);
       return;
     }
 
     if (!form.player_id) {
       setMessage("Please select a player.");
+      setLoading(false);
+      return;
+    }
+
+    const alreadyAddedToThisGame = selectedGameRoster.some(
+      (row) => row.player_id === form.player_id
+    );
+
+    if (alreadyAddedToThisGame) {
+      setMessage("This player is already on this selected game roster.");
       setLoading(false);
       return;
     }
@@ -158,7 +192,8 @@ export default function AdminRostersPage() {
       return;
     }
 
-    setMessage("Player added to roster.");
+    setMessage("Player added to selected game roster.");
+
     setForm((prev) => ({
       ...prev,
       player_id: "",
@@ -167,7 +202,7 @@ export default function AdminRostersPage() {
       notes: "",
     }));
 
-    await loadPageData();
+    await refreshRostersOnly();
     setLoading(false);
   }
 
@@ -187,11 +222,11 @@ export default function AdminRostersPage() {
       return;
     }
 
-    await loadPageData();
+    await refreshRostersOnly();
   }
 
   async function handleRemoveRosterPlayer(rowId: string) {
-    const yes = window.confirm("Remove this player from the roster?");
+    const yes = window.confirm("Remove this player from the selected game roster?");
     if (!yes) return;
 
     const result = await supabase.from("game_rosters").delete().eq("id", rowId);
@@ -201,8 +236,8 @@ export default function AdminRostersPage() {
       return;
     }
 
-    setMessage("Player removed from roster.");
-    await loadPageData();
+    setMessage("Player removed from selected game roster.");
+    await refreshRostersOnly();
   }
 
   const starters = selectedGameRoster.filter(
@@ -241,7 +276,8 @@ export default function AdminRostersPage() {
           </h1>
 
           <p className="mt-3 text-slate-400">
-            Select confirmed players, starters, bench, pending, and unavailable players for each game.
+            Select any upcoming game and build its roster. The same player can
+            appear in different games, but not twice in the same game.
           </p>
         </div>
 
@@ -267,22 +303,29 @@ export default function AdminRostersPage() {
 
               <label className="block">
                 <div className="mb-2 text-sm font-medium text-slate-300">
-                  Game
+                  Upcoming Game
                 </div>
                 <select
                   value={form.game_id}
                   onChange={(e) => updateField("game_id", e.target.value)}
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
                 >
-                  <option value="">Select game</option>
+                  <option value="">Select upcoming game</option>
                   {games.map((game) => (
                     <option key={game.id} value={game.id}>
-                      {game.game_date ?? "Date TBA"} — FACKTS vs {game.opponent}
-                      {game.is_upcoming ? " — UPCOMING" : ""}
+                      {game.game_date ?? "Date TBA"} — FACKTS vs{" "}
+                      {game.opponent ?? "Opponent"} — {game.venue ?? "Venue TBA"}
                     </option>
                   ))}
                 </select>
               </label>
+
+              {games.length === 0 ? (
+                <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
+                  No upcoming games found. Go to Admin Games and mark games as
+                  upcoming.
+                </div>
+              ) : null}
 
               {selectedGame ? (
                 <div className="mt-5 overflow-hidden rounded-3xl border border-slate-800 bg-slate-950">
@@ -300,11 +343,11 @@ export default function AdminRostersPage() {
 
                   <div className="p-5">
                     <div className="text-sm uppercase tracking-wide text-orange-300">
-                      Selected Game
+                      Selected Upcoming Game
                     </div>
 
                     <div className="mt-2 text-2xl font-black">
-                      FACKTS vs {selectedGame.opponent}
+                      FACKTS vs {selectedGame.opponent ?? "Opponent"}
                     </div>
 
                     <div className="mt-2 text-sm text-slate-400">
@@ -313,11 +356,9 @@ export default function AdminRostersPage() {
                       {selectedGame.match_type ?? "Game"}
                     </div>
 
-                    {selectedGame.is_upcoming ? (
-                      <div className="mt-3 inline-flex rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-slate-950">
-                        UPCOMING GAME
-                      </div>
-                    ) : null}
+                    <div className="mt-3 inline-flex rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-slate-950">
+                      UPCOMING GAME
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -394,10 +435,10 @@ export default function AdminRostersPage() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !form.game_id}
                   className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Adding..." : "Add Player to Roster"}
+                  {loading ? "Adding..." : "Add Player to Selected Game"}
                 </button>
               </form>
             </section>
@@ -410,7 +451,7 @@ export default function AdminRostersPage() {
                   </div>
                   <h2 className="mt-1 text-2xl font-bold">
                     {selectedGame
-                      ? `FACKTS vs ${selectedGame.opponent}`
+                      ? `FACKTS vs ${selectedGame.opponent ?? "Opponent"}`
                       : "No game selected"}
                   </h2>
                 </div>
@@ -422,11 +463,11 @@ export default function AdminRostersPage() {
 
               {!selectedGame ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
-                  Select a game to view its roster.
+                  Select an upcoming game to view its roster.
                 </div>
               ) : selectedGameRoster.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
-                  No roster has been added for this game yet.
+                  No roster has been added for this selected game yet.
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -519,7 +560,8 @@ function RosterGroup({
                         alt={player.full_name}
                         className="h-16 w-16 rounded-2xl border border-slate-700 object-cover"
                         style={{
-                          objectPosition: player.photo_position ?? "center center",
+                          objectPosition:
+                            player.photo_position ?? "center center",
                         }}
                       />
                     ) : (
