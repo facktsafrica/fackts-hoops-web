@@ -27,7 +27,11 @@ async function getUpcomingGames() {
     .eq("is_upcoming", true)
     .order("game_date", { ascending: true });
 
-  if (error) return [];
+  if (error) {
+    console.error("Games error:", error.message);
+    return [];
+  }
+
   return data ?? [];
 }
 
@@ -43,14 +47,32 @@ async function getRosters() {
       player:players (
         id,
         full_name,
+        nickname,
         jersey_number,
-        position
+        position,
+        is_active
       )
     `
     );
 
-  if (error) return [];
+  if (error) {
+    console.error("Rosters error:", error.message);
+    return [];
+  }
+
   return data ?? [];
+}
+
+function playerName(row: any) {
+  return row.player?.full_name ?? "Unknown Player";
+}
+
+function playerNumber(row: any) {
+  return row.player?.jersey_number ?? "—";
+}
+
+function playerPosition(row: any) {
+  return row.player?.position ?? "Player";
 }
 
 function buildWhatsAppText(game: any, roster: any[]) {
@@ -67,11 +89,9 @@ function buildWhatsAppText(game: any, roster: any[]) {
       ? starters
           .map(
             (row) =>
-              `#${row.player?.jersey_number ?? "—"} ${
-                row.player?.full_name ?? "Unknown Player"
-              }`
+              `#${playerNumber(row)} ${playerName(row)} — ${playerPosition(row)}`
           )
-          .join("%0A")
+          .join("\n")
       : "To be confirmed";
 
   const benchLines =
@@ -79,18 +99,27 @@ function buildWhatsAppText(game: any, roster: any[]) {
       ? bench
           .map(
             (row) =>
-              `#${row.player?.jersey_number ?? "—"} ${
-                row.player?.full_name ?? "Unknown Player"
-              }`
+              `#${playerNumber(row)} ${playerName(row)} — ${playerPosition(row)}`
           )
-          .join("%0A")
+          .join("\n")
       : "To be confirmed";
 
-  return `🏀 FACKTS GAME ROSTER%0A%0AFACKTS vs ${
-    game.opponent ?? "Opponent"
-  }%0A${game.match_type ?? "Game"}%0A📍 ${
-    game.venue ?? "Venue TBA"
-  }%0A📅 ${formatGameDate(game.game_date)}%0A%0A🔥 STARTERS%0A${starterLines}%0A%0A💪 BENCH%0A${benchLines}%0A%0AFACKTS Hoops. Kenyan basketball, documented.`;
+  const rawText = `🏀 FACKTS GAME ROSTER
+
+FACKTS vs ${game.opponent ?? "Opponent"}
+${game.match_type ?? "Game"}
+📍 ${game.venue ?? "Venue TBA"}
+📅 ${formatGameDate(game.game_date)}
+
+🔥 STARTERS
+${starterLines}
+
+💪 BENCH
+${benchLines}
+
+FACKTS Hoops. Kenyan basketball, documented.`;
+
+  return encodeURIComponent(rawText);
 }
 
 export default async function PublicRostersHubPage() {
@@ -121,13 +150,11 @@ export default async function PublicRostersHubPage() {
             </div>
 
             <h1 className="mt-5 text-4xl font-black leading-tight md:text-6xl">
-              Public Game{" "}
-              <span className="text-orange-400">Rosters</span>
+              Public Game <span className="text-orange-400">Rosters</span>
             </h1>
 
             <p className="mt-5 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
-              Open and share official FACKTS game rosters without copying game
-              IDs from Supabase.
+              Open and share official FACKTS game rosters.
             </p>
           </div>
         </div>
@@ -142,12 +169,15 @@ export default async function PublicRostersHubPage() {
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {games.map((game: any) => {
               const gameRoster = rostersByGame.get(game.id) ?? [];
+
               const starters = gameRoster.filter(
                 (row) => row.roster_role?.toLowerCase() === "starter"
               );
+
               const bench = gameRoster.filter(
                 (row) => row.roster_role?.toLowerCase() !== "starter"
               );
+
               const whatsappText = buildWhatsAppText(game, gameRoster);
 
               return (
