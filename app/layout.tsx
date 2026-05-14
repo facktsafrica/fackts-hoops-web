@@ -5,6 +5,8 @@ import PublicHeader from "./components/PublicHeader";
 import MobileNav from "./components/MobileNav";
 import FacktsTicker from "./components/FacktsTicker";
 import PublicRosterCta from "./components/PublicRosterCta";
+import PublicGameMatchPreview from "./components/PublicGameMatchPreview";
+import PageSpecificMobileTuning from "./components/PageSpecificMobileTuning";
 
 export const metadata: Metadata = {
   title: "FACKTS Hoops",
@@ -20,10 +22,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <PageSpecificMobileTuning />
         <PublicHeader />
         <MobileNav />
         <FacktsTicker />
         <PublicRosterCta />
+        <PublicGameMatchPreview />
         {children}
       </body>
     </html>

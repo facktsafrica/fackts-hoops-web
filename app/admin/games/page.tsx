@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -30,6 +30,7 @@ const emptyForm: GameForm = {
 
 const matchTypes = [
   "Friendly",
+  "Court Takeover",
   "League Game",
   "Tournament",
   "Playoff",
@@ -295,7 +296,7 @@ export default function AdminGamesPage() {
               href="/admin"
               className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
             >
-              ← Back to Admin
+              â† Back to Admin
             </Link>
 
             <div className="mt-4 text-sm uppercase tracking-[0.25em] text-orange-300">
@@ -315,7 +316,7 @@ export default function AdminGamesPage() {
             href="/"
             className="rounded-2xl border border-orange-500/40 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/10"
           >
-            View Public Home →
+            View Public Home â†’
           </Link>
         </div>
 
@@ -562,7 +563,7 @@ export default function AdminGamesPage() {
                             </span>
 
                             <div className="text-sm text-slate-400">
-                              {game.game_date ?? "Date TBA"} •{" "}
+                              {game.game_date ?? "Date TBA"} â€¢{" "}
                               {game.venue ?? "Venue TBA"}
                             </div>
                           </div>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -50,6 +50,86 @@ const emptyForm: PlayerForm = {
   is_featured: false,
 };
 
+const positionOptions = [
+  "Point Guard",
+  "Shooting Guard",
+  "Small Forward",
+  "Power Forward",
+  "Center",
+  "Guard",
+  "Forward",
+  "Big",
+  "Wing",
+  "Combo Guard",
+  "Stretch Forward",
+  "Utility Player",
+];
+
+const highestLevelOptions = [
+  "Street / Pick-up",
+  "Academy",
+  "High School",
+  "College",
+  "University",
+  "County League",
+  "Regional League",
+  "National League",
+  "Semi-Pro",
+  "Professional",
+  "International",
+];
+const playerRoleOptions = [
+  "Player",
+  "Captain",
+  "Co-Captain",
+  "Guest Hooper",
+  "Prospect",
+  "Featured Player",
+  "Starter",
+  "Bench",
+  "Injured",
+  "Inactive",
+];
+
+const heightOptions = [
+  "Below 5'0",
+  "5'0",
+  "5'1",
+  "5'2",
+  "5'3",
+  "5'4",
+  "5'5",
+  "5'6",
+  "5'7",
+  "5'8",
+  "5'9",
+  "5'10",
+  "5'11",
+  "6'0",
+  "6'1",
+  "6'2",
+  "6'3",
+  "6'4",
+  "6'5",
+  "6'6",
+  "6'7",
+  "6'8",
+  "6'9",
+  "6'10",
+  "6'11",
+  "7'0",
+  "Above 7'0",
+];
+
+const followersRangeOptions = [
+  "0-100",
+  "100-500",
+  "500-1K",
+  "1K-5K",
+  "5K-10K",
+  "10K-50K",
+  "50K+",
+];
 const imagePositions = [
   { label: "Center", value: "center center" },
   { label: "Top", value: "center top" },
@@ -281,7 +361,7 @@ export default function AdminPlayersPage() {
             href="/admin"
             className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
           >
-            ← Back to Admin
+            â† Back to Admin
           </Link>
 
           <div className="mt-4 text-sm uppercase tracking-[0.25em] text-orange-300">
@@ -343,15 +423,19 @@ export default function AdminPlayersPage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <FormInput
+                <FormSelect
                   label="Position"
                   value={form.position}
                   onChange={(v) => updateField("position", v)}
+                  options={positionOptions}
+                  placeholder="Select position"
                 />
-                <FormInput
+                <FormSelect
                   label="Role"
                   value={form.role}
                   onChange={(v) => updateField("role", v)}
+                  options={playerRoleOptions}
+                  placeholder="Select role"
                 />
               </div>
 
@@ -362,10 +446,12 @@ export default function AdminPlayersPage() {
                   onChange={(v) => updateField("age", v)}
                   type="number"
                 />
-                <FormInput
+                <FormSelect
                   label="Height"
                   value={form.height}
                   onChange={(v) => updateField("height", v)}
+                  options={heightOptions}
+                  placeholder="Select height"
                 />
                 <FormInput
                   label="Dominant Hand"
@@ -375,10 +461,12 @@ export default function AdminPlayersPage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
-                <FormInput
+                <FormSelect
                   label="Highest Level"
                   value={form.highest_level}
                   onChange={(v) => updateField("highest_level", v)}
+                  options={highestLevelOptions}
+                  placeholder="Select highest level"
                 />
                 <FormInput
                   label="Years Played"
@@ -386,10 +474,12 @@ export default function AdminPlayersPage() {
                   onChange={(v) => updateField("years_played", v)}
                   type="number"
                 />
-                <FormInput
+                <FormSelect
                   label="Followers Range"
                   value={form.followers_range}
                   onChange={(v) => updateField("followers_range", v)}
+                  options={followersRangeOptions}
+                  placeholder="Select followers range"
                 />
               </div>
 
@@ -563,7 +653,7 @@ export default function AdminPlayersPage() {
                           />
                         ) : (
                           <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-800 text-3xl">
-                            🏀
+                            ðŸ€
                           </div>
                         )}
 
@@ -589,8 +679,8 @@ export default function AdminPlayersPage() {
                           </div>
 
                           <div className="mt-2 text-sm text-slate-400">
-                            #{player.jersey_number ?? "—"} • {player.position ?? "—"} •{" "}
-                            {player.role ?? "—"}
+                            #{player.jersey_number ?? "â€”"} â€¢ {player.position ?? "â€”"} â€¢{" "}
+                            {player.role ?? "â€”"}
                           </div>
 
                           <div className="mt-1 text-sm text-slate-500">
@@ -655,6 +745,40 @@ function FormInput({
   );
 }
 
+function FormSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = "Select option",
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  placeholder?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-medium text-slate-300">{label}</div>
+      <select
+        value={value}
+        required={required}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 function FormTextarea({
   label,
   value,
@@ -676,3 +800,4 @@ function FormTextarea({
     </label>
   );
 }
+

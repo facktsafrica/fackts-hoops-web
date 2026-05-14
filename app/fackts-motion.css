@@ -1,4 +1,4 @@
-/* =========================================================
+﻿/* =========================================================
    FACKTS HOOPS MOTION PACK
    Clean animation layer - safe for hero content
    ========================================================= */
@@ -283,3 +283,178 @@ textarea:focus {
     animation-duration: 26s;
   }
 }
+
+/* =========================================================
+   FACKTS MOBILE SAFE COMPACT FIX
+   Smaller cards without breaking text layout
+   ========================================================= */
+
+@media (max-width: 768px) {
+  main {
+    overflow-x: hidden;
+  }
+
+  main > section {
+    padding-top: 1.25rem !important;
+    padding-bottom: 1.25rem !important;
+  }
+
+  main section .grid {
+    gap: 0.85rem !important;
+  }
+
+  /* Prevent words from overflowing on game/player cards */
+  main h1,
+  main h2,
+  main h3,
+  main p,
+  main a,
+  main span,
+  main div {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  /* Keep headings smaller on phone */
+  main h1 {
+    font-size: 2.1rem !important;
+    line-height: 1.08 !important;
+  }
+
+  main h2 {
+    font-size: 1.35rem !important;
+    line-height: 1.15 !important;
+  }
+
+  main h3 {
+    font-size: 1rem !important;
+    line-height: 1.2 !important;
+  }
+
+  main p {
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  /* Compact public cards, but keep their natural layout */
+  main article,
+  main a.rounded-3xl,
+  main div.rounded-3xl,
+  main section.rounded-3xl,
+  main article.rounded-\[2rem\],
+  main div.rounded-\[2rem\],
+  main section.rounded-\[2rem\] {
+    border-radius: 1.25rem !important;
+  }
+
+  main article.rounded-3xl,
+  main a.rounded-3xl,
+  main section.rounded-3xl,
+  main article.rounded-\[2rem\],
+  main section.rounded-\[2rem\] {
+    padding: 0.9rem !important;
+  }
+
+  /* Do not add padding to image-card outer wrappers */
+  main article.overflow-hidden,
+  main a.overflow-hidden,
+  main div.overflow-hidden {
+    padding: 0 !important;
+  }
+
+  /* Make large images shorter on phone */
+  main .h-96 {
+    height: 14rem !important;
+  }
+
+  main .h-72 {
+    height: 12rem !important;
+  }
+
+  main .h-64 {
+    height: 11rem !important;
+  }
+
+  main .h-56 {
+    height: 10rem !important;
+  }
+
+  main .h-44 {
+    height: 9rem !important;
+  }
+
+  main .h-40 {
+    height: 8.5rem !important;
+  }
+
+  main .h-32 {
+    height: 7.5rem !important;
+  }
+
+  /* Smaller padding utilities on phone */
+  main .p-8 {
+    padding: 1.15rem !important;
+  }
+
+  main .p-6 {
+    padding: 1rem !important;
+  }
+
+  main .p-5 {
+    padding: 0.9rem !important;
+  }
+
+  main .p-4 {
+    padding: 0.8rem !important;
+  }
+
+  main .px-6 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  main .py-16,
+  main .py-12,
+  main .py-10,
+  main .py-8 {
+    padding-top: 1.5rem !important;
+    padding-bottom: 1.5rem !important;
+  }
+
+  /* Compact buttons */
+  main a.rounded-2xl,
+  main button.rounded-2xl {
+    border-radius: 1rem !important;
+    padding: 0.65rem 0.9rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Compact stats */
+  main .text-5xl {
+    font-size: 2.1rem !important;
+  }
+
+  main .text-4xl {
+    font-size: 1.85rem !important;
+  }
+
+  main .text-3xl {
+    font-size: 1.55rem !important;
+  }
+
+  main .text-2xl {
+    font-size: 1.25rem !important;
+  }
+
+  main .text-xl {
+    font-size: 1.05rem !important;
+  }
+
+  /* Stop hover jump on phone */
+  main a:hover,
+  main article:hover {
+    transform: none !important;
+  }
+}
+
+/* END FACKTS MOBILE SAFE COMPACT FIX */

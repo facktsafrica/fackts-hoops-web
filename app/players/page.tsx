@@ -122,7 +122,7 @@ export default async function PlayersPage() {
         <div className="absolute -left-20 top-10 h-60 w-60 rounded-full bg-orange-500/10 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-60 w-60 rounded-full bg-orange-400/10 blur-3xl" />
 
-        <div className="relative mx-auto max-w-7xl px-4 py-7 md:px-6 md:py-9">
+        <div className="relative mx-auto max-w-7xl px-4 py-7 md:px-6 md:py-10">
           <div className="grid gap-5 lg:grid-cols-[1.05fr,0.95fr] lg:items-end">
             <div>
               <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
@@ -134,7 +134,8 @@ export default async function PlayersPage() {
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">
-                Explore the roster, view player profiles, and follow each player’s performance numbers.
+                Explore the roster, view player profiles, and follow each
+                player’s performance numbers.
               </p>
             </div>
 
@@ -142,13 +143,15 @@ export default async function PlayersPage() {
               <HeroMiniStat label="Players" value={String(totalPlayers)} />
               <HeroMiniStat label="Entries" value={String(totalStatEntries)} />
               <HeroMiniStat
-                label="Top Points/Game"
+                label="Top PPG"
                 value={topScorer ? String(topScorer.points_per_game) : "0"}
                 sub={topScorer?.full_name ?? "No data"}
               />
               <HeroMiniStat
                 label="Most Games"
-                value={mostExperienced ? String(mostExperienced.games_played) : "0"}
+                value={
+                  mostExperienced ? String(mostExperienced.games_played) : "0"
+                }
                 sub={mostExperienced?.full_name ?? "No data"}
               />
             </div>
@@ -156,14 +159,14 @@ export default async function PlayersPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-5 md:px-6 md:py-6">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+      <section className="mx-auto max-w-7xl px-4 py-5 md:px-6 md:py-8">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3 md:mb-5">
           <div>
             <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
               Roster
             </div>
 
-            <h2 className="mt-1 text-2xl font-black md:text-3xl">
+            <h2 className="mt-1 text-xl font-black md:text-3xl">
               FACKTS Active Players
             </h2>
           </div>
@@ -177,13 +180,13 @@ export default async function PlayersPage() {
         </div>
 
         {players.length === 0 ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 text-slate-400">
             No active players have been added yet.
           </div>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 md:gap-4">
             {players.map((player) => (
-              <PlayerCompactSplitCard key={player.id} player={player} />
+              <PlayerCardCompact key={player.id} player={player} />
             ))}
           </div>
         )}
@@ -192,75 +195,74 @@ export default async function PlayersPage() {
   );
 }
 
-function PlayerCompactSplitCard({ player }: { player: PlayerCard }) {
+function PlayerCardCompact({ player }: { player: PlayerCard }) {
   return (
     <Link
       href={`/players/${player.id}`}
-      className="group block overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-black/20 transition duration-300 hover:-translate-y-0.5 hover:border-orange-400/40 hover:bg-slate-900/90 hover:shadow-orange-950/20"
+      className="group overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-black/20 transition duration-300 hover:border-orange-400/40 hover:bg-slate-900/90 hover:shadow-orange-950/20 md:hover:-translate-y-1"
     >
-      <div className="grid grid-cols-[45%_55%]">
-        <div className="min-w-0 border-r border-slate-800 bg-slate-950/70">
-          <div className="relative h-28 overflow-hidden bg-slate-950">
-            {player.photo_url ? (
-              <img
-                src={player.photo_url}
-                alt={player.full_name}
-                className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                style={{
-                  objectPosition: player.photo_position ?? "center center",
-                }}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-4xl">
-                🏀
-              </div>
-            )}
-
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/15 to-transparent" />
-
-            <div className="absolute left-2 top-2 rounded-xl bg-orange-500 px-2 py-1 text-[10px] font-black text-slate-950 shadow-lg shadow-black/30">
-              #{player.jersey_number ?? "—"}
+      <div className="flex gap-3 p-3 sm:block sm:p-0">
+        <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-slate-950 sm:h-40 sm:w-full sm:rounded-none md:h-48">
+          {player.photo_url ? (
+            <img
+              src={player.photo_url}
+              alt={player.full_name}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              style={{
+                objectPosition: player.photo_position ?? "center center",
+              }}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-3xl sm:text-5xl">
+              🏀
             </div>
-          </div>
+          )}
 
-          <div className="px-2.5 py-2.5">
-            <h3 className="truncate text-sm font-black leading-tight text-white group-hover:text-orange-300">
-              {player.full_name}
-            </h3>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
 
-            <div className="mt-0.5 truncate text-[10px] leading-tight text-slate-400">
-              {player.nickname ? `"${player.nickname}"` : "FACKTS Player"}
-            </div>
-
-            <div className="mt-1.5 w-fit max-w-full truncate rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-orange-300">
-              {player.position ?? "Position TBA"}
-            </div>
+          <div className="absolute bottom-2 left-2 rounded-full bg-orange-500 px-2 py-1 text-[10px] font-black text-slate-950">
+            #{player.jersey_number ?? "—"}
           </div>
         </div>
 
-        <div className="min-w-0 bg-slate-900">
-          <div className="grid grid-cols-2">
-            <PlayerStat title="Points" sub="per game" value={String(player.points_per_game)} />
-            <PlayerStat title="Rebounds" sub="per game" value={String(player.rebounds_per_game)} />
-            <PlayerStat title="Assists" sub="per game" value={String(player.assists_per_game)} />
-            <PlayerStat title="Steals" sub="per game" value={String(player.steals_per_game)} />
-            <PlayerStat title="Blocks" sub="per game" value={String(player.blocks_per_game)} />
-            <PlayerStat title="Games" sub="played" value={String(player.games_played)} />
-          </div>
-
-          <div className="grid grid-cols-[1fr,auto] items-center gap-2 border-t border-slate-800 bg-slate-950/50 px-2.5 py-2.5">
-            <div>
-              <div className="text-[7px] uppercase tracking-[0.14em] text-slate-500">
-                Total points
+        <div className="min-w-0 flex-1 sm:p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-base font-black leading-tight md:text-xl">
+                {player.full_name}
               </div>
 
-              <div className="mt-0.5 text-xl font-black leading-none text-orange-300">
-                {player.total_points}
-              </div>
+              {player.nickname ? (
+                <div className="mt-0.5 truncate text-xs font-semibold text-orange-300 md:text-sm">
+                  “{player.nickname}”
+                </div>
+              ) : null}
             </div>
 
-            <div className="rounded-xl border border-slate-700 px-2 py-1.5 text-[9px] font-bold text-orange-300 transition group-hover:border-orange-400/50 group-hover:bg-orange-500/10">
-              View →
+            <div className="hidden shrink-0 rounded-xl bg-slate-950 px-2 py-1 text-xs font-black text-orange-300 ring-1 ring-slate-800 sm:block">
+              {player.position ?? "POS"}
+            </div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Badge text={player.position ?? "Position TBA"} />
+            <Badge text={player.role ?? "Player"} />
+            {player.height ? <Badge text={player.height} /> : null}
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-1.5">
+            <MiniStat label="PPG" value={String(player.points_per_game)} />
+            <MiniStat label="RPG" value={String(player.rebounds_per_game)} />
+            <MiniStat label="APG" value={String(player.assists_per_game)} />
+          </div>
+
+          <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2">
+            <div className="truncate text-[11px] font-semibold text-slate-500 md:text-xs">
+              {player.games_played} games logged
+            </div>
+
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-orange-300 ring-1 ring-slate-800 transition group-hover:bg-orange-500 group-hover:text-slate-950">
+              →
             </div>
           </div>
         </div>
@@ -269,26 +271,22 @@ function PlayerCompactSplitCard({ player }: { player: PlayerCard }) {
   );
 }
 
-function PlayerStat({
-  title,
-  sub,
-  value,
-}: {
-  title: string;
-  sub: string;
-  value: string;
-}) {
+function Badge({ text }: { text: string }) {
   return (
-    <div className="border-b border-r border-slate-800 px-1.5 py-1.5 text-center even:border-r-0">
-      <div className="text-[8px] font-semibold uppercase leading-tight tracking-wide text-slate-400">
-        {title}
+    <span className="max-w-full truncate rounded-full border border-slate-800 bg-slate-950 px-2 py-1 text-[10px] font-bold text-slate-400">
+      {text}
+    </span>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950 px-2 py-1.5 text-center">
+      <div className="text-[9px] uppercase tracking-wide text-slate-500">
+        {label}
       </div>
 
-      <div className="text-[7px] lowercase leading-tight text-slate-500">
-        {sub}
-      </div>
-
-      <div className="mt-0.5 text-[13px] font-black leading-none text-orange-300">
+      <div className="mt-0.5 text-sm font-black text-orange-300 md:text-base">
         {value}
       </div>
     </div>
@@ -305,17 +303,19 @@ function HeroMiniStat({
   sub?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 px-3 py-2 shadow-xl shadow-black/20 backdrop-blur">
-      <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500">
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3 backdrop-blur md:p-4">
+      <div className="text-[10px] uppercase tracking-wide text-slate-500 md:text-xs">
         {label}
       </div>
 
-      <div className="mt-1 text-2xl font-black leading-none text-orange-300">
+      <div className="mt-1 text-xl font-black text-orange-300 md:text-2xl">
         {value}
       </div>
 
       {sub ? (
-        <div className="mt-1 truncate text-[11px] text-slate-400">{sub}</div>
+        <div className="mt-1 truncate text-[10px] text-slate-500 md:text-xs">
+          {sub}
+        </div>
       ) : null}
     </div>
   );
