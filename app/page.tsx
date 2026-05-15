@@ -41,15 +41,63 @@ async function getNextGame() {
   return data ?? null;
 }
 
-async function getHomepagePOG() {
-  const { data: statRow, error: statError } = await supabase
-    .from("player_game_stats")
+async function getLatestCompletedGame() {
+  const { data, error } = await supabase
+    .from("games")
     .select("*")
-    .eq("is_homepage_pog", true)
+    .eq("is_upcoming", false)
+    .order("game_date", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (statError || !statRow) return null;
+  if (error) return null;
+  return data ?? null;
+}
+
+function playerContribution(row: any) {
+  return (
+    Number(row.points ?? 0) +
+    Number(row.rebounds ?? 0) +
+    Number(row.assists ?? 0) +
+    Number(row.steals ?? 0) +
+    Number(row.blocks ?? 0) +
+    Math.max(Number(row.plus_minus ?? 0), 0)
+  );
+}
+
+async function getHomepagePOG() {
+  const latestCompletedGame = await getLatestCompletedGame();
+
+  if (!latestCompletedGame?.id) {
+    return null;
+  }
+
+  const { data: gameStats, error: statsError } = await supabase
+    .from("player_game_stats")
+    .select("*")
+    .eq("game_id", latestCompletedGame.id);
+
+  if (statsError || !gameStats || gameStats.length === 0) {
+    return null;
+  }
+
+  const manuallySelected = gameStats.find(
+    (row: any) => row.is_homepage_pog === true && playerContribution(row) > 0
+  );
+
+  const statRow =
+    manuallySelected ??
+    [...gameStats].sort((a: any, b: any) => {
+      const contributionDiff = playerContribution(b) - playerContribution(a);
+
+      if (contributionDiff !== 0) return contributionDiff;
+
+      return Number(b.points ?? 0) - Number(a.points ?? 0);
+    })[0];
+
+  if (!statRow || playerContribution(statRow) <= 0) {
+    return null;
+  }
 
   const { data: playerData } = await supabase
     .from("players")
@@ -57,16 +105,10 @@ async function getHomepagePOG() {
     .eq("id", statRow.player_id)
     .maybeSingle();
 
-  const { data: gameData } = await supabase
-    .from("games")
-    .select("*")
-    .eq("id", statRow.game_id)
-    .maybeSingle();
-
   return {
     ...statRow,
     player: playerData ?? null,
-    game: gameData ?? null,
+    game: latestCompletedGame,
   };
 }
 
@@ -127,12 +169,12 @@ export default async function HomePage() {
     getHomepagePOG(),
   ]);
 
-  const completedGames = games.filter((g: any) => g.is_upcoming !== true);
+  const completedGames = games.filter((game: any) => game.is_upcoming !== true);
   const latestCompletedGame = completedGames[0] ?? null;
 
   const featuredPlayer =
-    players.find((p: any) => p.is_featured === true) ??
-    players.find((p: any) => p.role?.toLowerCase() === "starter") ??
+    players.find((player: any) => player.is_featured === true) ??
+    players.find((player: any) => player.role?.toLowerCase() === "starter") ??
     players[0] ??
     null;
 
@@ -141,17 +183,17 @@ export default async function HomePage() {
     : null;
 
   const wins = completedGames.filter(
-    (g: any) =>
-      g.team_score !== null &&
-      g.opponent_score !== null &&
-      Number(g.team_score) > Number(g.opponent_score)
+    (game: any) =>
+      game.team_score !== null &&
+      game.opponent_score !== null &&
+      Number(game.team_score) > Number(game.opponent_score)
   ).length;
 
   const losses = completedGames.filter(
-    (g: any) =>
-      g.team_score !== null &&
-      g.opponent_score !== null &&
-      Number(g.team_score) < Number(g.opponent_score)
+    (game: any) =>
+      game.team_score !== null &&
+      game.opponent_score !== null &&
+      Number(game.team_score) < Number(game.opponent_score)
   ).length;
 
   const heroImage =
@@ -325,7 +367,7 @@ export default async function HomePage() {
             <LandingCard
               title="Media & Storytelling"
               text="Highlights, interviews, documentaries, game coverage, and basketball culture."
-              href="#media-stories"
+              href="/media"
             />
             <LandingCard
               title="Commercial Pathways"
@@ -460,16 +502,13 @@ export default async function HomePage() {
                         FACKTS vs {nextGame.opponent ?? "Opponent"}
                       </div>
                       <div className="mt-1 text-sm text-slate-300">
-                        {nextGame.game_date ?? "TBA"} •{" "}
+                        {nextGame.game_date ?? "TBA"} -{" "}
                         {nextGame.venue ?? "Venue TBA"}
                       </div>
                     </div>
                   </div>
                 ) : (
                   <div className="relative min-h-64 bg-gradient-to-br from-slate-900 via-slate-950 to-orange-950/40 p-6">
-                    <div className="absolute right-6 top-6 text-7xl opacity-10">
-                      🏀
-                    </div>
                     <div className="w-fit rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-slate-950">
                       NEXT GAME
                     </div>
@@ -480,7 +519,7 @@ export default async function HomePage() {
                     </div>
                     <div className="mt-2 text-sm text-slate-400">
                       {nextGame
-                        ? `${nextGame.game_date ?? "TBA"} • ${
+                        ? `${nextGame.game_date ?? "TBA"} - ${
                             nextGame.venue ?? "Venue TBA"
                           }`
                         : "Mark an upcoming game in admin."}
@@ -491,7 +530,10 @@ export default async function HomePage() {
                 {nextGame ? (
                   <div className="p-5">
                     <div className="grid grid-cols-2 gap-3">
-                      <MiniInfo label="Type" value={nextGame.match_type ?? "Game"} />
+                      <MiniInfo
+                        label="Type"
+                        value={nextGame.match_type ?? "Game"}
+                      />
                       <MiniInfo label="Status" value="Upcoming" />
                     </div>
 
@@ -500,7 +542,7 @@ export default async function HomePage() {
                         href={`/games/${nextGame.id}`}
                         className="inline-flex rounded-2xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-orange-400"
                       >
-                        Open upcoming game →
+                        Open upcoming game
                       </Link>
                     </div>
                   </div>
@@ -537,14 +579,14 @@ export default async function HomePage() {
                           }}
                         />
                       ) : (
-                        <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-800 text-4xl">
-                          🏀
+                        <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-800 text-3xl font-black text-orange-300">
+                          FH
                         </div>
                       )}
 
                       <div className="min-w-0">
                         <div className="inline-block rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-slate-950">
-                          #{featuredPlayer.jersey_number ?? "—"}
+                          #{featuredPlayer.jersey_number ?? "-"}
                         </div>
                         <div className="mt-3 text-2xl font-bold leading-tight">
                           {featuredPlayer.full_name}
@@ -555,8 +597,8 @@ export default async function HomePage() {
                             : "FACKTS Player"}
                         </div>
                         <div className="mt-2 text-sm text-slate-400">
-                          {featuredPlayer.position ?? "—"} •{" "}
-                          {featuredPlayer.role ?? "—"}
+                          {featuredPlayer.position ?? "-"} -{" "}
+                          {featuredPlayer.role ?? "-"}
                         </div>
                       </div>
                     </div>
@@ -589,7 +631,7 @@ export default async function HomePage() {
                     </div>
 
                     <div className="mt-5 text-sm font-semibold text-orange-300">
-                      Open featured profile →
+                      Open featured profile
                     </div>
                   </Link>
                 ) : (
@@ -643,7 +685,7 @@ export default async function HomePage() {
             <div className="rounded-[2rem] border border-orange-500/25 bg-slate-900/75 p-6 shadow-2xl shadow-orange-950/30 backdrop-blur">
               <div className="grid gap-6 lg:grid-cols-[0.9fr,1.1fr] lg:items-center">
                 <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/85 p-5">
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     {homepagePOG.player.photo_url ? (
                       <img
                         src={homepagePOG.player.photo_url}
@@ -655,8 +697,8 @@ export default async function HomePage() {
                         }}
                       />
                     ) : (
-                      <div className="flex h-32 w-32 items-center justify-center rounded-3xl bg-slate-800 text-4xl">
-                        🏀
+                      <div className="flex h-32 w-32 items-center justify-center rounded-3xl bg-slate-800 text-3xl font-black text-orange-300">
+                        FH
                       </div>
                     )}
 
@@ -666,7 +708,7 @@ export default async function HomePage() {
                       </div>
 
                       <div className="mt-3 text-3xl font-black leading-tight">
-                        #{homepagePOG.player.jersey_number ?? "—"}{" "}
+                        #{homepagePOG.player.jersey_number ?? "-"}{" "}
                         {homepagePOG.player.full_name}
                       </div>
 
@@ -677,8 +719,8 @@ export default async function HomePage() {
                       </div>
 
                       <div className="mt-2 text-sm text-slate-400">
-                        {homepagePOG.player.position ?? "—"} •{" "}
-                        {homepagePOG.player.role ?? "—"}
+                        {homepagePOG.player.position ?? "-"} -{" "}
+                        {homepagePOG.player.role ?? "-"}
                       </div>
                     </div>
                   </div>
@@ -691,7 +733,7 @@ export default async function HomePage() {
                       FACKTS vs {homepagePOG.game?.opponent ?? "Opponent"}
                     </div>
                     <div className="mt-1 text-sm text-slate-400">
-                      {homepagePOG.game?.game_date ?? "Date TBA"} •{" "}
+                      {homepagePOG.game?.game_date ?? "Date TBA"} -{" "}
                       {homepagePOG.game?.venue ?? "Venue TBA"}
                     </div>
                   </div>
@@ -727,7 +769,7 @@ export default async function HomePage() {
             </div>
           ) : (
             <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
-              No homepage Player of the Game has been selected yet.
+              No completed game stats are available for Player of the Game yet.
             </div>
           )}
         </div>
@@ -767,7 +809,7 @@ export default async function HomePage() {
               >
                 <div className="relative">
                   <div className="absolute left-4 top-4 z-10 rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-slate-950">
-                    #{player.jersey_number ?? "—"}
+                    #{player.jersey_number ?? "-"}
                   </div>
 
                   {player.photo_url ? (
@@ -780,8 +822,8 @@ export default async function HomePage() {
                       }}
                     />
                   ) : (
-                    <div className="flex h-72 w-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-6xl">
-                      🏀
+                    <div className="flex h-72 w-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-3xl font-black text-orange-300">
+                      FH
                     </div>
                   )}
                 </div>
@@ -805,14 +847,14 @@ export default async function HomePage() {
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <MiniInfo label="Position" value={player.position ?? "—"} />
-                    <MiniInfo label="Height" value={player.height ?? "—"} />
-                    <MiniInfo label="Hand" value={player.dominant_hand ?? "—"} />
-                    <MiniInfo label="Level" value={player.highest_level ?? "—"} />
+                    <MiniInfo label="Position" value={player.position ?? "-"} />
+                    <MiniInfo label="Height" value={player.height ?? "-"} />
+                    <MiniInfo label="Hand" value={player.dominant_hand ?? "-"} />
+                    <MiniInfo label="Level" value={player.highest_level ?? "-"} />
                   </div>
 
                   <div className="mt-5 inline-flex items-center text-sm font-semibold text-orange-300">
-                    Open player profile →
+                    Open player profile
                   </div>
                 </div>
               </Link>
@@ -875,71 +917,48 @@ export default async function HomePage() {
                   <div className="p-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="text-sm text-slate-400">
-                        {game.game_date} • {game.venue ?? "Venue TBA"}
+                        {game.game_date} - {game.venue ?? "Venue TBA"}
                       </div>
 
                       <div
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${
                           game.is_upcoming
                             ? "bg-orange-500/15 text-orange-300"
-                            : !hasScore
-                            ? "bg-slate-800 text-slate-300"
                             : gameWon
                             ? "bg-emerald-500/15 text-emerald-300"
                             : "bg-rose-500/15 text-rose-300"
                         }`}
                       >
                         {game.is_upcoming
-                          ? "UPCOMING"
-                          : !hasScore
-                          ? "FINAL"
+                          ? "Upcoming"
                           : gameWon
-                          ? "WIN"
-                          : "LOSS"}
+                          ? "Win"
+                          : "Result"}
                       </div>
                     </div>
 
-                    <div className="mt-5 flex items-center justify-between gap-4">
-                      <div>
-                        <div className="text-sm text-slate-400">Team</div>
-                        <div className="text-2xl font-bold">FACKTS</div>
-                      </div>
+                    <h3 className="mt-3 text-2xl font-bold">
+                      FACKTS vs {game.opponent ?? "Opponent"}
+                    </h3>
 
-                      <div className="text-center">
-                        {game.is_upcoming ? (
-                          <>
-                            <div className="text-3xl font-black tracking-tight text-orange-400">
-                              VS
-                            </div>
-                            <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                              Upcoming
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="text-4xl font-black tracking-tight text-orange-400">
-                              {game.team_score ?? 0} - {game.opponent_score ?? 0}
-                            </div>
-                            <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                              Final Score
-                            </div>
-                          </>
-                        )}
+                    {hasScore ? (
+                      <div className="mt-4 flex items-center gap-3">
+                        <div className="rounded-2xl bg-slate-950 px-4 py-3 text-2xl font-black text-orange-300">
+                          {game.team_score}
+                        </div>
+                        <div className="text-slate-500">-</div>
+                        <div className="rounded-2xl bg-slate-950 px-4 py-3 text-2xl font-black text-white">
+                          {game.opponent_score}
+                        </div>
                       </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-400">
+                        Score not posted yet.
+                      </p>
+                    )}
 
-                      <div className="text-right">
-                        <div className="text-sm text-slate-400">Opponent</div>
-                        <div className="text-2xl font-bold">{game.opponent}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                      <div className="text-sm text-slate-400">
-                        {game.match_type ?? "Game"}
-                      </div>
-                      <div className="text-sm font-semibold text-orange-300">
-                        Open game details →
-                      </div>
+                    <div className="mt-5 text-sm font-semibold text-orange-300">
+                      Open game details
                     </div>
                   </div>
                 </Link>
@@ -950,136 +969,6 @@ export default async function HomePage() {
       </section>
 
       <FacktsNetwork />
-
-      <section className="border-t border-slate-800 bg-slate-900/50">
-        <div className="mx-auto max-w-7xl px-6 py-12">
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="text-sm uppercase tracking-wide text-orange-300">
-                Contact
-              </div>
-              <h2 className="mt-1 text-3xl font-bold">Talk to FACKTS</h2>
-              <p className="mt-2 text-slate-400">
-                For games, collaborations, player features, sponsorships, and
-                media partnerships.
-              </p>
-            </div>
-
-            <Link
-              href="/contact"
-              className="rounded-2xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
-            >
-              Open contact page
-            </Link>
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-              <div className="text-sm uppercase tracking-wide text-orange-300">
-                Details
-              </div>
-              <div className="mt-5 space-y-4 text-slate-300">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Email
-                  </div>
-                  <a
-                    href="mailto:facktsafrica@gmail.com"
-                    className="mt-1 block text-orange-300 hover:text-orange-200"
-                  >
-                    facktsafrica@gmail.com
-                  </a>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Phone / WhatsApp
-                  </div>
-                  <a
-                    href="https://wa.me/254711468303"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 block text-orange-300 hover:text-orange-200"
-                  >
-                    +254 711 468 303
-                  </a>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Location
-                  </div>
-                  <a
-                    href="https://www.google.com/maps/search/?api=1&query=Krishna%20Center%2012%20Woodvale%20Grove%20Nairobi"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 block text-slate-300 hover:text-orange-300"
-                  >
-                    Krishna Center, 12 Woodvale Grv, Nairobi, 3rd floor, suite E05
-                  </a>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-              <div className="text-sm uppercase tracking-wide text-orange-300">
-                Platform Links
-              </div>
-              <div className="mt-5 flex flex-col gap-3">
-                <a
-                  href="https://wa.me/254711468303"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl bg-orange-500 px-4 py-3 font-black text-slate-950 transition hover:bg-orange-400"
-                >
-                  WhatsApp FACKTS
-                </a>
-
-                <a
-                  href="https://www.youtube.com/@facktsNBA"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
-                >
-                  YouTube
-                </a>
-
-                <a
-                  href="https://www.instagram.com/facktsafrica_nba?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw=="
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
-                >
-                  Instagram
-                </a>
-
-                <a
-                  href="https://www.tiktok.com/@facktsafricanba?is_from_webapp=1&sender_device=pc"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
-                >
-                  TikTok
-                </a>
-
-                <a
-                  href="https://www.facebook.com/people/Fackts-Africa/61583843182510/#"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-slate-700 px-4 py-3 text-slate-200 transition hover:bg-slate-800"
-                >
-                  Facebook
-                </a>
-
-                <Link
-                  href="/contact"
-                  className="rounded-2xl border border-orange-500/40 px-4 py-3 text-orange-300 transition hover:bg-orange-500/10"
-                >
-                  Full Contact Page
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
@@ -1094,13 +983,13 @@ function AgencyStep({
   text: string;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-950 p-4 transition duration-300 hover:border-orange-400/40 hover:bg-slate-900">
-      <div className="flex gap-4">
+    <div className="rounded-3xl border border-slate-800 bg-slate-950 p-4">
+      <div className="flex items-start gap-4">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-sm font-black text-slate-950">
           {number}
         </div>
         <div>
-          <h3 className="text-base font-black text-white">{title}</h3>
+          <div className="font-bold text-white">{title}</div>
           <p className="mt-1 text-sm leading-6 text-slate-400">{text}</p>
         </div>
       </div>
@@ -1120,57 +1009,60 @@ function LandingCard({
   return (
     <Link
       href={href}
-      className="group rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:shadow-orange-950/20"
+      className="group rounded-3xl border border-slate-800 bg-slate-900 p-5 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:bg-slate-900/90"
     >
-      <div className="text-xs uppercase tracking-[0.22em] text-orange-300">
+      <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
+        FACKTS
+      </div>
+      <h3 className="mt-3 text-2xl font-black group-hover:text-orange-300">
         {title}
-      </div>
-      <p className="mt-3 text-sm leading-7 text-slate-400">{text}</p>
-      <div className="mt-4 text-sm font-bold text-orange-300">
-        Explore →
-      </div>
+      </h3>
+      <p className="mt-3 text-sm leading-6 text-slate-400">{text}</p>
+      <div className="mt-5 text-sm font-bold text-orange-300">Open</div>
     </Link>
   );
 }
 
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4 backdrop-blur">
+    <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 backdrop-blur">
       <div className="text-sm text-slate-400">{label}</div>
-      <div className="mt-2 text-2xl font-bold text-white">{value}</div>
-    </div>
-  );
-}
-
-function FeaturedStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-3 text-center">
-      <div className="text-xs uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-      <div className="mt-1 text-xl font-black text-orange-300">{value}</div>
-    </div>
-  );
-}
-
-function FlashStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-3xl border border-orange-500/20 bg-slate-900/80 p-5 text-center shadow-lg shadow-orange-950/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40">
-      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
-        {label}
-      </div>
-      <div className="mt-2 text-4xl font-black text-orange-300">{value}</div>
+      <div className="mt-2 text-3xl font-black text-orange-300">{value}</div>
     </div>
   );
 }
 
 function MiniInfo({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-slate-950 p-3">
+    <div className="rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2">
       <div className="text-xs uppercase tracking-wide text-slate-500">
         {label}
       </div>
-      <div className="mt-1 font-medium text-slate-200">{value}</div>
+      <div className="mt-1 truncate text-sm font-semibold text-white">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function FeaturedStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-2 text-center">
+      <div className="text-xs uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-black text-orange-300">{value}</div>
+    </div>
+  );
+}
+
+function FlashStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-3xl border border-orange-500/25 bg-slate-950/90 p-5 text-center shadow-xl shadow-orange-950/20">
+      <div className="text-xs uppercase tracking-[0.25em] text-slate-500">
+        {label}
+      </div>
+      <div className="mt-2 text-4xl font-black text-orange-300">{value}</div>
     </div>
   );
 }

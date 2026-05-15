@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -30,6 +30,14 @@ const rosterStatuses = [
   { label: "Pending", value: "pending" },
   { label: "Unavailable", value: "unavailable" },
 ];
+
+function gameLabel(game: any) {
+  const date = game.game_date ?? "Date TBA";
+  const opponent = game.opponent ?? "Opponent";
+  const status = game.is_upcoming ? " - UPCOMING" : "";
+
+  return `${date} - FACKTS vs ${opponent}${status}`;
+}
 
 export default function AdminGameGuestsPage() {
   const [games, setGames] = useState<any[]>([]);
@@ -119,9 +127,7 @@ export default function AdminGameGuestsPage() {
   }, [guestRosters, form.game_id]);
 
   const selectedGuestIds = useMemo(() => {
-    return new Set(
-      selectedGameGuestRoster.map((row) => row.guest_hooper_id)
-    );
+    return new Set(selectedGameGuestRoster.map((row) => row.guest_hooper_id));
   }, [selectedGameGuestRoster]);
 
   const availableGuestHoopers = useMemo(() => {
@@ -245,7 +251,7 @@ export default function AdminGameGuestsPage() {
             href="/admin"
             className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
           >
-            ← Back to Admin
+            Back to Admin
           </Link>
 
           <div className="mt-4 text-sm uppercase tracking-[0.25em] text-orange-300">
@@ -257,7 +263,8 @@ export default function AdminGameGuestsPage() {
           </h1>
 
           <p className="mt-3 text-slate-400">
-            Add guest hoopers to normal FACKTS games and manage their game roster status.
+            Add guest hoopers to normal FACKTS games and manage their game
+            roster status.
           </p>
         </div>
 
@@ -284,7 +291,8 @@ export default function AdminGameGuestsPage() {
                 </h2>
 
                 <p className="mt-2 text-sm text-slate-500">
-                  Use this when a visiting baller or community player joins a FACKTS game.
+                  Use this when a visiting baller or community player joins a
+                  FACKTS game.
                 </p>
               </div>
 
@@ -301,8 +309,7 @@ export default function AdminGameGuestsPage() {
                   <option value="">Select game</option>
                   {games.map((game) => (
                     <option key={game.id} value={game.id}>
-                      {game.game_date ?? "Date TBA"} — FACKTS vs {game.opponent}
-                      {game.is_upcoming ? " — UPCOMING" : ""}
+                      {gameLabel(game)}
                     </option>
                   ))}
                 </select>
@@ -332,8 +339,8 @@ export default function AdminGameGuestsPage() {
                     </div>
 
                     <div className="mt-2 text-sm text-slate-400">
-                      {selectedGame.game_date ?? "Date TBA"} •{" "}
-                      {selectedGame.venue ?? "Venue TBA"} •{" "}
+                      {selectedGame.game_date ?? "Date TBA"} |{" "}
+                      {selectedGame.venue ?? "Venue TBA"} |{" "}
                       {selectedGame.match_type ?? "Game"}
                     </div>
 
@@ -363,7 +370,7 @@ export default function AdminGameGuestsPage() {
                     {availableGuestHoopers.map((guest) => (
                       <option key={guest.id} value={guest.id}>
                         {guest.full_name}
-                        {guest.position ? ` — ${guest.position}` : ""}
+                        {guest.position ? ` - ${guest.position}` : ""}
                       </option>
                     ))}
                   </select>
@@ -562,8 +569,8 @@ function GuestGroup({
                         }}
                       />
                     ) : (
-                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-800 text-2xl">
-                        🏀
+                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-800 text-xl font-black text-orange-300">
+                        GH
                       </div>
                     )}
 
@@ -573,7 +580,7 @@ function GuestGroup({
                       </div>
 
                       <div className="mt-1 text-sm text-slate-400">
-                        Guest Hooper • {guest?.position ?? "Position TBA"}
+                        Guest Hooper | {guest?.position ?? "Position TBA"}
                       </div>
 
                       {row.notes ? (
