@@ -1,210 +1,116 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 
-const navItems = [
-  { label: "Home", href: "/", description: "Landing page" },
-  { label: "Players", href: "/players", description: "Player profiles" },
-  { label: "Games", href: "/games", description: "Fixtures and results" },
-  {
-    label: "Leaderboards",
-    href: "/leaderboards",
-    description: "Performance rankings",
-  },
-  { label: "1-on-1", href: "/one-on-one", description: "Player battles" },
-  { label: "Contact", href: "/contact", description: "Bookings and partnerships" },
-];
-
-export default function MobileNav() {
+export default function PublicMobileNav() {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  const isAdminPage = pathname.startsWith("/admin");
+  if (pathname.startsWith("/admin")) {
+    return null;
+  }
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setIsOpen(false);
-    }
-
-    window.addEventListener("keydown", handleEscape);
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    setIsOpen(false);
-  }, [pathname]);
-
-  if (isAdminPage) return null;
+  const navItems = [
+    { label: "Home", href: "/", isAdmin: false },
+    { label: "Players", href: "/players", isAdmin: false },
+    { label: "Games", href: "/games", isAdmin: false },
+    { label: "Media", href: "/media", isAdmin: false },
+    { label: "Leaders", href: "/leaderboards", isAdmin: false },
+    { label: "1v1", href: "/one-on-one", isAdmin: false },
+    { label: "Contact", href: "/contact", isAdmin: false },
+    { label: "Admin", href: "/admin", isAdmin: true },
+  ];
 
   return (
     <>
-      <div className="border-b border-slate-800 bg-slate-950/95 px-4 py-3 shadow-lg shadow-black/20 backdrop-blur md:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-orange-500/30">
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media (max-width: 767px) {
+              body {
+                padding-top: 74px;
+              }
+            }
+          `,
+        }}
+      />
+
+      <nav className="fixed left-0 right-0 top-0 z-50 border-b border-slate-800 bg-slate-950/95 text-white shadow-xl shadow-black/30 backdrop-blur md:hidden">
+        <div className="flex items-center justify-between gap-3 px-3 py-2">
+          <Link href="/" className="flex min-w-0 items-center gap-2">
+            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-slate-800 via-slate-900 to-black shadow-[0_8px_24px_rgba(0,0,0,0.45)] ring-1 ring-white/5">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_42%)]" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-orange-500/70 to-transparent" />
+
               <img
                 src="/logos/fackts-hoops-logo.png"
                 alt="FACKTS Hoops logo"
-                className="h-full w-full object-contain p-1.5"
+                className="relative z-10 h-full w-full object-contain p-1"
               />
             </div>
 
-            <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-orange-300">
-                FACKTS
+            <div className="min-w-0 leading-tight">
+              <div className="truncate text-sm font-black text-white">
+                FACKTS Hoops
               </div>
-              <div className="truncate text-base font-black text-white">
-                Hoops
+              <div className="truncate text-[10px] text-slate-400">
+                Basketball. Culture. Data.
               </div>
             </div>
           </Link>
 
           <button
             type="button"
-            onClick={() => setIsOpen(true)}
-            aria-label="Open navigation menu"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900 text-xl font-black text-orange-300 shadow-lg shadow-black/20"
+            onClick={() => setOpen((current) => !current)}
+            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-500/40 bg-orange-500 text-xl font-black text-slate-950 shadow-[0_8px_24px_rgba(249,115,22,0.18)]"
+            aria-label="Open menu"
           >
             ☰
           </button>
         </div>
-      </div>
 
-      {isOpen ? (
-        <div className="fixed inset-0 z-[100] md:hidden">
-          <button
-            type="button"
-            aria-label="Close navigation menu"
-            onClick={() => setIsOpen(false)}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-          />
-
-          <aside className="absolute right-0 top-0 z-10 h-full w-[84%] max-w-sm border-l border-slate-800 bg-slate-950 shadow-2xl shadow-black">
-            <div className="flex h-full flex-col">
-              <div className="border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/25 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <Link href="/" className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-orange-500/30">
-                      <img
-                        src="/logos/fackts-hoops-logo.png"
-                        alt="FACKTS Hoops logo"
-                        className="h-full w-full object-contain p-2"
-                      />
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-orange-300">
-                        FACKTS
-                      </div>
-                      <div className="truncate text-lg font-black text-white">
-                        Hoops
-                      </div>
-                    </div>
-                  </Link>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsOpen(false)}
-                    aria-label="Close navigation menu"
-                    className="shrink-0 rounded-xl border border-slate-700 px-3 py-1.5 text-xs font-black text-slate-200 transition hover:bg-slate-800"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <p className="mt-3 text-xs leading-5 text-slate-400">
-                  Player visibility, game records, media stories, and Kenyan
-                  basketball culture.
-                </p>
+        {open ? (
+          <div className="absolute right-3 top-[64px] w-[min(92vw,340px)] overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 shadow-2xl shadow-black/40">
+            <div className="border-b border-slate-800 px-4 py-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-orange-300">
+                Menu
               </div>
-
-              <nav className="flex-1 overflow-y-auto p-3">
-                <div className="grid gap-2">
-                  {navItems.map((item) => {
-                    const isActive =
-                      item.href === "/"
-                        ? pathname === "/"
-                        : pathname.startsWith(item.href);
-
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`group rounded-2xl border px-3 py-3 transition ${
-                          isActive
-                            ? "border-orange-500/50 bg-orange-500 text-slate-950"
-                            : "border-slate-800 bg-slate-900 text-white hover:border-orange-400/40 hover:bg-slate-800"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div
-                              className={`text-base font-black ${
-                                isActive ? "text-slate-950" : "text-white"
-                              }`}
-                            >
-                              {item.label}
-                            </div>
-
-                            <div
-                              className={`mt-0.5 text-[11px] ${
-                                isActive ? "text-slate-800" : "text-slate-400"
-                              }`}
-                            >
-                              {item.description}
-                            </div>
-                          </div>
-
-                          <div
-                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-black ${
-                              isActive
-                                ? "bg-slate-950 text-orange-300"
-                                : "bg-slate-950 text-orange-300 ring-1 ring-slate-800 group-hover:bg-orange-500 group-hover:text-slate-950"
-                            }`}
-                          >
-                            →
-                          </div>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </nav>
-
-              <div className="border-t border-slate-800 p-3">
-                <Link
-                  href="/contact"
-                  className="block rounded-2xl bg-orange-500 px-4 py-2.5 text-center text-sm font-black text-slate-950 transition hover:bg-orange-400"
-                >
-                  Partner With FACKTS
-                </Link>
-
-                <Link
-                  href="/admin/login"
-                  className="mt-2 block rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 transition hover:border-orange-500/40 hover:text-orange-300"
-                >
-                  Admin Login
-                </Link>
-
-                <div className="mt-2 text-center text-[11px] text-slate-500">
-                  FACKTS Hoops • Kenyan Basketball
-                </div>
+              <div className="mt-1 text-sm font-bold text-white">
+                Move through FACKTS Hoops
               </div>
             </div>
-          </aside>
-        </div>
-      ) : null}
+
+            <div className="grid grid-cols-2 gap-2 p-3">
+              {navItems.map((item) => {
+                const isActive =
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(item.href);
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    prefetch={item.isAdmin ? false : undefined}
+                    onClick={() => setOpen(false)}
+                    className={`rounded-2xl border px-3 py-3 text-center text-xs font-bold transition active:scale-95 ${
+                      item.isAdmin
+                        ? "border-orange-500/40 bg-orange-500 text-slate-950"
+                        : isActive
+                        ? "border-orange-500/50 bg-orange-500/15 text-orange-300"
+                        : "border-slate-800 bg-slate-900 text-slate-200"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </nav>
     </>
   );
 }

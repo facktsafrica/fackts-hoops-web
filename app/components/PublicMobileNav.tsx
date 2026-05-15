@@ -14,9 +14,10 @@ export default function PublicMobileNav() {
     { label: "Home", href: "/", isAdmin: false },
     { label: "Players", href: "/players", isAdmin: false },
     { label: "Games", href: "/games", isAdmin: false },
-    { label: "Contact", href: "/contact", isAdmin: false },
+    { label: "Media", href: "/media", isAdmin: false },
     { label: "Leaders", href: "/leaderboards", isAdmin: false },
     { label: "1v1", href: "/one-on-one", isAdmin: false },
+    { label: "Contact", href: "/contact", isAdmin: false },
     { label: "Admin", href: "/admin", isAdmin: true },
   ];
 

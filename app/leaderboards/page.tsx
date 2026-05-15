@@ -7,22 +7,34 @@ export const revalidate = 0;
 type LeaderboardPlayer = {
   id: string;
   full_name: string;
-  nickname?: string | null;
-  jersey_number?: number | null;
-  position?: string | null;
-  role?: string | null;
-  photo_url?: string | null;
-  photo_position?: string | null;
+  nickname: string | null;
+  jersey_number: number | null;
+  position: string | null;
+  role: string | null;
+  photo_url: string | null;
+  photo_position: string | null;
+
+  games_played: number;
+
   total_points: number;
   points_per_game: number;
-  total_three_pointers_made: number;
+
+  total_assists: number;
+  assists_per_game: number;
+
   total_rebounds: number;
-  total_blocks: number;
+  rebounds_per_game: number;
+
   total_steals: number;
-  games_played: number;
+  steals_per_game: number;
+
+  total_blocks: number;
+  blocks_per_game: number;
+
+  total_three_pointers_made: number;
 };
 
-async function getLeaderboardData() {
+async function getLeaderboard() {
   const [playersResult, statsResult] = await Promise.all([
     supabase
       .from("players")
@@ -40,89 +52,112 @@ async function getLeaderboardData() {
   const players = playersResult.data ?? [];
   const stats = statsResult.data ?? [];
 
-  const leaderboard: LeaderboardPlayer[] = players.map((player: any) => {
+  return players.map((player: any) => {
     const playerStats = stats.filter((row: any) => row.player_id === player.id);
+    const gamesPlayed = playerStats.length;
 
     const totals = playerStats.reduce(
       (acc: any, row: any) => {
         acc.total_points += Number(row.points ?? 0);
-        acc.total_three_pointers_made += Number(row.three_pointers_made ?? 0);
+        acc.total_assists += Number(row.assists ?? 0);
         acc.total_rebounds += Number(row.rebounds ?? 0);
-        acc.total_blocks += Number(row.blocks ?? 0);
         acc.total_steals += Number(row.steals ?? 0);
+        acc.total_blocks += Number(row.blocks ?? 0);
+
+        acc.total_three_pointers_made += Number(
+          row.three_pointers_made ??
+            row.three_pointers ??
+            row.threes_made ??
+            row.three_pm ??
+            0
+        );
+
         return acc;
       },
       {
         total_points: 0,
-        total_three_pointers_made: 0,
+        total_assists: 0,
         total_rebounds: 0,
-        total_blocks: 0,
         total_steals: 0,
+        total_blocks: 0,
+        total_three_pointers_made: 0,
       }
     );
 
-    const gamesPlayed = playerStats.length;
-
-    const pointsPerGame =
-      gamesPlayed > 0
-        ? Number((totals.total_points / gamesPlayed).toFixed(1))
-        : 0;
+    function avg(value: number) {
+      return gamesPlayed > 0 ? Number((value / gamesPlayed).toFixed(1)) : 0;
+    }
 
     return {
       id: player.id,
       full_name: player.full_name,
-      nickname: player.nickname,
-      jersey_number: player.jersey_number,
-      position: player.position,
-      role: player.role,
-      photo_url: player.photo_url,
-      photo_position: player.photo_position,
-      total_points: totals.total_points,
-      points_per_game: pointsPerGame,
-      total_three_pointers_made: totals.total_three_pointers_made,
-      total_rebounds: totals.total_rebounds,
-      total_blocks: totals.total_blocks,
-      total_steals: totals.total_steals,
+      nickname: player.nickname ?? null,
+      jersey_number: player.jersey_number ?? null,
+      position: player.position ?? null,
+      role: player.role ?? null,
+      photo_url: player.photo_url ?? null,
+      photo_position: player.photo_position ?? null,
+
       games_played: gamesPlayed,
-    };
+
+      total_points: totals.total_points,
+      points_per_game: avg(totals.total_points),
+
+      total_assists: totals.total_assists,
+      assists_per_game: avg(totals.total_assists),
+
+      total_rebounds: totals.total_rebounds,
+      rebounds_per_game: avg(totals.total_rebounds),
+
+      total_steals: totals.total_steals,
+      steals_per_game: avg(totals.total_steals),
+
+      total_blocks: totals.total_blocks,
+      blocks_per_game: avg(totals.total_blocks),
+
+      total_three_pointers_made: totals.total_three_pointers_made,
+    } as LeaderboardPlayer;
   });
-
-  return leaderboard;
 }
 
-function sortByStat(players: LeaderboardPlayer[], stat: keyof LeaderboardPlayer) {
-  return [...players]
-    .sort((a: any, b: any) => Number(b[stat] ?? 0) - Number(a[stat] ?? 0))
-    .slice(0, 10);
+function sortByStat(
+  players: LeaderboardPlayer[],
+  statKey: keyof LeaderboardPlayer
+) {
+  return [...players].sort((a: any, b: any) => {
+    const statDiff = Number(b[statKey] ?? 0) - Number(a[statKey] ?? 0);
+
+    if (statDiff !== 0) return statDiff;
+
+    return b.games_played - a.games_played;
+  });
 }
 
-function formatStatValue(player: LeaderboardPlayer, statKey: keyof LeaderboardPlayer) {
-  if (statKey === "points_per_game") {
-    return Number(player[statKey] ?? 0).toFixed(1);
+function formatStat(value: any, statKey: keyof LeaderboardPlayer) {
+  if (
+    statKey === "points_per_game" ||
+    statKey === "assists_per_game" ||
+    statKey === "rebounds_per_game" ||
+    statKey === "steals_per_game" ||
+    statKey === "blocks_per_game"
+  ) {
+    return Number(value ?? 0).toFixed(1);
   }
 
-  return String(player[statKey] ?? 0);
+  return String(value ?? 0);
 }
 
 export default async function LeaderboardsPage() {
-  const leaderboard = await getLeaderboardData();
+  const leaderboard = await getLeaderboard();
 
-  const mostPoints = sortByStat(leaderboard, "total_points");
   const bestPPG = sortByStat(leaderboard, "points_per_game");
+  const totalPoints = sortByStat(leaderboard, "total_points");
+  const bestAPG = sortByStat(leaderboard, "assists_per_game");
+  const bestRebounds = sortByStat(leaderboard, "rebounds_per_game");
+  const bestSteals = sortByStat(leaderboard, "steals_per_game");
+  const bestBlocks = sortByStat(leaderboard, "blocks_per_game");
   const mostThrees = sortByStat(leaderboard, "total_three_pointers_made");
-  const mostRebounds = sortByStat(leaderboard, "total_rebounds");
-  const mostBlocks = sortByStat(leaderboard, "total_blocks");
-  const mostSteals = sortByStat(leaderboard, "total_steals");
   const mostGames = sortByStat(leaderboard, "games_played");
-
-  const totalPlayers = leaderboard.length;
-  const totalEntries = leaderboard.reduce(
-    (acc, player) => acc + player.games_played,
-    0
-  );
-
-  const topScorer = mostPoints[0];
-  const topPPG = bestPPG[0];
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -134,54 +169,30 @@ export default async function LeaderboardsPage() {
         <div className="absolute -left-20 top-10 h-60 w-60 rounded-full bg-orange-500/10 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-60 w-60 rounded-full bg-orange-400/10 blur-3xl" />
 
-        <div className="relative mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-10">
-          <div className="grid gap-6 lg:grid-cols-[1.05fr,0.95fr] lg:items-end">
-            <div>
-              <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
-                FACKTS Hoops
-              </div>
-
-              <h1 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
-                Leaderboards
-              </h1>
-
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">
-                See who leads the court in scoring, shooting, rebounds, defense, and games played.
-              </p>
+        <div className="relative mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
+          <div className="max-w-4xl">
+            <div className="text-[10px] uppercase tracking-[0.25em] text-orange-300 md:text-xs">
+              FACKTS Hoops
             </div>
 
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <HeroMiniStat label="Players" value={String(totalPlayers)} />
-              <HeroMiniStat label="Entries" value={String(totalEntries)} />
-              <HeroMiniStat
-                label="Top Points"
-                value={topScorer ? String(topScorer.total_points) : "0"}
-                sub={topScorer?.full_name ?? "No data"}
-              />
-              <HeroMiniStat
-                label="Best PPG"
-                value={topPPG ? String(topPPG.points_per_game) : "0"}
-                sub={topPPG?.full_name ?? "No data"}
-              />
-            </div>
+            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
+              Leaderboards
+            </h1>
+
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">
+              Scoring, assists, shooting, rebounds, defense, and games played.
+            </p>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
+      <section className="mx-auto max-w-7xl px-3 py-4 md:px-6 md:py-6">
         {leaderboard.length === 0 ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
-            No leaderboard data yet. Add players and game stats first.
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
+            No leaderboard data is available yet.
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            <LeaderboardTableCard
-              title="Points Leaders"
-              statLabel="PTS"
-              players={mostPoints}
-              statKey="total_points"
-            />
-
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <LeaderboardTableCard
               title="Points Per Game"
               statLabel="PPG"
@@ -190,31 +201,45 @@ export default async function LeaderboardsPage() {
             />
 
             <LeaderboardTableCard
+              title="Total Points Leaders"
+              statLabel="PTS"
+              players={totalPoints}
+              statKey="total_points"
+            />
+
+            <LeaderboardTableCard
+              title="Assists Per Game"
+              statLabel="APG"
+              players={bestAPG}
+              statKey="assists_per_game"
+            />
+
+            <LeaderboardTableCard
+              title="Rebounds Per Game"
+              statLabel="RPG"
+              players={bestRebounds}
+              statKey="rebounds_per_game"
+            />
+
+            <LeaderboardTableCard
+              title="Steals Per Game"
+              statLabel="SPG"
+              players={bestSteals}
+              statKey="steals_per_game"
+            />
+
+            <LeaderboardTableCard
+              title="Blocks Per Game"
+              statLabel="BPG"
+              players={bestBlocks}
+              statKey="blocks_per_game"
+            />
+
+            <LeaderboardTableCard
               title="3-Point Leaders"
               statLabel="3PM"
               players={mostThrees}
               statKey="total_three_pointers_made"
-            />
-
-            <LeaderboardTableCard
-              title="Rebounds Leaders"
-              statLabel="REB"
-              players={mostRebounds}
-              statKey="total_rebounds"
-            />
-
-            <LeaderboardTableCard
-              title="Blocks Leaders"
-              statLabel="BLK"
-              players={mostBlocks}
-              statKey="total_blocks"
-            />
-
-            <LeaderboardTableCard
-              title="Steals Leaders"
-              statLabel="STL"
-              players={mostSteals}
-              statKey="total_steals"
             />
 
             <LeaderboardTableCard
@@ -241,130 +266,71 @@ function LeaderboardTableCard({
   players: LeaderboardPlayer[];
   statKey: keyof LeaderboardPlayer;
 }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl shadow-black/20">
-      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/80 px-3 py-3">
-        <div className="min-w-0">
-          <div className="text-[9px] uppercase tracking-[0.2em] text-orange-300">
-            Leaderboard
-          </div>
-          <h2 className="mt-0.5 truncate text-base font-black">{title}</h2>
-        </div>
+  const topPlayers = players.slice(0, 7);
 
-        <div className="ml-2 shrink-0 rounded-full bg-orange-500 px-2.5 py-1 text-[10px] font-black text-slate-950">
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-md shadow-black/20">
+      <div className="border-b border-slate-800 bg-slate-950/70 px-3 py-2">
+        <div className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-300">
           {statLabel}
         </div>
+
+        <h2 className="mt-0.5 text-sm font-black leading-tight md:text-base">
+          {title}
+        </h2>
       </div>
 
-      <table className="w-full table-fixed border-collapse">
-        <thead>
-          <tr className="border-b border-slate-800 bg-slate-950/60 text-left">
-            <th className="w-[36px] px-2 py-2 text-[9px] uppercase tracking-[0.15em] text-slate-500">
-              #
-            </th>
+      <div className="divide-y divide-slate-800">
+        {topPlayers.map((player, index) => (
+          <Link
+            key={player.id}
+            href={`/players/${player.id}`}
+            className="grid grid-cols-[1.7rem_2.45rem_minmax(0,1fr)_3rem] items-center gap-2 px-2.5 py-1.5 transition hover:bg-slate-800/60 md:grid-cols-[1.9rem_2.65rem_minmax(0,1fr)_3.2rem] md:px-3"
+          >
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-950 text-[11px] font-black text-orange-300 ring-1 ring-slate-800">
+              {index + 1}
+            </div>
 
-            <th className="px-1 py-2 text-[9px] uppercase tracking-[0.15em] text-slate-500">
-              Player
-            </th>
-
-            <th className="w-[58px] px-2 py-2 text-right text-[9px] uppercase tracking-[0.15em] text-slate-500">
-              {statLabel}
-            </th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {players.map((player, index) => (
-            <tr
-              key={`${title}-${player.id}`}
-              className="border-b border-slate-800/80 transition hover:bg-slate-800/60"
-            >
-              <td className="px-2 py-2 align-middle">
-                <div
-                  className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black ${
-                    index === 0
-                      ? "bg-orange-500 text-slate-950"
-                      : "bg-slate-800 text-slate-300"
-                  }`}
-                >
-                  {index + 1}
+            <div className="h-9 w-9 overflow-hidden rounded-lg bg-slate-950 ring-1 ring-slate-800 md:h-10 md:w-10">
+              {player.photo_url ? (
+                <img
+                  src={player.photo_url}
+                  alt={player.full_name}
+                  className="h-full w-full object-cover"
+                  style={{
+                    objectPosition: player.photo_position ?? "center center",
+                  }}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-base">
+                  🏀
                 </div>
-              </td>
+              )}
+            </div>
 
-              <td className="min-w-0 px-1 py-2">
-                <Link
-                  href={`/players/${player.id}`}
-                  className="group flex min-w-0 items-center gap-2"
-                >
-                  {player.photo_url ? (
-                    <img
-                      src={player.photo_url}
-                      alt={player.full_name}
-                      className="h-9 w-9 shrink-0 rounded-xl border border-slate-700 object-cover transition group-hover:border-orange-400/50"
-                      style={{
-                        objectPosition:
-                          player.photo_position ?? "center center",
-                      }}
-                    />
-                  ) : (
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-base">
-                      🏀
-                    </div>
-                  )}
+            <div className="min-w-0">
+              <div className="truncate text-[11px] font-black leading-tight text-white md:text-xs">
+                #{player.jersey_number ?? "—"} {player.full_name}
+              </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] font-bold leading-tight text-white group-hover:text-orange-300">
-                      #{player.jersey_number ?? "—"} {player.full_name}
-                    </div>
+              <div className="mt-0.5 truncate text-[9px] leading-tight text-slate-400 md:text-[10px]">
+                {player.position ?? "Position TBA"}
+                {player.nickname ? ` • ${player.nickname}` : ""}
+              </div>
+            </div>
 
-                    <div className="mt-0.5 truncate text-[10px] leading-tight text-slate-400">
-                      {player.nickname
-                        ? `"${player.nickname}"`
-                        : player.role ?? "Player"}
-                    </div>
+            <div className="text-right">
+              <div className="text-base font-black leading-none text-orange-300 md:text-lg">
+                {formatStat(player[statKey], statKey)}
+              </div>
 
-                    <div className="mt-0.5 truncate text-[10px] leading-tight text-slate-500">
-                      {player.position ?? "Position TBA"}
-                    </div>
-                  </div>
-                </Link>
-              </td>
-
-              <td className="px-2 py-2 text-right align-middle">
-                <div className="text-lg font-black leading-none text-orange-300">
-                  {formatStatValue(player, statKey)}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function HeroMiniStat({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 shadow-xl shadow-black/20 backdrop-blur">
-      <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500">
-        {label}
+              <div className="mt-0.5 text-[8px] font-bold uppercase tracking-wide text-slate-500">
+                {statLabel}
+              </div>
+            </div>
+          </Link>
+        ))}
       </div>
-
-      <div className="mt-1 text-2xl font-black leading-none text-orange-300">
-        {value}
-      </div>
-
-      {sub ? (
-        <div className="mt-1 truncate text-[11px] text-slate-400">{sub}</div>
-      ) : null}
-    </div>
+    </section>
   );
 }
