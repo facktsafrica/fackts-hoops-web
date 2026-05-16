@@ -14,6 +14,7 @@ export default function PublicHeader() {
     { label: "Home", href: "/" },
     { label: "Players", href: "/players" },
     { label: "Guests", href: "/guest-hoopers" },
+    { label: "Guest Leaders", href: "/guest-leaderboards" },
     { label: "Games", href: "/games" },
     { label: "Media", href: "/media" },
     { label: "Leaders", href: "/leaderboards" },

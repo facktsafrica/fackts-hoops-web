@@ -7,15 +7,20 @@ export const revalidate = 0;
 type MediaStory = {
   id: string;
   title?: string | null;
+  subtitle?: string | null;
   label?: string | null;
   category?: string | null;
+  story_type?: string | null;
   description?: string | null;
   youtube_url?: string | null;
   video_url?: string | null;
   url?: string | null;
+  video_id?: string | null;
+  playlist_id?: string | null;
   thumbnail_url?: string | null;
   display_order?: number | null;
   is_active?: boolean | null;
+  is_featured?: boolean | null;
   created_at?: string | null;
 };
 
@@ -45,6 +50,10 @@ function getStoryUrl(story: MediaStory) {
 
 function getCategory(story: MediaStory) {
   return story.category || "Media Story";
+}
+
+function getStoryType(story: MediaStory) {
+  return story.story_type || "Story";
 }
 
 function getYouTubeId(url: string) {
@@ -77,8 +86,9 @@ function getYouTubeId(url: string) {
   }
 }
 
-function getEmbedUrl(url: string) {
-  const videoId = getYouTubeId(url);
+function getEmbedUrl(story: MediaStory) {
+  const url = getStoryUrl(story);
+  const videoId = story.video_id || getYouTubeId(url);
 
   if (!videoId) return "";
 
@@ -88,7 +98,7 @@ function getEmbedUrl(url: string) {
 function getThumbnail(story: MediaStory) {
   if (story.thumbnail_url) return story.thumbnail_url;
 
-  const videoId = getYouTubeId(getStoryUrl(story));
+  const videoId = story.video_id || getYouTubeId(getStoryUrl(story));
 
   if (videoId) {
     return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
@@ -112,7 +122,19 @@ function groupByCategory(stories: MediaStory[]) {
 
 export default async function MediaPage() {
   const stories = await getMediaStories();
-  const groupedStories = groupByCategory(stories);
+
+  const explicitlyFeatured = stories.filter(
+    (story) => story.is_featured === true
+  );
+
+  const featuredStory =
+    explicitlyFeatured.length > 0 ? explicitlyFeatured[0] : stories[0] ?? null;
+
+  const remainingStories = featuredStory
+    ? stories.filter((story) => story.id !== featuredStory.id)
+    : stories;
+
+  const groupedStories = groupByCategory(remainingStories);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -129,7 +151,7 @@ export default async function MediaPage() {
             href="/"
             className="inline-flex rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-2 text-sm font-bold text-slate-300 backdrop-blur transition hover:bg-slate-800"
           >
-            ← Back Home
+            Back Home
           </Link>
 
           <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr,0.9fr] lg:items-end">
@@ -151,17 +173,27 @@ export default async function MediaPage() {
 
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
               <HeroMiniStat label="Stories" value={String(stories.length)} />
-              <HeroMiniStat label="Categories" value={String(groupedStories.length)} />
-              <HeroMiniStat label="Status" value="Live" />
+              <HeroMiniStat
+                label="Categories"
+                value={String(groupedStories.length)}
+              />
+              <HeroMiniStat label="Featured" value={featuredStory ? "Yes" : "No"} />
             </div>
           </div>
         </div>
       </section>
 
+      {featuredStory ? <FeaturedMediaStory story={featuredStory} /> : null}
+
       <section className="mx-auto max-w-7xl px-4 py-5 md:px-6 md:py-10">
         {stories.length === 0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-400 md:rounded-3xl md:p-6">
             No media stories are live yet.
+          </div>
+        ) : remainingStories.length === 0 ? (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-400 md:rounded-3xl md:p-6">
+            Only the featured story is live right now. More stories will appear
+            here once added.
           </div>
         ) : (
           <div className="grid gap-8">
@@ -170,7 +202,7 @@ export default async function MediaPage() {
                 <div className="mb-3 flex flex-wrap items-end justify-between gap-3 md:mb-4">
                   <div>
                     <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
-                      {category}
+                      Category
                     </div>
 
                     <h2 className="mt-1 text-xl font-black md:text-3xl">
@@ -197,24 +229,108 @@ export default async function MediaPage() {
   );
 }
 
+function FeaturedMediaStory({ story }: { story: MediaStory }) {
+  const title = getStoryTitle(story);
+  const thumbnail = getThumbnail(story);
+  const embedUrl = getEmbedUrl(story);
+  const url = getStoryUrl(story);
+
+  return (
+    <section className="border-b border-slate-800 bg-slate-950">
+      <div className="mx-auto grid max-w-7xl gap-5 px-4 py-6 md:grid-cols-[1.15fr,0.85fr] md:items-center md:px-6 md:py-8">
+        <div className="rounded-[2rem] border border-orange-500/25 bg-slate-900 p-5 shadow-2xl shadow-orange-950/20 md:p-6">
+          <div className="inline-flex rounded-full bg-orange-500 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-950">
+            Featured Story
+          </div>
+
+          <div className="mt-4 text-xs uppercase tracking-[0.25em] text-orange-300">
+            {getCategory(story)} - {getStoryType(story)}
+          </div>
+
+          <h2 className="mt-3 text-2xl font-black leading-tight md:text-4xl">
+            {title}
+          </h2>
+
+          {story.subtitle ? (
+            <p className="mt-3 text-sm font-semibold text-orange-300 md:text-base">
+              {story.subtitle}
+            </p>
+          ) : null}
+
+          {story.description ? (
+            <p className="mt-4 text-sm leading-7 text-slate-300">
+              {story.description}
+            </p>
+          ) : null}
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            {url ? (
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-2xl bg-orange-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-orange-400"
+              >
+                Open Story
+              </a>
+            ) : null}
+
+            <Link
+              href="/contact"
+              className="rounded-2xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-slate-800"
+            >
+              Work With FACKTS
+            </Link>
+          </div>
+        </div>
+
+        <div className="mx-auto w-full max-w-xl overflow-hidden rounded-[2rem] border border-slate-800 bg-black shadow-2xl shadow-black/30">
+          <div className="relative">
+            {embedUrl ? (
+              <iframe
+                src={embedUrl}
+                title={title}
+                className="aspect-video w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                referrerPolicy="strict-origin-when-cross-origin"
+              />
+            ) : thumbnail ? (
+              <img
+                src={thumbnail}
+                alt={title}
+                className="aspect-video w-full object-cover"
+              />
+            ) : (
+              <div className="flex aspect-video w-full items-center justify-center bg-gradient-to-br from-slate-950 to-orange-950/30">
+                <PlayBadge size="large" />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function MediaStoryCard({ story }: { story: MediaStory }) {
   const title = getStoryTitle(story);
   const url = getStoryUrl(story);
   const thumbnail = getThumbnail(story);
-  const embedUrl = getEmbedUrl(url);
+  const embedUrl = getEmbedUrl(story);
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-black/20 transition hover:border-orange-400/30 md:rounded-[2rem] md:shadow-xl">
+    <article className="group overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-black/20 transition hover:-translate-y-1 hover:border-orange-400/30 hover:shadow-orange-950/20 md:rounded-[2rem] md:shadow-xl">
       <div className="relative h-36 overflow-hidden bg-slate-950 md:h-48">
         {thumbnail ? (
           <img
             src={thumbnail}
             alt={title}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-950 to-orange-950/30 text-4xl">
-            ▶️
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-950 to-orange-950/30">
+            <PlayBadge size="large" />
           </div>
         )}
 
@@ -224,8 +340,8 @@ function MediaStoryCard({ story }: { story: MediaStory }) {
           {getCategory(story)}
         </div>
 
-        <div className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-white/90 text-sm font-black text-slate-950 shadow-lg">
-          ▶
+        <div className="absolute bottom-3 right-3">
+          <PlayBadge size="small" />
         </div>
       </div>
 
@@ -273,6 +389,32 @@ function MediaStoryCard({ story }: { story: MediaStory }) {
         </div>
       </div>
     </article>
+  );
+}
+
+function PlayBadge({ size = "small" }: { size?: "small" | "large" }) {
+  const wrapperSize =
+    size === "large" ? "h-20 w-20 rounded-[1.75rem]" : "h-12 w-12 rounded-2xl";
+
+  const triangleSize =
+    size === "large"
+      ? "border-y-[12px] border-l-[18px] ml-1"
+      : "border-y-[7px] border-l-[11px] ml-0.5";
+
+  return (
+    <div className={`relative ${wrapperSize}`}>
+      <div className="absolute inset-0 animate-ping rounded-[inherit] bg-orange-500/20" />
+
+      <div className="absolute inset-0 rounded-[inherit] border border-white/20 bg-white/10 shadow-2xl shadow-orange-950/40 backdrop-blur-md" />
+
+      <div className="absolute inset-[3px] rounded-[inherit] bg-orange-500 shadow-lg shadow-orange-500/25 transition group-hover:bg-orange-400">
+        <div className="flex h-full w-full items-center justify-center">
+          <span
+            className={`block h-0 w-0 border-y-transparent border-l-slate-950 ${triangleSize}`}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 

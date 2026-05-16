@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export default function PublicMobileNav() {
+export default function MobileNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -23,6 +23,8 @@ export default function PublicMobileNav() {
     { label: "Contact", href: "/contact", isAdmin: false },
     { label: "Admin", href: "/admin", isAdmin: true },
   ];
+
+  const guestLeadersActive = pathname.startsWith("/guest-leaderboards");
 
   return (
     <>
@@ -77,7 +79,7 @@ export default function PublicMobileNav() {
         </div>
 
         {open ? (
-          <div className="absolute right-3 top-[64px] w-[min(92vw,340px)] overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 shadow-2xl shadow-black/40">
+          <div className="absolute right-3 top-[64px] max-h-[calc(100vh-84px)] w-[min(92vw,340px)] overflow-y-auto rounded-3xl border border-slate-800 bg-slate-950 shadow-2xl shadow-black/40">
             <div className="border-b border-slate-800 px-4 py-3">
               <div className="text-[10px] font-black uppercase tracking-[0.24em] text-orange-300">
                 Menu
@@ -87,31 +89,45 @@ export default function PublicMobileNav() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 p-3">
-              {navItems.map((item) => {
-                const isActive =
-                  item.href === "/"
-                    ? pathname === "/"
-                    : pathname.startsWith(item.href);
+            <div className="p-3">
+              <Link
+                href="/guest-leaderboards"
+                onClick={() => setOpen(false)}
+                className={`mb-2 block rounded-2xl border px-3 py-3 text-center text-xs font-black transition active:scale-95 ${
+                  guestLeadersActive
+                    ? "border-orange-500 bg-orange-500 text-slate-950"
+                    : "border-orange-500/50 bg-orange-500/15 text-orange-300"
+                }`}
+              >
+                Guest Leaders
+              </Link>
 
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    prefetch={item.isAdmin ? false : undefined}
-                    onClick={() => setOpen(false)}
-                    className={`rounded-2xl border px-3 py-3 text-center text-xs font-bold transition active:scale-95 ${
-                      item.isAdmin
-                        ? "border-orange-500/40 bg-orange-500 text-slate-950"
-                        : isActive
-                        ? "border-orange-500/50 bg-orange-500/15 text-orange-300"
-                        : "border-slate-800 bg-slate-900 text-slate-200"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
+              <div className="grid grid-cols-2 gap-2">
+                {navItems.map((item) => {
+                  const isActive =
+                    item.href === "/"
+                      ? pathname === "/"
+                      : pathname.startsWith(item.href);
+
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      prefetch={item.isAdmin ? false : undefined}
+                      onClick={() => setOpen(false)}
+                      className={`rounded-2xl border px-2 py-3 text-center text-[11px] font-bold transition active:scale-95 ${
+                        item.isAdmin
+                          ? "border-orange-500/40 bg-orange-500 text-slate-950"
+                          : isActive
+                          ? "border-orange-500/50 bg-orange-500/15 text-orange-300"
+                          : "border-slate-800 bg-slate-900 text-slate-200"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           </div>
         ) : null}
