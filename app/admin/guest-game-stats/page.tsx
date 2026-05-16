@@ -50,40 +50,32 @@ function gameLabel(game: any) {
 export default function AdminGuestGameStatsPage() {
   const [games, setGames] = useState<any[]>([]);
   const [guestHoopers, setGuestHoopers] = useState<any[]>([]);
-  const [guestRosters, setGuestRosters] = useState<any[]>([]);
   const [guestStats, setGuestStats] = useState<any[]>([]);
   const [form, setForm] = useState<StatForm>(emptyForm);
   const [loadingPage, setLoadingPage] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function loadPageData() {
+  async function loadPageData(keepGameId?: string) {
     setLoadingPage(true);
-    setMessage("");
 
-    const [gamesResult, guestsResult, rostersResult, statsResult] =
-      await Promise.all([
-        supabase
-          .from("games")
-          .select("*")
-          .order("game_date", { ascending: false }),
+    const [gamesResult, guestsResult, statsResult] = await Promise.all([
+      supabase
+        .from("games")
+        .select("*")
+        .order("game_date", { ascending: false }),
 
-        supabase
-          .from("guest_hoopers")
-          .select("*")
-          .eq("is_active", true)
-          .order("created_at", { ascending: false }),
+      supabase
+        .from("guest_hoopers")
+        .select("*")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false }),
 
-        supabase
-          .from("game_guest_rosters")
-          .select("*")
-          .order("created_at", { ascending: false }),
-
-        supabase
-          .from("guest_game_stats")
-          .select("*")
-          .order("created_at", { ascending: false }),
-      ]);
+      supabase
+        .from("guest_game_stats")
+        .select("*")
+        .order("created_at", { ascending: false }),
+    ]);
 
     if (gamesResult.error) {
       setMessage(`Failed to load games: ${gamesResult.error.message}`);
@@ -97,12 +89,6 @@ export default function AdminGuestGameStatsPage() {
       return;
     }
 
-    if (rostersResult.error) {
-      setMessage(`Failed to load guest rosters: ${rostersResult.error.message}`);
-      setLoadingPage(false);
-      return;
-    }
-
     if (statsResult.error) {
       setMessage(`Failed to load guest stats: ${statsResult.error.message}`);
       setLoadingPage(false);
@@ -110,15 +96,15 @@ export default function AdminGuestGameStatsPage() {
     }
 
     const loadedGames = gamesResult.data ?? [];
+    const currentGameId = keepGameId || form.game_id || loadedGames[0]?.id || "";
 
     setGames(loadedGames);
     setGuestHoopers(guestsResult.data ?? []);
-    setGuestRosters(rostersResult.data ?? []);
     setGuestStats(statsResult.data ?? []);
 
     setForm((prev) => ({
       ...prev,
-      game_id: prev.game_id || loadedGames[0]?.id || "",
+      game_id: currentGameId,
     }));
 
     setLoadingPage(false);
@@ -126,6 +112,7 @@ export default function AdminGuestGameStatsPage() {
 
   useEffect(() => {
     loadPageData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function updateField<K extends keyof StatForm>(field: K, value: StatForm[K]) {
@@ -139,34 +126,30 @@ export default function AdminGuestGameStatsPage() {
     return games.find((game) => game.id === form.game_id) ?? null;
   }, [games, form.game_id]);
 
-  const selectedGameRosterRows = useMemo(() => {
-    return guestRosters.filter((row) => row.game_id === form.game_id);
-  }, [guestRosters, form.game_id]);
-
-  const selectedGuestIds = useMemo(() => {
-    return new Set(selectedGameRosterRows.map((row) => row.guest_hooper_id));
-  }, [selectedGameRosterRows]);
-
-  const availableGuestHoopers = useMemo(() => {
-    const linkedGuests = guestHoopers.filter((guest) =>
-      selectedGuestIds.has(guest.id)
-    );
-
-    return linkedGuests.length > 0 ? linkedGuests : guestHoopers;
-  }, [guestHoopers, selectedGuestIds]);
-
   const selectedGameStats = useMemo(() => {
-    return guestStats.filter((row) => row.game_id === form.game_id);
+    return guestStats.filter(
+      (row) => String(row.game_id) === String(form.game_id)
+    );
   }, [guestStats, form.game_id]);
 
   function getGuest(guestId: string) {
-    return guestHoopers.find((guest) => guest.id === guestId) ?? null;
+    return (
+      guestHoopers.find((guest) => String(guest.id) === String(guestId)) ?? null
+    );
   }
 
-  function loadExistingStat(guestId: string) {
-    const existing = guestStats.find(
-      (row) => row.game_id === form.game_id && row.guest_hooper_id === guestId
+  function getExistingStat(guestId: string) {
+    return (
+      guestStats.find(
+        (row) =>
+          String(row.game_id) === String(form.game_id) &&
+          String(row.guest_hooper_id) === String(guestId)
+      ) ?? null
     );
+  }
+
+  function loadGuestIntoForm(guestId: string) {
+    const existing = getExistingStat(guestId);
 
     if (!existing) {
       setForm((prev) => ({
@@ -184,6 +167,8 @@ export default function AdminGuestGameStatsPage() {
         is_player_of_the_game: false,
         notes: "",
       }));
+
+      setMessage("Ready to feed new guest stats.");
       return;
     }
 
@@ -199,9 +184,11 @@ export default function AdminGuestGameStatsPage() {
       fouls: String(existing.fouls ?? 0),
       three_pointers_made: String(existing.three_pointers_made ?? 0),
       plus_minus: String(existing.plus_minus ?? 0),
-      is_player_of_the_game: existing.is_player_of_the_game ?? false,
+      is_player_of_the_game: Boolean(existing.is_player_of_the_game),
       notes: existing.notes ?? "",
     }));
+
+    setMessage("Existing guest stats loaded for editing.");
   }
 
   async function handleSaveStats(event: FormEvent) {
@@ -246,11 +233,9 @@ export default function AdminGuestGameStatsPage() {
       updated_at: new Date().toISOString(),
     };
 
-    const result = await supabase
-      .from("guest_game_stats")
-      .upsert(payload, {
-        onConflict: "game_id,guest_hooper_id",
-      });
+    const result = await supabase.from("guest_game_stats").upsert(payload, {
+      onConflict: "game_id,guest_hooper_id",
+    });
 
     if (result.error) {
       setMessage(`Failed to save guest stats: ${result.error.message}`);
@@ -258,25 +243,15 @@ export default function AdminGuestGameStatsPage() {
       return;
     }
 
-    setMessage("Guest game stats saved.");
+    const currentGameId = form.game_id;
 
     setForm((prev) => ({
-      ...prev,
-      guest_hooper_id: "",
-      points: "0",
-      rebounds: "0",
-      assists: "0",
-      steals: "0",
-      blocks: "0",
-      turnovers: "0",
-      fouls: "0",
-      three_pointers_made: "0",
-      plus_minus: "0",
-      is_player_of_the_game: false,
-      notes: "",
+      ...emptyForm,
+      game_id: prev.game_id,
     }));
 
-    await loadPageData();
+    setMessage("Guest game stats saved.");
+    await loadPageData(currentGameId);
     setLoading(false);
   }
 
@@ -284,15 +259,19 @@ export default function AdminGuestGameStatsPage() {
     const yes = window.confirm("Delete these guest stats?");
     if (!yes) return;
 
-    const result = await supabase.from("guest_game_stats").delete().eq("id", rowId);
+    const result = await supabase
+      .from("guest_game_stats")
+      .delete()
+      .eq("id", rowId);
 
     if (result.error) {
       setMessage(`Failed to delete guest stats: ${result.error.message}`);
       return;
     }
 
+    const currentGameId = form.game_id;
     setMessage("Guest stats deleted.");
-    await loadPageData();
+    await loadPageData(currentGameId);
   }
 
   return (
@@ -315,8 +294,7 @@ export default function AdminGuestGameStatsPage() {
           </h1>
 
           <p className="mt-3 text-slate-400">
-            Enter game stats for guest hoopers so they appear on guest
-            leaderboards.
+            Feed guest hooper stats for any selected game.
           </p>
         </div>
 
@@ -339,7 +317,7 @@ export default function AdminGuestGameStatsPage() {
                 </div>
 
                 <h2 className="mt-1 text-2xl font-bold">
-                  Add Guest Game Performance
+                  Guest Game Performance
                 </h2>
               </div>
 
@@ -352,8 +330,10 @@ export default function AdminGuestGameStatsPage() {
                   <select
                     value={form.game_id}
                     onChange={(event) => {
-                      updateField("game_id", event.target.value);
-                      updateField("guest_hooper_id", "");
+                      setForm({
+                        ...emptyForm,
+                        game_id: event.target.value,
+                      });
                     }}
                     className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
                   >
@@ -373,16 +353,21 @@ export default function AdminGuestGameStatsPage() {
 
                   <select
                     value={form.guest_hooper_id}
-                    onChange={(event) => loadExistingStat(event.target.value)}
+                    onChange={(event) => loadGuestIntoForm(event.target.value)}
                     className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
                   >
                     <option value="">Select guest hooper</option>
-                    {availableGuestHoopers.map((guest) => (
-                      <option key={guest.id} value={guest.id}>
-                        {guest.full_name}
-                        {guest.position ? ` - ${guest.position}` : ""}
-                      </option>
-                    ))}
+                    {guestHoopers.map((guest) => {
+                      const existing = getExistingStat(guest.id);
+
+                      return (
+                        <option key={guest.id} value={guest.id}>
+                          {guest.full_name}
+                          {guest.position ? ` - ${guest.position}` : ""}
+                          {existing ? " - stats already fed" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 </label>
 
@@ -392,36 +377,43 @@ export default function AdminGuestGameStatsPage() {
                     value={form.points}
                     onChange={(value) => updateField("points", value)}
                   />
+
                   <StatInput
                     label="Rebounds"
                     value={form.rebounds}
                     onChange={(value) => updateField("rebounds", value)}
                   />
+
                   <StatInput
                     label="Assists"
                     value={form.assists}
                     onChange={(value) => updateField("assists", value)}
                   />
+
                   <StatInput
                     label="Steals"
                     value={form.steals}
                     onChange={(value) => updateField("steals", value)}
                   />
+
                   <StatInput
                     label="Blocks"
                     value={form.blocks}
                     onChange={(value) => updateField("blocks", value)}
                   />
+
                   <StatInput
                     label="Turnovers"
                     value={form.turnovers}
                     onChange={(value) => updateField("turnovers", value)}
                   />
+
                   <StatInput
                     label="Fouls"
                     value={form.fouls}
                     onChange={(value) => updateField("fouls", value)}
                   />
+
                   <StatInput
                     label="3PM"
                     value={form.three_pointers_made}
@@ -429,6 +421,7 @@ export default function AdminGuestGameStatsPage() {
                       updateField("three_pointers_made", value)
                     }
                   />
+
                   <StatInput
                     label="+/-"
                     value={form.plus_minus}
@@ -479,7 +472,7 @@ export default function AdminGuestGameStatsPage() {
               <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <div className="text-sm uppercase tracking-wide text-orange-300">
-                    Current Stats
+                    Current Game Guest Stats
                   </div>
 
                   <h2 className="mt-1 text-2xl font-bold">
@@ -488,27 +481,27 @@ export default function AdminGuestGameStatsPage() {
                 </div>
 
                 <div className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
-                  {selectedGameStats.length} guests recorded
+                  {selectedGameStats.length} saved
                 </div>
               </div>
 
-              {selectedGameStats.length === 0 ? (
+              {guestHoopers.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
-                  No guest stats have been entered for this game yet.
+                  No active guest hoopers found. Create guest hoopers first.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {selectedGameStats.map((row) => {
-                    const guest = getGuest(row.guest_hooper_id);
+                  {guestHoopers.map((guest) => {
+                    const stat = getExistingStat(guest.id);
 
                     return (
                       <article
-                        key={row.id}
+                        key={guest.id}
                         className="rounded-3xl border border-slate-800 bg-slate-950 p-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="flex items-center gap-4">
-                            {guest?.photo_url ? (
+                            {guest.photo_url ? (
                               <img
                                 src={guest.photo_url}
                                 alt={guest.full_name}
@@ -526,45 +519,58 @@ export default function AdminGuestGameStatsPage() {
 
                             <div>
                               <div className="text-lg font-bold">
-                                {guest?.full_name ?? "Unknown Guest"}
+                                {guest.full_name}
                               </div>
 
                               <div className="mt-1 text-sm text-slate-400">
-                                {guest?.position ?? "Guest Hooper"}
-                                {row.is_player_of_the_game
+                                {guest.position ?? "Guest Hooper"}
+                                {stat?.is_player_of_the_game
                                   ? " | Guest Player of the Game"
                                   : ""}
                               </div>
+
+                              {!stat ? (
+                                <div className="mt-1 text-xs font-bold text-orange-300">
+                                  No stats fed for this selected game
+                                </div>
+                              ) : null}
                             </div>
                           </div>
 
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => loadExistingStat(row.guest_hooper_id)}
-                              className="rounded-2xl border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                              onClick={() => loadGuestIntoForm(guest.id)}
+                              className="rounded-2xl border border-orange-500/40 px-3 py-2 text-sm text-orange-300 hover:bg-orange-500/10"
                             >
-                              Edit
+                              {stat ? "Edit Stats" : "Feed Stats"}
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteStat(row.id)}
-                              className="rounded-2xl border border-rose-500/30 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
-                            >
-                              Delete
-                            </button>
+                            {stat?.id ? (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStat(stat.id)}
+                                className="rounded-2xl border border-rose-500/30 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
+                              >
+                                Delete
+                              </button>
+                            ) : null}
                           </div>
                         </div>
 
-                        <div className="mt-4 grid grid-cols-3 gap-2 md:grid-cols-6">
-                          <MiniStat label="PTS" value={row.points ?? 0} />
-                          <MiniStat label="REB" value={row.rebounds ?? 0} />
-                          <MiniStat label="AST" value={row.assists ?? 0} />
-                          <MiniStat label="STL" value={row.steals ?? 0} />
-                          <MiniStat label="BLK" value={row.blocks ?? 0} />
-                          <MiniStat label="3PM" value={row.three_pointers_made ?? 0} />
-                        </div>
+                        {stat ? (
+                          <div className="mt-4 grid grid-cols-3 gap-2 md:grid-cols-6">
+                            <MiniStat label="PTS" value={stat.points ?? 0} />
+                            <MiniStat label="REB" value={stat.rebounds ?? 0} />
+                            <MiniStat label="AST" value={stat.assists ?? 0} />
+                            <MiniStat label="STL" value={stat.steals ?? 0} />
+                            <MiniStat label="BLK" value={stat.blocks ?? 0} />
+                            <MiniStat
+                              label="3PM"
+                              value={stat.three_pointers_made ?? 0}
+                            />
+                          </div>
+                        ) : null}
                       </article>
                     );
                   })}

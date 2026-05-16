@@ -8,6 +8,7 @@ import PublicRosterCta from "./components/PublicRosterCta";
 import PublicGameMatchPreview from "./components/PublicGameMatchPreview";
 import PageSpecificMobileTuning from "./components/PageSpecificMobileTuning";
 import HomeMediaRedirectFix from "./components/HomeMediaRedirectFix";
+import AdminGuestStatsLauncher from "./components/AdminGuestStatsLauncher";
 
 export const metadata: Metadata = {
   title: "FACKTS Hoops",
@@ -30,6 +31,7 @@ export default function RootLayout({
         <FacktsTicker />
         <PublicRosterCta />
         <PublicGameMatchPreview />
+        <AdminGuestStatsLauncher />
         {children}
       </body>
     </html>

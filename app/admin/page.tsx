@@ -1,167 +1,150 @@
 import Link from "next/link";
-import AdminLogoutButton from "../components/AdminLogoutButton";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const adminSections = [
   {
     title: "Players",
-    description:
-      "Add and manage player profiles, photos, positions, roles, and jersey numbers.",
+    description: "Create and manage FACKTS players, profiles, photos, roles, and player information.",
     href: "/admin/players",
-    tag: "Roster",
+    badge: "Roster",
   },
   {
     title: "Games",
-    description:
-      "Add fixtures, results, venues, scores, posters, and upcoming games.",
+    description: "Create fixtures, update scores, manage opponents, venues, match type, and game posters.",
     href: "/admin/games",
-    tag: "Fixtures",
+    badge: "Fixtures",
   },
   {
-    title: "Stats",
-    description:
-      "Enter player game stats, box score data, and performance records.",
+    title: "Player Game Stats",
+    description: "Feed normal FACKTS player stats for games: points, rebounds, assists, steals, blocks, and more.",
     href: "/admin/stats",
-    tag: "Data",
+    badge: "Stats",
   },
   {
-    title: "Rosters",
-    description:
-      "Build game rosters, assign starters, bench players, availability, and notes.",
-    href: "/admin/rosters",
-    tag: "Lineups",
+    title: "Game Guest Rosters",
+    description: "Add guest hoopers into a selected game as starters, bench, confirmed, pending, or unavailable.",
+    href: "/admin/game-guests",
+    badge: "Guests",
   },
   {
-    title: "Roster Announcements",
-    description:
-      "Open public roster pages and copy WhatsApp-ready squad announcements.",
-    href: "/admin/roster-announcements",
-    tag: "Share",
-  },
-  {
-    title: "Match Previews",
-    description:
-      "Create game storylines, players to watch, preview images, and video links before tip-off.",
-    href: "/admin/match-previews",
-    tag: "Preview",
-  },
-  {
-    title: "Media Stories",
-    description:
-      "Manage homepage videos, interviews, documentaries, playlists, and thumbnails.",
-    href: "/admin/media-stories",
-    tag: "Stories",
-  },
-  {
-    title: "Live Ticker",
-    description:
-      "Manage short moving announcements shown across public pages.",
-    href: "/admin/ticker",
-    tag: "Announcements",
-  },
-  {
-    title: "Leaderboards",
-    description:
-      "View public rankings driven by points, rebounds, assists, steals, blocks, and averages.",
-    href: "/leaderboards",
-    tag: "Public",
-  },
-  {
-    title: "1-on-1 Battles",
-    description:
-      "Manage 1-on-1 player battles, challengers, results, and community matchups.",
-    href: "/admin/one-on-one",
-    tag: "Battles",
+    title: "Guest Game Stats",
+    description: "Feed game stats for guest hoopers. This is where you enter guest points, rebounds, assists, steals, blocks, 3PM and plus/minus.",
+    href: "/admin/guest-game-stats",
+    badge: "Guest Stats",
+    highlight: true,
   },
   {
     title: "Guest Hoopers",
-    description:
-      "Manage visiting players, guest hoopers, and community talent.",
+    description: "Create and manage guest hoopers, visiting players, community ballers, and special guests.",
     href: "/admin/guest-hoopers",
-    tag: "Community",
+    badge: "Guest Profiles",
   },
   {
-    title: "Game Guests",
-    description:
-      "Manage guest lists, game attendance, and event participation records.",
-    href: "/admin/game-guests",
-    tag: "Attendance",
+    title: "Media Stories",
+    description: "Manage videos, media stories, thumbnails, featured story, Court Takeover, and behind-the-scenes content.",
+    href: "/admin/media-stories",
+    badge: "Media",
   },
   {
-    title: "Highlights",
-    description:
-      "Manage highlight links, game clips, and media references.",
-    href: "/admin/highlights",
-    tag: "Media",
+    title: "Public Guest Leaders",
+    description: "View the public guest leaderboard page and confirm guest stats are feeding correctly.",
+    href: "/guest-leaderboards",
+    badge: "Public",
   },
 ];
 
 export default function AdminDashboardPage() {
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <section className="border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/20">
-        <div className="mx-auto max-w-7xl px-4 py-8 md:px-6">
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white md:px-6 md:py-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-sm uppercase tracking-[0.25em] text-orange-300">
+              FACKTS Admin
+            </div>
+
+            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
+              Admin Dashboard
+            </h1>
+
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 md:text-base">
+              Manage players, games, rosters, guest hoopers, guest stats, media stories, and public platform content.
+            </p>
+          </div>
+
+          <Link
+            href="/"
+            className="rounded-2xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 transition hover:bg-slate-800 hover:text-white"
+          >
+            Home
+          </Link>
+        </div>
+
+        <section className="mb-6 rounded-3xl border border-orange-500/40 bg-orange-500/10 p-5 shadow-xl shadow-orange-950/20">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
-                FACKTS Hoops
+              <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
+                Priority
               </div>
 
-              <h1 className="mt-2 text-3xl font-black md:text-5xl">
-                Dashboard
-              </h1>
+              <h2 className="mt-1 text-2xl font-black">
+                Feed Guest Game Stats
+              </h2>
 
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 md:text-base">
-                Manage players, games, stats, rosters, roster announcements,
-                match previews, media stories, live announcements, guests, and
-                public platform content from one place.
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+                Use this when a guest hooper has played in a game and you need to enter their points, rebounds, assists, steals, blocks, 3PM and plus/minus.
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/"
-                className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-orange-400"
-              >
-                Back Home
-              </Link>
-
-              <AdminLogoutButton />
-            </div>
+            <Link
+              href="/admin/guest-game-stats"
+              className="rounded-2xl bg-orange-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-orange-400"
+            >
+              Open Guest Game Stats
+            </Link>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {adminSections.map((section) => (
             <Link
               key={section.href}
               href={section.href}
-              className="group rounded-3xl border border-slate-800 bg-slate-900 p-4 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/40 hover:bg-slate-900/90 hover:shadow-orange-950/20"
+              className={`group rounded-3xl border p-5 transition hover:-translate-y-1 ${
+                section.highlight
+                  ? "border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/15"
+                  : "border-slate-800 bg-slate-900 hover:border-orange-400/40 hover:bg-slate-900/90"
+              }`}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="w-fit rounded-full border border-orange-500/25 bg-orange-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-300">
-                    {section.tag}
+                <div className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-orange-300 ring-1 ring-slate-800">
+                  {section.badge}
+                </div>
+
+                {section.highlight ? (
+                  <div className="rounded-full bg-orange-500 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-slate-950">
+                    Important
                   </div>
-
-                  <h2 className="mt-3 text-xl font-black text-white group-hover:text-orange-300">
-                    {section.title}
-                  </h2>
-                </div>
-
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-orange-300 ring-1 ring-slate-800 transition group-hover:bg-orange-500 group-hover:text-slate-950">
-                  →
-                </div>
+                ) : null}
               </div>
 
-              <p className="mt-3 text-sm leading-6 text-slate-400">
+              <h2 className="mt-4 text-xl font-black group-hover:text-orange-300">
+                {section.title}
+              </h2>
+
+              <p className="mt-2 text-sm leading-6 text-slate-400">
                 {section.description}
               </p>
+
+              <div className="mt-5 text-sm font-black text-orange-300">
+                Open
+              </div>
             </Link>
           ))}
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
