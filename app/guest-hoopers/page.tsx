@@ -37,7 +37,7 @@ export default async function GuestHoopersPage() {
             href="/players"
             className="inline-flex rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-2 text-sm font-bold text-slate-300 backdrop-blur transition hover:bg-slate-800"
           >
-            ← Back to Players
+            Back to Players
           </Link>
 
           <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr,0.9fr] lg:items-end">
@@ -52,9 +52,9 @@ export default async function GuestHoopersPage() {
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 md:text-lg md:leading-8">
-                Guest hoopers are visiting players, community ballers, and special
-                guests who join FACKTS games, 1-on-1 battles, or court takeover
-                moments.
+                Guest hoopers are visiting players, community ballers, and
+                special guests who join FACKTS games, 1-on-1 battles, or court
+                takeover moments.
               </p>
             </div>
 
@@ -83,7 +83,7 @@ export default async function GuestHoopersPage() {
                   {guest.photo_url ? (
                     <img
                       src={guest.photo_url}
-                      alt={guest.full_name}
+                      alt={guest.full_name ?? "Guest Hooper"}
                       className="h-full w-full object-cover"
                       style={{
                         objectPosition: guest.photo_position ?? "center center",
@@ -108,7 +108,7 @@ export default async function GuestHoopersPage() {
 
                     {guest.nickname ? (
                       <div className="mt-1 truncate text-sm text-orange-300">
-                        “{guest.nickname}”
+                        {guest.nickname}
                       </div>
                     ) : null}
                   </div>
@@ -116,20 +116,19 @@ export default async function GuestHoopersPage() {
 
                 <div className="p-3 md:p-5">
                   <div className="grid grid-cols-2 gap-2">
-                    <MiniInfo label="Position" value={guest.position ?? "—"} />
-                    <MiniInfo label="Role" value={guest.role ?? "Guest"} />
-                    <MiniInfo label="Height" value={guest.height ?? "—"} />
-                    <MiniInfo
-                      label="Level"
-                      value={guest.highest_level ?? "Community"}
-                    />
+                    <MiniInfo label="Position" value={guest.position ?? "Not set"} />
+                    <MiniInfo label="Role" value={guest.role ?? "Guest Hooper"} />
                   </div>
 
                   {guest.notes || guest.bio ? (
                     <p className="mt-3 line-clamp-3 text-xs leading-5 text-slate-400 md:text-sm md:leading-6">
                       {guest.notes ?? guest.bio}
                     </p>
-                  ) : null}
+                  ) : (
+                    <p className="mt-3 text-xs leading-5 text-slate-500 md:text-sm md:leading-6">
+                      No notes added yet.
+                    </p>
+                  )}
                 </div>
               </article>
             ))}

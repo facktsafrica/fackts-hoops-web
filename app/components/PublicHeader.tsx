@@ -13,6 +13,7 @@ export default function PublicHeader() {
   const navItems = [
     { label: "Home", href: "/" },
     { label: "Players", href: "/players" },
+    { label: "Guests", href: "/guest-hoopers" },
     { label: "Games", href: "/games" },
     { label: "Media", href: "/media" },
     { label: "Leaders", href: "/leaderboards" },
