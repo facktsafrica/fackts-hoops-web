@@ -1,16 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function AdminLogoutButton() {
   const router = useRouter();
 
   async function handleLogout() {
-    await fetch("/api/admin/logout", {
-      method: "POST",
-    });
-
-    router.replace("/admin/login");
+    await supabase.auth.signOut();
+    router.push("/admin/login");
     router.refresh();
   }
 
@@ -18,7 +16,7 @@ export default function AdminLogoutButton() {
     <button
       type="button"
       onClick={handleLogout}
-      className="rounded-2xl border border-rose-500/40 px-4 py-3 text-sm font-bold text-rose-300 transition hover:bg-rose-500/10"
+      className="rounded-full border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-black text-red-200 transition hover:bg-red-500/20"
     >
       Logout
     </button>

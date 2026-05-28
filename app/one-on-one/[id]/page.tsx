@@ -1,28 +1,50 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
-type Game = {
+type Player = {
   id: string;
-  opponent?: string | null;
-  title?: string | null;
-  game_date?: string | null;
-  date?: string | null;
+  full_name?: string | null;
+  name?: string | null;
+  nickname?: string | null;
+  position?: string | null;
+};
+
+type GuestHooper = {
+  id: string;
+  full_name?: string | null;
+  name?: string | null;
+  nickname?: string | null;
+  position?: string | null;
+  photo_url?: string | null;
+  image_url?: string | null;
+};
+
+type OneOnOneRow = {
+  id: string;
+
+  participant_type?: string | null;
+  fackts_player_id?: string | null;
+  guest_hooper_id?: string | null;
+
+  opponent_type?: string | null;
+  opponent_player_id?: string | null;
+  opponent_guest_hooper_id?: string | null;
+  opponent_name?: string | null;
+
+  match_date?: string | null;
   venue?: string | null;
   location?: string | null;
-  match_type?: string | null;
-  game_type?: string | null;
-  team_score?: number | string | null;
-  fackts_score?: number | string | null;
-  opponent_score?: number | string | null;
-  is_upcoming?: boolean | null;
-  status?: string | null;
+
+  points_scored?: number | string | null;
+  points_allowed?: number | string | null;
+  result?: string | null;
+  notes?: string | null;
   poster_url?: string | null;
-  image_url?: string | null;
-  poster_position?: string | null;
   video_url?: string | null;
   highlight_url?: string | null;
-  notes?: string | null;
+
   created_at?: string | null;
+  updated_at?: string | null;
 };
 
 function getSupabase() {
@@ -36,6 +58,18 @@ function getSupabase() {
   return createClient(supabaseUrl, supabaseAnonKey);
 }
 
+function cleanName(value?: string | null) {
+  return (value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getName(person?: Player | GuestHooper | null) {
+  if (!person) return "Unknown Hooper";
+  return person.full_name || person.name || person.nickname || "Unknown Hooper";
+}
+
 function numberValue(value: unknown): number | null {
   if (typeof value === "number" && !Number.isNaN(value)) return value;
 
@@ -47,58 +81,134 @@ function numberValue(value: unknown): number | null {
   return null;
 }
 
-function getFacktsScore(game: Game) {
-  return numberValue(game.team_score ?? game.fackts_score);
+function findByName<T extends Player | GuestHooper>(
+  name: string | null | undefined,
+  list: T[]
+) {
+  const target = cleanName(name);
+  if (!target) return null;
+
+  return (
+    list.find((item) => {
+      const names = [item.full_name, item.name, item.nickname].map(cleanName);
+      return names.includes(target);
+    }) || null
+  );
 }
 
-function getOpponentScore(game: Game) {
-  return numberValue(game.opponent_score);
+function getParticipant(
+  row: OneOnOneRow,
+  playerMap: Map<string, Player>,
+  guestMap: Map<string, GuestHooper>
+) {
+  if (row.participant_type === "fackts_player" || row.fackts_player_id) {
+    const player = row.fackts_player_id
+      ? playerMap.get(String(row.fackts_player_id))
+      : null;
+
+    return {
+      name: getName(player),
+      type: "FACKTS Player",
+    };
+  }
+
+  if (row.participant_type === "guest_hooper" || row.guest_hooper_id) {
+    const guest = row.guest_hooper_id
+      ? guestMap.get(String(row.guest_hooper_id))
+      : null;
+
+    return {
+      name: getName(guest),
+      type: "Guest Hooper",
+    };
+  }
+
+  return {
+    name: "Unknown Hooper",
+    type: "Hooper",
+  };
 }
 
-function getGameTitle(game: Game) {
-  if (game.title) return game.title;
-  if (game.opponent) return `FACKTS vs ${game.opponent}`;
-  return "FACKTS Game";
+function getOpponent(
+  row: OneOnOneRow,
+  players: Player[],
+  guests: GuestHooper[],
+  playerMap: Map<string, Player>,
+  guestMap: Map<string, GuestHooper>
+) {
+  if (row.opponent_type === "fackts_player" || row.opponent_player_id) {
+    const player = row.opponent_player_id
+      ? playerMap.get(String(row.opponent_player_id))
+      : null;
+
+    return {
+      name: getName(player),
+      type: "FACKTS Player",
+    };
+  }
+
+  if (row.opponent_type === "guest_hooper" || row.opponent_guest_hooper_id) {
+    const guest = row.opponent_guest_hooper_id
+      ? guestMap.get(String(row.opponent_guest_hooper_id))
+      : null;
+
+    return {
+      name: getName(guest),
+      type: "Guest Hooper",
+    };
+  }
+
+  const matchedPlayer = findByName(row.opponent_name, players);
+  if (matchedPlayer) {
+    return {
+      name: getName(matchedPlayer),
+      type: "FACKTS Player",
+    };
+  }
+
+  const matchedGuest = findByName(row.opponent_name, guests);
+  if (matchedGuest) {
+    return {
+      name: getName(matchedGuest),
+      type: "Guest Hooper",
+    };
+  }
+
+  return {
+    name: row.opponent_name || "Opponent",
+    type: "External Hooper",
+  };
 }
 
-function getGameDate(game: Game) {
-  return game.game_date || game.date || "Date not added";
-}
+function getResult(row: OneOnOneRow) {
+  const result = (row.result || "").toLowerCase().trim();
 
-function getGameVenue(game: Game) {
-  return game.venue || game.location || "Location not added";
-}
+  if (result === "win") return "Win";
+  if (result === "loss") return "Loss";
+  if (result === "draw") return "Draw";
+  if (result === "pending") return "Upcoming";
 
-function getGameType(game: Game) {
-  return game.match_type || game.game_type || "Game";
-}
+  const scored = numberValue(row.points_scored);
+  const allowed = numberValue(row.points_allowed);
 
-function getResult(game: Game) {
-  const facktsScore = getFacktsScore(game);
-  const opponentScore = getOpponentScore(game);
-
-  if (facktsScore !== null && opponentScore !== null) {
-    if (facktsScore > opponentScore) return "Win";
-    if (facktsScore < opponentScore) return "Loss";
+  if (scored !== null && allowed !== null) {
+    if (scored > allowed) return "Win";
+    if (scored < allowed) return "Loss";
     return "Draw";
   }
 
-  if (game.is_upcoming) return "Upcoming";
-
-  return "Awaiting Result";
+  return "Upcoming";
 }
 
 function getStatusClass(result: string) {
   if (result === "Win") return "bg-emerald-500/15 text-emerald-300";
   if (result === "Loss") return "bg-red-500/15 text-red-300";
   if (result === "Draw") return "bg-zinc-500/15 text-zinc-300";
-  if (result === "Awaiting Result") return "bg-yellow-500/15 text-yellow-300";
-
   return "bg-orange-500/15 text-orange-300";
 }
 
-function getVideoUrl(game: Game) {
-  return game.video_url || game.highlight_url || "";
+function getVideoUrl(row: OneOnOneRow) {
+  return row.video_url || row.highlight_url || "";
 }
 
 function getEmbedUrl(videoUrl?: string | null) {
@@ -152,50 +262,64 @@ function isDirectVideoUrl(videoUrl?: string | null) {
 async function getData(id: string) {
   const supabase = getSupabase();
 
-  const { data, error } = await supabase
-    .from("games")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  const [playersResult, guestsResult, rowResult] = await Promise.all([
+    supabase.from("players").select("*"),
+    supabase.from("guest_hoopers").select("*"),
+    supabase.from("guest_one_on_one_stats").select("*").eq("id", id).maybeSingle(),
+  ]);
+
+  const players = (playersResult.data || []) as Player[];
+  const guests = (guestsResult.data || []) as GuestHooper[];
+  const row = rowResult.data as OneOnOneRow | null;
+
+  const playerMap = new Map<string, Player>();
+  players.forEach((player) => playerMap.set(String(player.id), player));
+
+  const guestMap = new Map<string, GuestHooper>();
+  guests.forEach((guest) => guestMap.set(String(guest.id), guest));
 
   return {
-    game: data as Game | null,
-    error: error?.message || "",
+    row,
+    players,
+    guests,
+    playerMap,
+    guestMap,
+    error: rowResult.error?.message || "",
   };
 }
 
-export default async function GameDetailPage({
+export default async function OneOnOneMatchPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { game, error } = await getData(id);
+  const data = await getData(id);
 
-  if (!game) {
+  if (!data.row) {
     return (
       <main className="min-h-screen bg-black px-4 py-10 text-white">
         <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-zinc-950 p-6">
           <Link
-            href="/games"
+            href="/one-on-one"
             className="inline-flex rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white"
           >
-            Back to Games
+            Back to 1-on-1
           </Link>
 
-          <h1 className="mt-6 text-3xl font-black">Game not found</h1>
+          <h1 className="mt-6 text-3xl font-black">Match not found</h1>
 
           <p className="mt-3 text-sm leading-6 text-zinc-400">
-            The route is working, but this game ID was not found in Supabase.
+            The route is working, but this match ID was not found in Supabase.
           </p>
 
           <p className="mt-4 break-all rounded-2xl bg-black/40 p-4 text-xs text-zinc-500">
             Requested ID: {id}
           </p>
 
-          {error ? (
+          {data.error ? (
             <p className="mt-3 rounded-2xl bg-red-500/10 p-4 text-xs text-red-300">
-              Supabase error: {error}
+              Supabase error: {data.error}
             </p>
           ) : null}
         </div>
@@ -203,11 +327,20 @@ export default async function GameDetailPage({
     );
   }
 
-  const result = getResult(game);
-  const facktsScore = getFacktsScore(game);
-  const opponentScore = getOpponentScore(game);
-  const posterUrl = game.poster_url || game.image_url || "";
-  const videoUrl = getVideoUrl(game);
+  const row = data.row;
+  const participant = getParticipant(row, data.playerMap, data.guestMap);
+  const opponent = getOpponent(
+    row,
+    data.players,
+    data.guests,
+    data.playerMap,
+    data.guestMap
+  );
+
+  const result = getResult(row);
+  const participantScore = numberValue(row.points_scored);
+  const opponentScore = numberValue(row.points_allowed);
+  const videoUrl = getVideoUrl(row);
   const embedUrl = getEmbedUrl(videoUrl);
 
   return (
@@ -215,22 +348,19 @@ export default async function GameDetailPage({
       <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.22),_transparent_35%),linear-gradient(135deg,_#050505,_#111111_45%,_#020202)]">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
           <Link
-            href="/games"
+            href="/one-on-one"
             className="inline-flex rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
           >
-            Back to Games
+            Back to 1-on-1
           </Link>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-zinc-950">
-              {posterUrl ? (
+              {row.poster_url ? (
                 <img
-                  src={posterUrl}
-                  alt={getGameTitle(game)}
+                  src={row.poster_url}
+                  alt={`${participant.name} vs ${opponent.name}`}
                   className="h-full max-h-[520px] w-full object-cover"
-                  style={{
-                    objectPosition: game.poster_position || "center center",
-                  }}
                 />
               ) : (
                 <div className="flex h-80 items-center justify-center bg-zinc-900 text-4xl font-black text-zinc-700">
@@ -249,17 +379,19 @@ export default async function GameDetailPage({
               </div>
 
               <h1 className="text-4xl font-black leading-tight sm:text-6xl">
-                {getGameTitle(game)}
+                {participant.name}
+                <span className="block text-orange-300">vs</span>
+                {opponent.name}
               </h1>
 
               <div className="mt-6 grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-3xl border border-white/10 bg-zinc-950 p-5">
                 <div>
                   <p className="truncate text-sm font-black text-white">
-                    FACKTS
+                    {participant.name}
                   </p>
-
+                  <p className="text-xs text-zinc-500">{participant.type}</p>
                   <p className="mt-3 text-5xl font-black text-orange-300">
-                    {facktsScore ?? "-"}
+                    {participantScore ?? "-"}
                   </p>
                 </div>
 
@@ -269,28 +401,30 @@ export default async function GameDetailPage({
 
                 <div className="text-right">
                   <p className="truncate text-sm font-black text-white">
-                    {game.opponent || "Opponent"}
+                    {opponent.name}
                   </p>
-
+                  <p className="text-xs text-zinc-500">{opponent.type}</p>
                   <p className="mt-3 text-5xl font-black text-white">
                     {opponentScore ?? "-"}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <InfoCard label="Date" value={getGameDate(game)} />
-                <InfoCard label="Venue" value={getGameVenue(game)} />
-                <InfoCard label="Type" value={getGameType(game)} />
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <InfoCard label="Date" value={row.match_date || "Date not added"} />
+                <InfoCard
+                  label="Venue"
+                  value={row.venue || row.location || "Location not added"}
+                />
               </div>
 
-              {game.notes ? (
+              {row.notes ? (
                 <div className="mt-5 rounded-3xl border border-white/10 bg-zinc-950 p-5">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
                     Notes
                   </p>
                   <p className="mt-2 text-sm leading-6 text-zinc-400">
-                    {game.notes}
+                    {row.notes}
                   </p>
                 </div>
               ) : null}
@@ -319,7 +453,7 @@ export default async function GameDetailPage({
             ) : (
               <iframe
                 src={embedUrl}
-                title={`${getGameTitle(game)} video`}
+                title={`${participant.name} vs ${opponent.name} video`}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
                 className="aspect-video w-full rounded-2xl bg-black"
@@ -328,7 +462,7 @@ export default async function GameDetailPage({
           </div>
         ) : (
           <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 text-sm text-zinc-400">
-            No video has been linked to this game yet.
+            No video has been linked to this 1-on-1 game yet.
           </div>
         )}
       </section>

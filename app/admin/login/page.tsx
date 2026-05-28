@@ -1,163 +1,183 @@
 "use client";
 
-import { FormEvent, Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
-function AdminLoginContent() {
-  const searchParams = useSearchParams();
-
-  const redirectedFrom = searchParams.get("redirectedFrom") || "/admin";
-
+export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [loginOk, setLoginOk] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent) {
     event.preventDefault();
 
+    if (loading) return;
+
     setLoading(true);
-    setMessage("");
-    setErrorMessage("");
+    setLoginOk(false);
+    setMessage("Checking login...");
 
-    try {
-      const response = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-        }),
-      });
+    const loginResult = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
 
-      const result = await response.json();
-
-      if (!response.ok || !result.ok) {
-        setErrorMessage(result.error || "Login failed.");
-        setLoading(false);
-        return;
-      }
-
-      setMessage("Login successful. Opening dashboard...");
-
-      window.location.href = redirectedFrom;
-    } catch {
-      setErrorMessage("Login failed. Please try again.");
+    if (loginResult.error) {
+      setMessage(
+        loginResult.error.message === "Invalid login credentials"
+          ? "Invalid login credentials. Reset this user's password in Supabase Auth."
+          : loginResult.error.message
+      );
       setLoading(false);
+      return;
     }
+
+    const userId = loginResult.data.user?.id;
+
+    if (!userId) {
+      setMessage("Login failed. No user ID was returned.");
+      setLoading(false);
+      return;
+    }
+
+    const profileResult = await supabase
+      .from("admin_profiles")
+      .select("id, role, is_active")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (profileResult.error) {
+      await supabase.auth.signOut();
+      setMessage(`Admin profile check failed: ${profileResult.error.message}`);
+      setLoading(false);
+      return;
+    }
+
+    if (!profileResult.data) {
+      await supabase.auth.signOut();
+      setMessage(
+        "Login worked, but this account is not approved as a FACKTS admin."
+      );
+      setLoading(false);
+      return;
+    }
+
+    setLoginOk(true);
+    setMessage("Access approved. Click the button below to enter admin.");
+    setLoading(false);
+  }
+
+  async function clearSession() {
+    setLoading(true);
+    await supabase.auth.signOut();
+    setEmail("");
+    setPassword("");
+    setLoginOk(false);
+    setMessage("Session cleared. Try again.");
+    setLoading(false);
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <section className="flex min-h-screen items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900 shadow-2xl shadow-black/30">
-          <div className="border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/25 p-6">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center overflow-hidden rounded-3xl bg-slate-950 ring-1 ring-orange-500/30">
-              <img
-                src="/logos/fackts-hoops-logo.png"
-                alt="FACKTS Hoops logo"
-                className="h-full w-full object-contain p-2"
-              />
+    <main className="min-h-screen bg-black px-4 py-10 text-white">
+      <div className="mx-auto flex min-h-[80vh] max-w-md items-center">
+        <div className="w-full rounded-3xl border border-white/10 bg-zinc-950 p-6 shadow-2xl">
+          <div className="mb-6">
+            <div className="text-xs font-black uppercase tracking-[0.3em] text-orange-300">
+              FACKTS Admin
             </div>
 
-            <div className="text-center">
-              <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
-                FACKTS Hoops
-              </div>
+            <h1 className="mt-2 text-3xl font-black">Admin Login</h1>
 
-              <h1 className="mt-2 text-3xl font-black">Admin Login</h1>
-
-              <p className="mt-3 text-sm leading-6 text-slate-400">
-                Login to manage players, games, stats, media stories, live
-                ticker, and dashboard content.
-              </p>
-            </div>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">
+              Private access for approved FACKTS team members only.
+            </p>
           </div>
 
-          <form onSubmit={handleLogin} className="p-6">
-            {message ? (
-              <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
-                {message}
-              </div>
-            ) : null}
+          {message ? (
+            <div
+              className={
+                loginOk
+                  ? "mb-5 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm leading-6 text-orange-200"
+                  : "mb-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-zinc-200"
+              }
+            >
+              {message}
+            </div>
+          ) : null}
 
-            {errorMessage ? (
-              <div className="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">
-                {errorMessage}
-              </div>
-            ) : null}
-
-            <div className="grid gap-4">
+          {loginOk ? (
+            <a
+              href="/admin"
+              className="block w-full rounded-2xl bg-orange-500 px-5 py-4 text-center text-base font-black text-black transition hover:bg-orange-400"
+            >
+              ENTER ADMIN DASHBOARD
+            </a>
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-4">
               <label className="block">
-                <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                <div className="mb-2 text-sm font-bold text-zinc-300">
                   Email
-                </span>
+                </div>
 
                 <input
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="admin@email.com"
-                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-orange-400"
-                  required
+                  disabled={loading}
+                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400 disabled:opacity-60"
                 />
               </label>
 
               <label className="block">
-                <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                <div className="mb-2 text-sm font-bold text-zinc-300">
                   Password
-                </span>
+                </div>
 
                 <input
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Enter password"
-                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-orange-400"
-                  required
+                  disabled={loading}
+                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400 disabled:opacity-60"
                 />
               </label>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="rounded-2xl bg-orange-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-80"
               >
-                {loading ? "Logging in..." : "Login to Dashboard"}
+                {loading ? "Checking..." : "Login"}
               </button>
+            </form>
+          )}
 
-              <a
-                href="/"
-                className="rounded-2xl border border-slate-700 px-5 py-3 text-center text-sm font-bold text-slate-200 transition hover:bg-slate-800"
-              >
-                Back to Public Site
-              </a>
-            </div>
-          </form>
+          <button
+            type="button"
+            onClick={clearSession}
+            disabled={loading}
+            className="mt-4 w-full rounded-2xl border border-white/10 px-5 py-3 text-sm font-black text-zinc-300 transition hover:border-orange-400/60 hover:text-orange-300 disabled:opacity-60"
+          >
+            Clear session
+          </button>
+
+          <div className="mt-5 border-t border-white/10 pt-5">
+            <Link
+              href="/"
+              className="text-sm font-bold text-zinc-400 transition hover:text-orange-300"
+            >
+              Back to public platform
+            </Link>
+          </div>
         </div>
-      </section>
-    </main>
-  );
-}
-
-function AdminLoginFallback() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
-      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">
-        Loading admin login...
       </div>
     </main>
-  );
-}
-
-export default function AdminLoginPage() {
-  return (
-    <Suspense fallback={<AdminLoginFallback />}>
-      <AdminLoginContent />
-    </Suspense>
   );
 }

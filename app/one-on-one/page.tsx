@@ -1,735 +1,745 @@
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-type Leader = {
+type Player = {
   id: string;
-  type: "player" | "guest";
-  full_name: string;
-  nickname: string | null;
-  jersey_number: number | null;
-  position: string | null;
-  role: string | null;
-  photo_url: string | null;
-  photo_position: string | null;
-
-  matches_played: number;
-  wins: number;
-  losses: number;
-  points_for: number;
-  points_allowed: number;
-  win_rate: number;
+  full_name?: string | null;
+  name?: string | null;
+  nickname?: string | null;
+  position?: string | null;
 };
 
-async function getPlayers() {
-  const { data, error } = await supabase
-    .from("players")
-    .select("*")
-    .eq("is_active", true)
-    .order("jersey_number", { ascending: true });
+type GuestHooper = {
+  id: string;
+  full_name?: string | null;
+  name?: string | null;
+  nickname?: string | null;
+  position?: string | null;
+  photo_url?: string | null;
+  image_url?: string | null;
+};
 
-  if (error) return [];
-  return data ?? [];
+type OneOnOneRow = {
+  id: string;
+
+  participant_type?: string | null;
+  fackts_player_id?: string | null;
+  guest_hooper_id?: string | null;
+
+  opponent_type?: string | null;
+  opponent_player_id?: string | null;
+  opponent_guest_hooper_id?: string | null;
+  opponent_name?: string | null;
+
+  match_date?: string | null;
+  venue?: string | null;
+  location?: string | null;
+
+  points_scored?: number | string | null;
+  points_allowed?: number | string | null;
+  result?: string | null;
+  status?: string | null;
+  notes?: string | null;
+  poster_url?: string | null;
+  video_url?: string | null;
+  highlight_url?: string | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type LeaderboardItem = {
+  id: string;
+  name: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  matches: number;
+  points: number;
+  pointsAllowed: number;
+  type: "fackts_player" | "guest_hooper" | "external";
+};
+
+function getSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase environment variables.");
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey);
 }
 
-async function getGuestHoopers() {
-  const { data, error } = await supabase
-    .from("guest_hoopers")
-    .select("*")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false });
-
-  if (error) return [];
-  return data ?? [];
+function cleanName(value?: string | null) {
+  return (value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
-async function getOneOnOneGames() {
-  const { data, error } = await supabase
-    .from("one_on_one_games")
-    .select("*")
-    .order("match_date", { ascending: false })
-    .order("created_at", { ascending: false });
-
-  if (error) return [];
-  return data ?? [];
+function getPersonName(person?: Player | GuestHooper | null) {
+  if (!person) return "Unknown Hooper";
+  return person.full_name || person.name || person.nickname || "Unknown Hooper";
 }
 
-async function getGuestOneOnOneStats() {
-  const { data, error } = await supabase
-    .from("guest_one_on_one_stats")
-    .select("*")
-    .order("match_date", { ascending: false })
-    .order("created_at", { ascending: false });
+function numberValue(value: unknown): number | null {
+  if (typeof value === "number" && !Number.isNaN(value)) return value;
 
-  if (error) return [];
-  return data ?? [];
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+
+  return null;
 }
 
-function makeLeader(profile: any, type: "player" | "guest"): Leader {
-  return {
-    id: profile.id,
-    type,
-    full_name: profile.full_name ?? "Unknown",
-    nickname: profile.nickname ?? null,
-    jersey_number: type === "player" ? profile.jersey_number ?? null : null,
-    position: profile.position ?? null,
-    role: profile.role ?? (type === "guest" ? "Guest Hooper" : null),
-    photo_url: profile.photo_url ?? null,
-    photo_position: profile.photo_position ?? null,
-
-    matches_played: 0,
-    wins: 0,
-    losses: 0,
-    points_for: 0,
-    points_allowed: 0,
-    win_rate: 0,
-  };
+function getRowDate(row: OneOnOneRow) {
+  return row.match_date || row.created_at || "Date not added";
 }
 
-function isCompleted(match: any) {
+function getRowLocation(row: OneOnOneRow) {
+  return row.venue || row.location || "Location not added";
+}
+
+function findPlayerByName(name: string | null | undefined, players: Player[]) {
+  const target = cleanName(name);
+  if (!target) return null;
+
   return (
-    match.status === "completed" &&
-    match.player_one_score !== null &&
-    match.player_one_score !== undefined &&
-    match.player_two_score !== null &&
-    match.player_two_score !== undefined
+    players.find((player) => {
+      const names = [player.full_name, player.name, player.nickname].map(
+        cleanName
+      );
+
+      return names.includes(target);
+    }) || null
   );
 }
 
-function getCompetitorId(match: any, side: "one" | "two") {
-  const typeKey = side === "one" ? "player_one_type" : "player_two_type";
-  const playerKey = side === "one" ? "player_one_id" : "player_two_id";
-  const guestKey =
-    side === "one" ? "guest_player_one_id" : "guest_player_two_id";
+function findGuestByName(name: string | null | undefined, guests: GuestHooper[]) {
+  const target = cleanName(name);
+  if (!target) return null;
 
-  const type = match[typeKey] ?? "fackts";
-  const id = type === "guest" ? match[guestKey] : match[playerKey];
+  return (
+    guests.find((guest) => {
+      const names = [guest.full_name, guest.name, guest.nickname].map(
+        cleanName
+      );
 
-  return {
-    type: type === "guest" ? "guest" : "player",
-    id,
-  };
+      return names.includes(target);
+    }) || null
+  );
 }
 
-function calculateWinRate(leader: Leader) {
-  return leader.matches_played > 0
-    ? Number(((leader.wins / leader.matches_played) * 100).toFixed(1))
-    : 0;
-}
+function getParticipantIdentity(
+  row: OneOnOneRow,
+  playerMap: Map<string, Player>,
+  guestMap: Map<string, GuestHooper>
+) {
+  if (row.participant_type === "fackts_player" || row.fackts_player_id) {
+    const player = row.fackts_player_id
+      ? playerMap.get(String(row.fackts_player_id))
+      : null;
 
-function buildLeaderboards({
-  players,
-  guests,
-  matches,
-  guestStats,
-}: {
-  players: any[];
-  guests: any[];
-  matches: any[];
-  guestStats: any[];
-}) {
-  const playerMap = new Map<string, Leader>();
-  const guestMap = new Map<string, Leader>();
-
-  players.forEach((player) => {
-    playerMap.set(player.id, makeLeader(player, "player"));
-  });
-
-  guests.forEach((guest) => {
-    guestMap.set(guest.id, makeLeader(guest, "guest"));
-  });
-
-  matches.filter(isCompleted).forEach((match: any) => {
-    const one = getCompetitorId(match, "one");
-    const two = getCompetitorId(match, "two");
-
-    const oneScore = Number(match.player_one_score ?? 0);
-    const twoScore = Number(match.player_two_score ?? 0);
-
-    const oneLeader =
-      one.type === "guest" ? guestMap.get(one.id) : playerMap.get(one.id);
-
-    const twoLeader =
-      two.type === "guest" ? guestMap.get(two.id) : playerMap.get(two.id);
-
-    if (oneLeader) {
-      oneLeader.matches_played += 1;
-      oneLeader.points_for += oneScore;
-      oneLeader.points_allowed += twoScore;
-
-      if (oneScore > twoScore) oneLeader.wins += 1;
-      if (oneScore < twoScore) oneLeader.losses += 1;
-    }
-
-    if (twoLeader) {
-      twoLeader.matches_played += 1;
-      twoLeader.points_for += twoScore;
-      twoLeader.points_allowed += oneScore;
-
-      if (twoScore > oneScore) twoLeader.wins += 1;
-      if (twoScore < oneScore) twoLeader.losses += 1;
-    }
-  });
-
-  guestStats.forEach((row: any) => {
-    const guestLeader = guestMap.get(row.guest_hooper_id);
-
-    if (!guestLeader) return;
-
-    guestLeader.matches_played += Number(row.matches_played ?? 0);
-    guestLeader.wins += Number(row.wins ?? 0);
-    guestLeader.losses += Number(row.losses ?? 0);
-    guestLeader.points_for += Number(row.points_scored ?? 0);
-    guestLeader.points_allowed += Number(row.points_allowed ?? 0);
-  });
-
-  const playerLeaders = Array.from(playerMap.values()).map((leader) => ({
-    ...leader,
-    win_rate: calculateWinRate(leader),
-  }));
-
-  const guestLeaders = Array.from(guestMap.values()).map((leader) => ({
-    ...leader,
-    win_rate: calculateWinRate(leader),
-  }));
-
-  return {
-    playerLeaders,
-    guestLeaders,
-  };
-}
-
-function sortByStat(leaders: Leader[], statKey: keyof Leader) {
-  return [...leaders].sort((a: any, b: any) => {
-    const statDiff = Number(b[statKey] ?? 0) - Number(a[statKey] ?? 0);
-
-    if (statDiff !== 0) return statDiff;
-
-    return Number(b.matches_played ?? 0) - Number(a.matches_played ?? 0);
-  });
-}
-
-function formatStat(value: any, statKey: keyof Leader) {
-  if (statKey === "win_rate") {
-    return `${Number(value ?? 0).toFixed(1)}%`;
+    return {
+      id: `player-${row.fackts_player_id || row.id}`,
+      name: getPersonName(player),
+      type: "fackts_player" as const,
+    };
   }
 
-  return String(value ?? 0);
-}
+  if (row.participant_type === "guest_hooper" || row.guest_hooper_id) {
+    const guest = row.guest_hooper_id
+      ? guestMap.get(String(row.guest_hooper_id))
+      : null;
 
-function getCompetitorProfile({
-  match,
-  side,
-  players,
-  guests,
-}: {
-  match: any;
-  side: "one" | "two";
-  players: any[];
-  guests: any[];
-}) {
-  const competitor = getCompetitorId(match, side);
-
-  if (competitor.type === "guest") {
     return {
-      type: "guest",
-      profile: guests.find((guest) => guest.id === competitor.id) ?? null,
+      id: `guest-${row.guest_hooper_id || row.id}`,
+      name: getPersonName(guest),
+      type: "guest_hooper" as const,
     };
   }
 
   return {
-    type: "player",
-    profile: players.find((player) => player.id === competitor.id) ?? null,
+    id: `external-participant-${row.id}`,
+    name: "Unknown Hooper",
+    type: "external" as const,
   };
 }
 
-function getWinnerText(match: any, oneName: string, twoName: string) {
-  if (match.status === "upcoming") return "Upcoming battle";
+function getOpponentIdentity(
+  row: OneOnOneRow,
+  playerMap: Map<string, Player>,
+  guestMap: Map<string, GuestHooper>,
+  players: Player[],
+  guests: GuestHooper[]
+) {
+  if (row.opponent_type === "fackts_player" || row.opponent_player_id) {
+    const player = row.opponent_player_id
+      ? playerMap.get(String(row.opponent_player_id))
+      : null;
 
-  if (!isCompleted(match)) return "Result pending";
+    return {
+      id: `player-${row.opponent_player_id || row.id}`,
+      name: getPersonName(player),
+      type: "fackts_player" as const,
+    };
+  }
 
-  const oneScore = Number(match.player_one_score ?? 0);
-  const twoScore = Number(match.player_two_score ?? 0);
+  if (row.opponent_type === "guest_hooper" || row.opponent_guest_hooper_id) {
+    const guest = row.opponent_guest_hooper_id
+      ? guestMap.get(String(row.opponent_guest_hooper_id))
+      : null;
 
-  if (oneScore > twoScore) return `${oneName} won`;
-  if (twoScore > oneScore) return `${twoName} won`;
+    return {
+      id: `guest-${row.opponent_guest_hooper_id || row.id}`,
+      name: getPersonName(guest),
+      type: "guest_hooper" as const,
+    };
+  }
 
-  return "Tied";
+  const matchedPlayer = findPlayerByName(row.opponent_name, players);
+  if (matchedPlayer) {
+    return {
+      id: `player-${matchedPlayer.id}`,
+      name: getPersonName(matchedPlayer),
+      type: "fackts_player" as const,
+    };
+  }
+
+  const matchedGuest = findGuestByName(row.opponent_name, guests);
+  if (matchedGuest) {
+    return {
+      id: `guest-${matchedGuest.id}`,
+      name: getPersonName(matchedGuest),
+      type: "guest_hooper" as const,
+    };
+  }
+
+  return {
+    id: `external-${cleanName(row.opponent_name) || row.id}`,
+    name: row.opponent_name || "Opponent",
+    type: "external" as const,
+  };
+}
+
+function getParticipantScore(row: OneOnOneRow) {
+  return numberValue(row.points_scored);
+}
+
+function getOpponentScore(row: OneOnOneRow) {
+  return numberValue(row.points_allowed);
+}
+
+function getResult(row: OneOnOneRow) {
+  const result = (row.result || "").toLowerCase().trim();
+
+  if (result === "win") return "Win";
+  if (result === "loss") return "Loss";
+  if (result === "draw") return "Draw";
+  if (result === "pending") return "Upcoming";
+
+  const participantScore = getParticipantScore(row);
+  const opponentScore = getOpponentScore(row);
+
+  if (participantScore !== null && opponentScore !== null) {
+    if (participantScore > opponentScore) return "Win";
+    if (participantScore < opponentScore) return "Loss";
+    return "Draw";
+  }
+
+  return "Upcoming";
+}
+
+function getMatchStatus(row: OneOnOneRow) {
+  return getResult(row) === "Upcoming" ? "Upcoming" : "Completed";
+}
+
+function getStatusClass(status: string, result: string) {
+  if (status === "Upcoming") return "bg-orange-500/15 text-orange-300";
+  if (result === "Win") return "bg-emerald-500/15 text-emerald-300";
+  if (result === "Loss") return "bg-red-500/15 text-red-300";
+  if (result === "Draw") return "bg-zinc-500/15 text-zinc-300";
+
+  return "bg-emerald-500/15 text-emerald-300";
+}
+
+function parseDateForSort(row: OneOnOneRow) {
+  const value = row.match_date || row.created_at || "";
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+async function getData() {
+  const supabase = getSupabase();
+
+  const [playersResult, guestsResult, rowsResult] = await Promise.all([
+    supabase.from("players").select("*"),
+    supabase.from("guest_hoopers").select("*"),
+    supabase
+      .from("guest_one_on_one_stats")
+      .select("*")
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const players = (playersResult.data || []) as Player[];
+  const guests = (guestsResult.data || []) as GuestHooper[];
+  const rows = ((rowsResult.data || []) as OneOnOneRow[]).sort(
+    (a, b) => parseDateForSort(b) - parseDateForSort(a)
+  );
+
+  const playerMap = new Map<string, Player>();
+  players.forEach((player) => playerMap.set(String(player.id), player));
+
+  const guestMap = new Map<string, GuestHooper>();
+  guests.forEach((guest) => guestMap.set(String(guest.id), guest));
+
+  return {
+    rows,
+    players,
+    guests,
+    playerMap,
+    guestMap,
+  };
+}
+
+function buildLeaderboard(
+  rows: OneOnOneRow[],
+  playerMap: Map<string, Player>,
+  guestMap: Map<string, GuestHooper>,
+  players: Player[],
+  guests: GuestHooper[]
+) {
+  const board = new Map<string, LeaderboardItem>();
+
+  function ensureItem(identity: {
+    id: string;
+    name: string;
+    type: "fackts_player" | "guest_hooper" | "external";
+  }) {
+    if (!board.has(identity.id)) {
+      board.set(identity.id, {
+        id: identity.id,
+        name: identity.name,
+        type: identity.type,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        matches: 0,
+        points: 0,
+        pointsAllowed: 0,
+      });
+    }
+
+    return board.get(identity.id)!;
+  }
+
+  rows.forEach((row) => {
+    const result = getResult(row);
+    if (result === "Upcoming") return;
+
+    const participantScore = getParticipantScore(row);
+    const opponentScore = getOpponentScore(row);
+
+    if (participantScore === null || opponentScore === null) return;
+
+    const participant = getParticipantIdentity(row, playerMap, guestMap);
+    const opponent = getOpponentIdentity(
+      row,
+      playerMap,
+      guestMap,
+      players,
+      guests
+    );
+
+    const participantItem = ensureItem(participant);
+    const opponentItem = ensureItem(opponent);
+
+    participantItem.matches += 1;
+    participantItem.points += participantScore;
+    participantItem.pointsAllowed += opponentScore;
+
+    opponentItem.matches += 1;
+    opponentItem.points += opponentScore;
+    opponentItem.pointsAllowed += participantScore;
+
+    if (participantScore > opponentScore) {
+      participantItem.wins += 1;
+      opponentItem.losses += 1;
+    } else if (opponentScore > participantScore) {
+      opponentItem.wins += 1;
+      participantItem.losses += 1;
+    } else {
+      participantItem.draws += 1;
+      opponentItem.draws += 1;
+    }
+  });
+
+  return Array.from(board.values()).sort((a, b) => {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    if (b.points !== a.points) return b.points - a.points;
+    if (a.pointsAllowed !== b.pointsAllowed) {
+      return a.pointsAllowed - b.pointsAllowed;
+    }
+    return b.matches - a.matches;
+  });
 }
 
 export default async function OneOnOnePage() {
-  const [players, guests, matches, guestStats] = await Promise.all([
-    getPlayers(),
-    getGuestHoopers(),
-    getOneOnOneGames(),
-    getGuestOneOnOneStats(),
-  ]);
+  const { rows, players, guests, playerMap, guestMap } = await getData();
 
-  const { playerLeaders, guestLeaders } = buildLeaderboards({
+  const leaderboard = buildLeaderboard(
+    rows,
+    playerMap,
+    guestMap,
     players,
-    guests,
-    matches,
-    guestStats,
-  });
-
-  const allLeaders = [...playerLeaders, ...guestLeaders];
-
-  const overallWins = sortByStat(allLeaders, "wins");
-  const overallMatches = sortByStat(allLeaders, "matches_played");
-  const overallWinRate = sortByStat(
-    allLeaders.filter((leader) => leader.matches_played > 0),
-    "win_rate"
-  );
-  const overallPoints = sortByStat(allLeaders, "points_for");
-
-  const guestWins = sortByStat(guestLeaders, "wins");
-  const guestMatches = sortByStat(guestLeaders, "matches_played");
-  const guestWinRate = sortByStat(
-    guestLeaders.filter((leader) => leader.matches_played > 0),
-    "win_rate"
-  );
-  const guestPoints = sortByStat(guestLeaders, "points_for");
-
-  const completedMatches = matches.filter(
-    (match: any) => match.status === "completed"
+    guests
   );
 
-  const upcomingMatches = matches.filter(
-    (match: any) => match.status === "upcoming"
+  const upcomingRows = rows.filter((row) => getMatchStatus(row) === "Upcoming");
+  const completedRows = rows.filter(
+    (row) => getMatchStatus(row) === "Completed"
   );
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <section className="relative overflow-hidden border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/25">
-        <div className="absolute left-0 top-0 h-full w-full opacity-[0.035]">
-          <div className="h-full w-full bg-[radial-gradient(circle_at_center,_white_1px,_transparent_1px)] bg-[length:18px_18px]" />
-        </div>
+    <main className="min-h-screen bg-black text-white">
+      <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.2),_transparent_35%),linear-gradient(135deg,_#050505,_#111111_45%,_#020202)]">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="mb-3 inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-orange-300">
+                FACKTS Hoops
+              </div>
 
-        <div className="absolute -left-20 top-10 h-60 w-60 rounded-full bg-orange-500/10 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-60 w-60 rounded-full bg-orange-400/10 blur-3xl" />
+              <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
+                1-on-1 Battles
+              </h1>
 
-        <div className="relative mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
-          <div className="max-w-4xl">
-            <div className="text-[10px] uppercase tracking-[0.25em] text-orange-300 md:text-xs">
-              FACKTS Hoops
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
+                1-on-1 games, results, points, wins, videos, and matchup history.
+              </p>
             </div>
 
-            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
-              1-on-1 Battles
-            </h1>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/"
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
+              >
+                Home
+              </Link>
 
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">
-              Upcoming matchups, played battles, and compact 1-on-1 leaderboards
-              for FACKTS players and guest hoopers.
-            </p>
+              <Link
+                href="/games"
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
+              >
+                Games
+              </Link>
+
+              <Link
+                href="/players"
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
+              >
+                Players
+              </Link>
+            </div>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <HeroStat label="Total Battles" value={String(matches.length)} />
-            <HeroStat label="Upcoming" value={String(upcomingMatches.length)} />
-            <HeroStat label="Played" value={String(completedMatches.length)} />
-            <HeroStat label="Guest Entries" value={String(guestStats.length)} />
+          <div className="mt-7 grid gap-3 sm:grid-cols-4">
+            <StatCard label="Total 1-on-1 Games" value={rows.length} />
+            <StatCard label="Completed Results" value={completedRows.length} />
+            <StatCard label="Upcoming Games" value={upcomingRows.length} />
+            <StatCard label="Ranked Hoopers" value={leaderboard.length} />
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-5 md:px-6 md:py-6">
-        <SectionTitle
-          eyebrow="Upcoming"
-          title="Upcoming 1-on-1 Battles"
-          subtitle="Scheduled matchups before the scores are posted."
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <LeaderboardCard
+          eyebrow="1-on-1 Wins"
+          title="Leaderboard"
+          emptyText="No completed 1-on-1 results yet."
+          items={leaderboard}
         />
+      </section>
 
-        {upcomingMatches.length === 0 ? (
-          <EmptyCard text="No upcoming 1-on-1 battles yet." />
+      <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Fixtures" title="Upcoming 1-on-1 Games" />
+
+        {upcomingRows.length > 0 ? (
+          <CardGrid
+            rows={upcomingRows}
+            players={players}
+            guests={guests}
+            playerMap={playerMap}
+            guestMap={guestMap}
+          />
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {upcomingMatches.map((match: any) => (
-              <MatchCard
-                key={match.id}
-                match={match}
-                players={players}
-                guests={guests}
-              />
-            ))}
-          </div>
+          <EmptyBox text="No upcoming 1-on-1 games added yet." />
         )}
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-5 md:px-6 md:pb-6">
-        <SectionTitle
-          eyebrow="Played"
-          title="Played 1-on-1 Battles"
-          subtitle="Completed matchups and final results."
-        />
+      <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Results" title="Previous 1-on-1 Results" />
 
-        {completedMatches.length === 0 ? (
-          <EmptyCard text="No played 1-on-1 battles yet." />
+        {completedRows.length > 0 ? (
+          <CardGrid
+            rows={completedRows}
+            players={players}
+            guests={guests}
+            playerMap={playerMap}
+            guestMap={guestMap}
+          />
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {completedMatches.slice(0, 16).map((match: any) => (
-              <MatchCard
-                key={match.id}
-                match={match}
-                players={players}
-                guests={guests}
-              />
-            ))}
-          </div>
+          <EmptyBox text="No completed 1-on-1 results yet." />
         )}
       </section>
 
-      <section className="mx-auto max-w-7xl px-3 py-4 md:px-6 md:py-6">
-        <SectionTitle
-          eyebrow="Leaderboards"
-          title="1-on-1 Leaderboards"
-          subtitle="Compact rankings styled like the main leaderboard page."
-        />
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Full Log" title="All 1-on-1 Games" />
 
-        {allLeaders.length === 0 ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
-            No 1-on-1 leaderboard data is available yet.
-          </div>
+        {rows.length > 0 ? (
+          <CardGrid
+            rows={rows}
+            players={players}
+            guests={guests}
+            playerMap={playerMap}
+            guestMap={guestMap}
+          />
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <LeaderboardTableCard
-              title="Overall 1v1 Wins"
-              statLabel="WINS"
-              leaders={overallWins}
-              statKey="wins"
-            />
-
-            <LeaderboardTableCard
-              title="Overall 1v1 Matches"
-              statLabel="GP"
-              leaders={overallMatches}
-              statKey="matches_played"
-            />
-
-            <LeaderboardTableCard
-              title="Overall Win Rate"
-              statLabel="WIN%"
-              leaders={overallWinRate}
-              statKey="win_rate"
-            />
-
-            <LeaderboardTableCard
-              title="Overall 1v1 Points"
-              statLabel="PTS"
-              leaders={overallPoints}
-              statKey="points_for"
-            />
-
-            <LeaderboardTableCard
-              title="Guest 1v1 Wins"
-              statLabel="WINS"
-              leaders={guestWins}
-              statKey="wins"
-            />
-
-            <LeaderboardTableCard
-              title="Guest 1v1 Matches"
-              statLabel="GP"
-              leaders={guestMatches}
-              statKey="matches_played"
-            />
-
-            <LeaderboardTableCard
-              title="Guest Win Rate"
-              statLabel="WIN%"
-              leaders={guestWinRate}
-              statKey="win_rate"
-            />
-
-            <LeaderboardTableCard
-              title="Guest 1v1 Points"
-              statLabel="PTS"
-              leaders={guestPoints}
-              statKey="points_for"
-            />
-          </div>
+          <EmptyBox text="No 1-on-1 games found yet." />
         )}
       </section>
     </main>
   );
 }
 
-function MatchCard({
-  match,
-  players,
-  guests,
-}: {
-  match: any;
-  players: any[];
-  guests: any[];
-}) {
-  const one = getCompetitorProfile({
-    match,
-    side: "one",
-    players,
-    guests,
-  });
-
-  const two = getCompetitorProfile({
-    match,
-    side: "two",
-    players,
-    guests,
-  });
-
-  const oneName = one.profile?.full_name ?? "Player One";
-  const twoName = two.profile?.full_name ?? "Player Two";
-
+function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-sm shadow-black/20 transition hover:border-orange-400/30">
-      {match.poster_url ? (
-        <div className="relative h-20 w-full overflow-hidden bg-slate-950 md:h-24">
-          <img
-            src={match.poster_url}
-            alt={`${oneName} vs ${twoName}`}
-            className="h-full w-full object-cover"
-            style={{
-              objectPosition: match.poster_position ?? "center center",
-            }}
-          />
+    <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+        {label}
+      </p>
 
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/20 to-transparent" />
-
-          <div
-            className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-black ${
-              match.status === "upcoming"
-                ? "bg-orange-500 text-slate-950"
-                : "bg-emerald-500/90 text-slate-950"
-            }`}
-          >
-            {match.status === "upcoming" ? "UPCOMING" : "PLAYED"}
-          </div>
-
-          <div className="absolute bottom-2 right-2 rounded-full bg-slate-950/80 px-2 py-0.5 text-[9px] font-bold text-slate-300 backdrop-blur">
-            {match.match_date ?? "Date TBA"}
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-2 py-2">
-          <div
-            className={`rounded-full px-2 py-0.5 text-[9px] font-black ${
-              match.status === "upcoming"
-                ? "bg-orange-500 text-slate-950"
-                : "bg-emerald-500/15 text-emerald-300"
-            }`}
-          >
-            {match.status === "upcoming" ? "UPCOMING" : "PLAYED"}
-          </div>
-
-          <div className="truncate text-[9px] text-slate-500">
-            {match.match_date ?? "Date TBA"}
-          </div>
-        </div>
-      )}
-
-      <div className="p-2">
-        {match.venue ? (
-          <div className="mb-2 truncate text-[9px] text-slate-500">
-            {match.venue}
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-[1fr_2rem_1fr] items-center gap-1.5">
-          <CompetitorCard competitor={one} fallback="Player One" />
-
-          <div className="text-center">
-            <div className="text-[11px] font-black text-orange-300">VS</div>
-
-            {match.status === "completed" ? (
-              <div className="mt-0.5 text-[10px] font-black text-white">
-                {match.player_one_score ?? 0}-{match.player_two_score ?? 0}
-              </div>
-            ) : null}
-          </div>
-
-          <CompetitorCard competitor={two} fallback="Player Two" />
-        </div>
-
-        <div className="mt-2 truncate rounded-xl border border-slate-800 bg-slate-950 px-2 py-1.5 text-[10px] font-bold text-slate-300">
-          {getWinnerText(match, oneName, twoName)}
-        </div>
-      </div>
-    </article>
+      <p className="mt-2 text-3xl font-black">{value}</p>
+    </div>
   );
 }
 
-function LeaderboardTableCard({
-  title,
-  statLabel,
-  leaders,
-  statKey,
-}: {
-  title: string;
-  statLabel: string;
-  leaders: Leader[];
-  statKey: keyof Leader;
-}) {
-  const topLeaders = leaders.slice(0, 7);
-
+function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-md shadow-black/20">
-      <div className="border-b border-slate-800 bg-slate-950/70 px-3 py-2">
-        <div className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-300">
-          {statLabel}
-        </div>
+    <div className="mb-4">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
+        {eyebrow}
+      </p>
 
-        <h2 className="mt-0.5 text-sm font-black leading-tight md:text-base">
-          {title}
-        </h2>
+      <h2 className="text-2xl font-black">{title}</h2>
+    </div>
+  );
+}
+
+function EmptyBox({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-zinc-950 p-5 text-sm text-zinc-400">
+      {text}
+    </div>
+  );
+}
+
+function CardGrid({
+  rows,
+  players,
+  guests,
+  playerMap,
+  guestMap,
+}: {
+  rows: OneOnOneRow[];
+  players: Player[];
+  guests: GuestHooper[];
+  playerMap: Map<string, Player>;
+  guestMap: Map<string, GuestHooper>;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {rows.map((row) => (
+        <BattleCard
+          key={row.id}
+          row={row}
+          players={players}
+          guests={guests}
+          playerMap={playerMap}
+          guestMap={guestMap}
+        />
+      ))}
+    </div>
+  );
+}
+
+function LeaderboardCard({
+  eyebrow,
+  title,
+  emptyText,
+  items,
+}: {
+  eyebrow: string;
+  title: string;
+  emptyText: string;
+  items: LeaderboardItem[];
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-zinc-950 p-4">
+      <div className="mb-4">
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
+          {eyebrow}
+        </p>
+
+        <h2 className="text-2xl font-black">{title}</h2>
       </div>
 
-      <div className="divide-y divide-slate-800">
-        {topLeaders.length === 0 ? (
-          <div className="px-3 py-3 text-sm text-slate-500">No data yet.</div>
-        ) : (
-          topLeaders.map((leader, index) => (
-            <Link
-              key={`${leader.type}-${leader.id}`}
-              href={
-                leader.type === "guest"
-                  ? "/guest-hoopers"
-                  : `/players/${leader.id}`
-              }
-              className="grid grid-cols-[1.7rem_2.45rem_minmax(0,1fr)_3rem] items-center gap-2 px-2.5 py-1.5 transition hover:bg-slate-800/60 md:grid-cols-[1.9rem_2.65rem_minmax(0,1fr)_3.2rem] md:px-3"
+      <div className="space-y-2">
+        {items.length > 0 ? (
+          items.map((item, index) => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/40 p-3"
             >
-              <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-950 text-[11px] font-black text-orange-300 ring-1 ring-slate-800">
-                {index + 1}
-              </div>
-
-              <div className="h-9 w-9 overflow-hidden rounded-lg bg-slate-950 ring-1 ring-slate-800 md:h-10 md:w-10">
-                {leader.photo_url ? (
-                  <img
-                    src={leader.photo_url}
-                    alt={leader.full_name}
-                    className="h-full w-full object-cover"
-                    style={{
-                      objectPosition: leader.photo_position ?? "center center",
-                    }}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[10px] font-black text-orange-300">
-                    {leader.type === "guest" ? "GH" : "FH"}
-                  </div>
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <div className="truncate text-[11px] font-black leading-tight text-white md:text-xs">
-                  {leader.jersey_number ? `#${leader.jersey_number} ` : ""}
-                  {leader.full_name}
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500 text-sm font-black text-black">
+                  {index + 1}
                 </div>
 
-                <div className="mt-0.5 truncate text-[9px] leading-tight text-slate-400 md:text-[10px]">
-                  {leader.type === "guest"
-                    ? "Guest Hooper"
-                    : leader.position ?? "FACKTS Player"}
-                  {leader.nickname ? ` • ${leader.nickname}` : ""}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-white">
+                    {item.name}
+                  </p>
+
+                  <p className="text-xs text-zinc-500">
+                    {item.matches} games • {item.points} pts •{" "}
+                    {item.pointsAllowed} allowed
+                  </p>
                 </div>
               </div>
 
               <div className="text-right">
-                <div className="text-base font-black leading-none text-orange-300 md:text-lg">
-                  {formatStat(leader[statKey], statKey)}
-                </div>
+                <p className="text-lg font-black text-white">{item.wins}</p>
 
-                <div className="mt-0.5 text-[8px] font-bold uppercase tracking-wide text-slate-500">
-                  {statLabel}
-                </div>
+                <p className="text-[11px] font-bold uppercase text-zinc-500">
+                  wins
+                </p>
               </div>
-            </Link>
+            </div>
           ))
+        ) : (
+          <p className="rounded-xl bg-black/40 p-4 text-sm text-zinc-500">
+            {emptyText}
+          </p>
         )}
       </div>
-    </section>
+    </div>
   );
 }
 
-function SectionTitle({
-  eyebrow,
-  title,
-  subtitle,
+function BattleCard({
+  row,
+  players,
+  guests,
+  playerMap,
+  guestMap,
 }: {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
+  row: OneOnOneRow;
+  players: Player[];
+  guests: GuestHooper[];
+  playerMap: Map<string, Player>;
+  guestMap: Map<string, GuestHooper>;
 }) {
-  return (
-    <div className="mb-4">
-      <div className="text-xs uppercase tracking-[0.25em] text-orange-300">
-        {eyebrow}
-      </div>
+  const participant = getParticipantIdentity(row, playerMap, guestMap);
+  const opponent = getOpponentIdentity(row, playerMap, guestMap, players, guests);
 
-      <h2 className="mt-1 text-2xl font-black md:text-3xl">{title}</h2>
+  const participantScore = getParticipantScore(row);
+  const opponentScore = getOpponentScore(row);
 
-      <p className="mt-2 text-sm leading-6 text-slate-400">{subtitle}</p>
-    </div>
-  );
-}
-
-function HeroStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-1 text-2xl font-black text-orange-300">{value}</div>
-    </div>
-  );
-}
-
-function CompetitorCard({
-  competitor,
-  fallback,
-}: {
-  competitor: { type: string; profile: any };
-  fallback: string;
-}) {
-  const profile = competitor.profile;
+  const result = getResult(row);
+  const status = getMatchStatus(row);
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-950 p-1.5">
-      {profile?.photo_url ? (
-        <img
-          src={profile.photo_url}
-          alt={profile.full_name}
-          className="h-7 w-7 shrink-0 rounded-lg border border-slate-700 object-cover"
-          style={{
-            objectPosition: profile.photo_position ?? "center center",
-          }}
-        />
-      ) : (
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-[8px] font-black text-orange-300">
-          {competitor.type === "guest" ? "GH" : "FH"}
+    <Link
+      href={`/one-on-one/${row.id}`}
+      className="block overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 transition hover:-translate-y-1 hover:border-orange-400/50"
+    >
+      {row.poster_url ? (
+        <div className="h-44 w-full overflow-hidden bg-zinc-900">
+          <img
+            src={row.poster_url}
+            alt={`${participant.name} vs ${opponent.name}`}
+            className="h-full w-full object-cover"
+          />
         </div>
-      )}
+      ) : null}
 
-      <div className="min-w-0">
-        <div className="truncate text-[9px] font-black leading-tight text-white">
-          {profile?.full_name ?? fallback}
+      <div className="p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <span
+            className={`rounded-full px-3 py-1 text-[11px] font-black uppercase ${getStatusClass(
+              status,
+              result
+            )}`}
+          >
+            {status === "Completed" ? result : status}
+          </span>
+
+          <span className="text-xs font-bold text-zinc-500">
+            {getRowDate(row)}
+          </span>
         </div>
 
-        <div className="mt-0.5 truncate text-[8px] text-slate-500">
-          {competitor.type === "guest"
-            ? "Guest"
-            : profile?.position ?? "Player"}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-white">
+              {participant.name}
+            </p>
+
+            <p
+              className={
+                result === "Win"
+                  ? "text-3xl font-black text-orange-300"
+                  : "text-3xl font-black text-white"
+              }
+            >
+              {participantScore ?? "-"}
+            </p>
+          </div>
+
+          <div className="rounded-full bg-white/5 px-2 py-1 text-[10px] font-black uppercase text-zinc-500">
+            vs
+          </div>
+
+          <div className="min-w-0 text-right">
+            <p className="truncate text-sm font-black text-white">
+              {opponent.name}
+            </p>
+
+            <p
+              className={
+                result === "Loss"
+                  ? "text-3xl font-black text-orange-300"
+                  : "text-3xl font-black text-white"
+              }
+            >
+              {opponentScore ?? "-"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+          <p className="truncate text-xs text-zinc-500">
+            {getRowLocation(row)}
+          </p>
+
+          <span className="text-xs font-black text-orange-300">
+            Open Match
+          </span>
         </div>
       </div>
-    </div>
-  );
-}
-
-function EmptyCard({ text }: { text: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
-      {text}
-    </div>
+    </Link>
   );
 }

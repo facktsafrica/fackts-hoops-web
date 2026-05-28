@@ -42,9 +42,20 @@ function numberValue(value: string) {
 }
 
 function gameLabel(game: any) {
-  const date = game.game_date ?? "Date TBA";
-  const opponent = game.opponent ?? "Opponent";
-  return `${date} - FACKTS vs ${opponent}`;
+  const date = game.game_date ?? game.date ?? "Date TBA";
+  const opponent = game.opponent ?? game.title ?? "Opponent";
+  const location = game.location ?? game.venue ?? "";
+  return `${date} - FACKTS vs ${opponent}${location ? ` | ${location}` : ""}`;
+}
+
+function getGuestName(guest: any) {
+  return (
+    guest.full_name ||
+    guest.guest_name ||
+    guest.name ||
+    guest.nickname ||
+    "Guest Hooper"
+  );
 }
 
 export default function AdminGuestGameStatsPage() {
@@ -58,24 +69,12 @@ export default function AdminGuestGameStatsPage() {
 
   async function loadPageData(keepGameId?: string) {
     setLoadingPage(true);
+    setMessage("");
 
-    const [gamesResult, guestsResult, statsResult] = await Promise.all([
-      supabase
-        .from("games")
-        .select("*")
-        .order("game_date", { ascending: false }),
-
-      supabase
-        .from("guest_hoopers")
-        .select("*")
-        .eq("is_active", true)
-        .order("created_at", { ascending: false }),
-
-      supabase
-        .from("guest_game_stats")
-        .select("*")
-        .order("created_at", { ascending: false }),
-    ]);
+    const gamesResult = await supabase
+      .from("games")
+      .select("*")
+      .order("game_date", { ascending: false });
 
     if (gamesResult.error) {
       setMessage(`Failed to load games: ${gamesResult.error.message}`);
@@ -83,11 +82,21 @@ export default function AdminGuestGameStatsPage() {
       return;
     }
 
+    const guestsResult = await supabase
+      .from("guest_hoopers")
+      .select("*")
+      .order("created_at", { ascending: false });
+
     if (guestsResult.error) {
       setMessage(`Failed to load guest hoopers: ${guestsResult.error.message}`);
       setLoadingPage(false);
       return;
     }
+
+    const statsResult = await supabase
+      .from("guest_game_stats")
+      .select("*")
+      .order("created_at", { ascending: false });
 
     if (statsResult.error) {
       setMessage(`Failed to load guest stats: ${statsResult.error.message}`);
@@ -123,20 +132,24 @@ export default function AdminGuestGameStatsPage() {
   }
 
   const selectedGame = useMemo(() => {
-    return games.find((game) => game.id === form.game_id) ?? null;
+    return games.find((game) => String(game.id) === String(form.game_id)) ?? null;
   }, [games, form.game_id]);
+
+  const visibleGuestHoopers = useMemo(() => {
+    return guestHoopers
+      .filter((guest) => guest.is_active !== false)
+      .map((guest) => ({
+        ...guest,
+        display_name: getGuestName(guest),
+      }))
+      .sort((a, b) => a.display_name.localeCompare(b.display_name));
+  }, [guestHoopers]);
 
   const selectedGameStats = useMemo(() => {
     return guestStats.filter(
       (row) => String(row.game_id) === String(form.game_id)
     );
   }, [guestStats, form.game_id]);
-
-  function getGuest(guestId: string) {
-    return (
-      guestHoopers.find((guest) => String(guest.id) === String(guestId)) ?? null
-    );
-  }
 
   function getExistingStat(guestId: string) {
     return (
@@ -149,6 +162,14 @@ export default function AdminGuestGameStatsPage() {
   }
 
   function loadGuestIntoForm(guestId: string) {
+    if (!guestId) {
+      setForm((prev) => ({
+        ...prev,
+        guest_hooper_id: "",
+      }));
+      return;
+    }
+
     const existing = getExistingStat(guestId);
 
     if (!existing) {
@@ -209,6 +230,8 @@ export default function AdminGuestGameStatsPage() {
       return;
     }
 
+    const existing = getExistingStat(form.guest_hooper_id);
+
     if (form.is_player_of_the_game) {
       await supabase
         .from("guest_game_stats")
@@ -230,12 +253,18 @@ export default function AdminGuestGameStatsPage() {
       plus_minus: numberValue(form.plus_minus),
       is_player_of_the_game: form.is_player_of_the_game,
       notes: form.notes.trim() || null,
-      updated_at: new Date().toISOString(),
     };
 
-    const result = await supabase.from("guest_game_stats").upsert(payload, {
-      onConflict: "game_id,guest_hooper_id",
-    });
+    let result;
+
+    if (existing?.id) {
+      result = await supabase
+        .from("guest_game_stats")
+        .update(payload)
+        .eq("id", existing.id);
+    } else {
+      result = await supabase.from("guest_game_stats").insert(payload);
+    }
 
     if (result.error) {
       setMessage(`Failed to save guest stats: ${result.error.message}`);
@@ -294,7 +323,7 @@ export default function AdminGuestGameStatsPage() {
           </h1>
 
           <p className="mt-3 text-slate-400">
-            Feed guest hooper stats for any selected game.
+            Feed stats for any guest hooper in any selected game.
           </p>
         </div>
 
@@ -346,6 +375,21 @@ export default function AdminGuestGameStatsPage() {
                   </select>
                 </label>
 
+                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Available guest hoopers
+                  </div>
+
+                  <div className="mt-2 text-2xl font-black text-orange-300">
+                    {visibleGuestHoopers.length}
+                  </div>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Select a game first, then select the guest hooper whose
+                    stats you want to feed.
+                  </p>
+                </div>
+
                 <label className="block">
                   <div className="mb-2 text-sm font-medium text-slate-300">
                     Guest Hooper
@@ -357,12 +401,12 @@ export default function AdminGuestGameStatsPage() {
                     className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
                   >
                     <option value="">Select guest hooper</option>
-                    {guestHoopers.map((guest) => {
+                    {visibleGuestHoopers.map((guest) => {
                       const existing = getExistingStat(guest.id);
 
                       return (
                         <option key={guest.id} value={guest.id}>
-                          {guest.full_name}
+                          {guest.display_name}
                           {guest.position ? ` - ${guest.position}` : ""}
                           {existing ? " - stats already fed" : ""}
                         </option>
@@ -370,6 +414,18 @@ export default function AdminGuestGameStatsPage() {
                     })}
                   </select>
                 </label>
+
+                {games.length === 0 ? (
+                  <div className="rounded-2xl border border-orange-500/30 bg-orange-500/10 p-4 text-sm text-orange-200">
+                    No games found. Add games first under Admin Games.
+                  </div>
+                ) : null}
+
+                {visibleGuestHoopers.length === 0 ? (
+                  <div className="rounded-2xl border border-orange-500/30 bg-orange-500/10 p-4 text-sm text-orange-200">
+                    No guest hoopers found. Add guest hoopers first.
+                  </div>
+                ) : null}
 
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                   <StatInput
@@ -460,7 +516,7 @@ export default function AdminGuestGameStatsPage() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !form.game_id || !form.guest_hooper_id}
                   className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? "Saving..." : "Save Guest Stats"}
@@ -485,13 +541,9 @@ export default function AdminGuestGameStatsPage() {
                 </div>
               </div>
 
-              {guestHoopers.length === 0 ? (
-                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
-                  No active guest hoopers found. Create guest hoopers first.
-                </div>
-              ) : (
+              {form.game_id ? (
                 <div className="space-y-3">
-                  {guestHoopers.map((guest) => {
+                  {visibleGuestHoopers.map((guest) => {
                     const stat = getExistingStat(guest.id);
 
                     return (
@@ -504,7 +556,7 @@ export default function AdminGuestGameStatsPage() {
                             {guest.photo_url ? (
                               <img
                                 src={guest.photo_url}
-                                alt={guest.full_name}
+                                alt={guest.display_name}
                                 className="h-14 w-14 rounded-2xl border border-slate-700 object-cover"
                                 style={{
                                   objectPosition:
@@ -519,7 +571,7 @@ export default function AdminGuestGameStatsPage() {
 
                             <div>
                               <div className="text-lg font-bold">
-                                {guest.full_name}
+                                {guest.display_name}
                               </div>
 
                               <div className="mt-1 text-sm text-slate-400">
@@ -574,6 +626,10 @@ export default function AdminGuestGameStatsPage() {
                       </article>
                     );
                   })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
+                  Select a game to view and feed guest stats.
                 </div>
               )}
             </section>
