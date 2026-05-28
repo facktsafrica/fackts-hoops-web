@@ -44,6 +44,8 @@ export default function AdminLoginPage() {
       return;
     }
 
+    setMessage("Login accepted. Checking admin rights...");
+
     const profileResult = await supabase
       .from("admin_profiles")
       .select("id, role, is_active")
@@ -68,7 +70,7 @@ export default function AdminLoginPage() {
     }
 
     setLoginOk(true);
-    setMessage("Access approved. Click the button below to enter admin.");
+    setMessage("Access approved. Enter the dashboard.");
     setLoading(false);
   }
 
@@ -111,12 +113,12 @@ export default function AdminLoginPage() {
           ) : null}
 
           {loginOk ? (
-            <a
+            <Link
               href="/admin"
               className="block w-full rounded-2xl bg-orange-500 px-5 py-4 text-center text-base font-black text-black transition hover:bg-orange-400"
             >
               ENTER ADMIN DASHBOARD
-            </a>
+            </Link>
           ) : (
             <form onSubmit={handleLogin} className="space-y-4">
               <label className="block">
