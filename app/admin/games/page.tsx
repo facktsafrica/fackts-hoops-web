@@ -156,9 +156,18 @@ function cleanUrl(value: string) {
   return value.trim();
 }
 
+function makeSafeFileName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 export default function AdminGamesPage() {
   const [games, setGames] = useState<GameRow[]>([]);
   const [form, setForm] = useState<GameForm>(emptyForm);
+  const [posterFile, setPosterFile] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -197,6 +206,7 @@ export default function AdminGamesPage() {
 
   function handleEdit(game: GameRow) {
     setEditingId(game.id);
+    setPosterFile(null);
 
     const savedVideoUrl = game.video_url || game.highlight_url || "";
     const savedTeamScore = getTeamScore(game);
@@ -227,8 +237,34 @@ export default function AdminGamesPage() {
 
   function cancelEdit() {
     setEditingId(null);
+    setPosterFile(null);
     setForm(emptyForm);
     setMessage("Edit cancelled.");
+  }
+
+  async function uploadPosterImage() {
+    if (!posterFile) return form.poster_url.trim() || null;
+
+    const cleanName = makeSafeFileName(posterFile.name);
+    const fileName = cleanName || `game-poster-${Date.now()}.jpg`;
+    const filePath = `posters/${Date.now()}-${fileName}`;
+
+    const uploadResult = await supabase.storage
+      .from("game-posters")
+      .upload(filePath, posterFile, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (uploadResult.error) {
+      throw new Error(uploadResult.error.message);
+    }
+
+    const publicUrlResult = supabase.storage
+      .from("game-posters")
+      .getPublicUrl(filePath);
+
+    return publicUrlResult.data.publicUrl;
   }
 
   async function handleSave(event: FormEvent) {
@@ -249,6 +285,16 @@ export default function AdminGamesPage() {
       return;
     }
 
+    let posterUrl: string | null = null;
+
+    try {
+      posterUrl = await uploadPosterImage();
+    } catch (error: any) {
+      setMessage(`Poster upload failed: ${error.message}`);
+      setSaving(false);
+      return;
+    }
+
     const teamScore = numberOrNull(form.team_score);
     const opponentScore = numberOrNull(form.opponent_score);
     const scoreHasBeenEntered = teamScore !== null && opponentScore !== null;
@@ -262,7 +308,7 @@ export default function AdminGamesPage() {
       team_score: teamScore,
       opponent_score: opponentScore,
       is_upcoming: scoreHasBeenEntered ? false : form.is_upcoming,
-      poster_url: form.poster_url.trim() || null,
+      poster_url: posterUrl,
       poster_position: form.poster_position || "center center",
       video_url: videoUrl || null,
       highlight_url: videoUrl || null,
@@ -275,12 +321,12 @@ export default function AdminGamesPage() {
           .from("games")
           .update(payload)
           .eq("id", editingId)
-          .select("id, video_url, highlight_url")
+          .select("id, video_url, highlight_url, poster_url")
           .single()
       : await supabase
           .from("games")
           .insert(payload)
-          .select("id, video_url, highlight_url")
+          .select("id, video_url, highlight_url, poster_url")
           .single();
 
     if (saveResult.error) {
@@ -296,17 +342,16 @@ export default function AdminGamesPage() {
     const savedVideo =
       saveResult.data?.video_url || saveResult.data?.highlight_url || "";
 
+    const savedPoster = saveResult.data?.poster_url || "";
+
     setMessage(
-      savedVideo
-        ? editingId
-          ? "Game updated. Video link saved."
-          : "Game saved. Video link saved."
-        : editingId
-          ? "Game updated. No video link saved."
-          : "Game saved. No video link saved."
+      `${editingId ? "Game updated." : "Game saved."} ${
+        savedPoster ? "Poster saved." : "No poster uploaded."
+      } ${savedVideo ? "Video link saved." : "No video link saved."}`
     );
 
     setEditingId(null);
+    setPosterFile(null);
 
     setForm({
       ...emptyForm,
@@ -331,6 +376,7 @@ export default function AdminGamesPage() {
 
     if (editingId === gameId) {
       setEditingId(null);
+      setPosterFile(null);
       setForm(emptyForm);
     }
 
@@ -478,7 +524,7 @@ export default function AdminGamesPage() {
                       onChange={(event) =>
                         updateField("team_score", event.target.value)
                       }
-                      placeholder="Leave blank if upcoming"
+                      placeholder="Leave blank"
                       className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
                     />
                   </label>
@@ -494,7 +540,7 @@ export default function AdminGamesPage() {
                       onChange={(event) =>
                         updateField("opponent_score", event.target.value)
                       }
-                      placeholder="Leave blank if upcoming"
+                      placeholder="Leave blank"
                       className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
                     />
                   </label>
@@ -517,17 +563,45 @@ export default function AdminGamesPage() {
 
                 <label className="block">
                   <div className="mb-2 text-sm font-medium text-slate-300">
-                    Poster URL
+                    Upload Poster Image
                   </div>
 
+                  {form.poster_url ? (
+                    <div className="mb-3 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+                      <img
+                        src={form.poster_url}
+                        alt="Current game poster"
+                        className="h-24 w-20 rounded-xl object-cover"
+                        style={{
+                          objectPosition: form.poster_position || "center center",
+                        }}
+                      />
+
+                      <div>
+                        <div className="text-sm font-bold text-white">
+                          Current poster will remain
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Upload a new image only if you want to replace it.
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <input
-                    value={form.poster_url}
+                    type="file"
+                    accept="image/*"
                     onChange={(event) =>
-                      updateField("poster_url", event.target.value)
+                      setPosterFile(event.target.files?.[0] || null)
                     }
-                    placeholder="Paste image URL"
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white file:mr-4 file:rounded-full file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-bold file:text-black"
                   />
+
+                  {posterFile ? (
+                    <p className="mt-2 text-xs font-bold text-orange-300">
+                      Selected: {posterFile.name}
+                    </p>
+                  ) : null}
                 </label>
 
                 <label className="block">
@@ -563,11 +637,6 @@ export default function AdminGamesPage() {
                     placeholder="Paste YouTube, Vimeo, or direct video link"
                     className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
                   />
-
-                  <p className="mt-2 text-xs text-slate-500">
-                    This will show the video inside the app on the game detail
-                    page.
-                  </p>
                 </label>
 
                 <label className="block">
@@ -596,8 +665,8 @@ export default function AdminGamesPage() {
                       ? "Updating..."
                       : "Saving..."
                     : editingId
-                      ? "Update Game"
-                      : "Save Game"}
+                    ? "Update Game"
+                    : "Save Game"}
                 </button>
               </form>
             </section>
