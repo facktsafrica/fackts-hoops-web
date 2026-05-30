@@ -13,69 +13,101 @@ const adminCards: AdminCard[] = [
   {
     eyebrow: "Roster",
     title: "Players",
-    description: "Create and manage FACKTS players, profiles, photos, roles, and player information.",
+    description:
+      "Create and manage FACKTS players, profiles, photos, roles, and player information.",
     href: "/admin/players",
+  },
+  {
+    eyebrow: "Team Rosters",
+    title: "Player Rosters",
+    description:
+      "Manage player roster announcements, squad lists, availability, and team roster updates.",
+    href: "/admin/rosters",
   },
   {
     eyebrow: "Fixtures",
     title: "Games",
-    description: "Create fixtures, update scores, manage opponents, venues, posters, and game videos.",
+    description:
+      "Create fixtures, update scores, manage opponents, venues, posters, and game videos.",
     href: "/admin/games",
   },
   {
     eyebrow: "Stats",
     title: "Player Game Stats",
-    description: "Feed normal FACKTS player stats for games: points, rebounds, assists, steals, blocks, and more.",
+    description:
+      "Feed normal FACKTS player stats for games: points, rebounds, assists, steals, blocks, and more.",
     href: "/admin/stats",
   },
   {
     eyebrow: "Guest Rosters",
     title: "Game Guest Rosters",
-    description: "Add guest hoopers into selected games as starters, bench, confirmed, pending, or unavailable.",
+    description:
+      "Add guest hoopers into selected games as starters, bench, confirmed, pending, or unavailable.",
     href: "/admin/game-guests",
   },
   {
     eyebrow: "Guest Stats",
     title: "Guest Game Stats",
-    description: "Feed game stats for guest hoopers: points, rebounds, assists, steals, blocks, 3PM and plus/minus.",
+    description:
+      "Feed game stats for guest hoopers: points, rebounds, assists, steals, blocks, 3PM and plus/minus.",
     href: "/admin/guest-game-stats",
     important: true,
   },
   {
     eyebrow: "Guest 1v1",
     title: "Guest 1v1 Stats",
-    description: "Feed 1v1 match results for guest hoopers so guest 1v1 wins and match leaderboards update.",
+    description:
+      "Feed 1v1 match results for guest hoopers so guest 1v1 wins and match leaderboards update.",
     href: "/admin/guest-one-on-one-stats",
     important: true,
   },
   {
     eyebrow: "Guest Profiles",
     title: "Guest Hoopers",
-    description: "Create and manage guest hoopers, visiting players, community ballers, and special guests.",
+    description:
+      "Create and manage guest hoopers, visiting players, community ballers, and special guests.",
     href: "/admin/guest-hoopers",
   },
   {
     eyebrow: "Media",
     title: "Media Stories",
-    description: "Manage videos, media stories, thumbnails, featured story, Court Takeover, and behind-the-scenes content.",
+    description:
+      "Manage videos, media stories, thumbnails, featured story, Court Takeover, and behind-the-scenes content.",
     href: "/admin/media-stories",
+  },
+  {
+    eyebrow: "Highlights",
+    title: "Highlights",
+    description:
+      "Manage highlight clips, featured moments, game reels, and short-form basketball content.",
+    href: "/admin/highlights",
+  },
+  {
+    eyebrow: "Ticker",
+    title: "FACKTS Ticker",
+    description:
+      "Manage scrolling ticker messages, live updates, announcements, and public platform headlines.",
+    href: "/admin/ticker",
   },
   {
     eyebrow: "Public",
     title: "Public Guest Leaders",
-    description: "View the public guest leaderboard page and confirm guest stats are reading correctly.",
+    description:
+      "View the public guest leaderboard page and confirm guest stats are reading correctly.",
     href: "/guest-leaderboards",
   },
   {
     eyebrow: "1-on-1",
     title: "Public 1-on-1 Page",
-    description: "View 1-on-1 battles, upcoming matchups, results, videos, and guest 1-on-1 leaderboards.",
+    description:
+      "View 1-on-1 battles, upcoming matchups, results, videos, and guest 1-on-1 leaderboards.",
     href: "/one-on-one",
   },
   {
     eyebrow: "Public",
     title: "Public Games Page",
-    description: "View public fixtures, awaiting results, completed games, and game video pages.",
+    description:
+      "View public fixtures, awaiting results, completed games, and game video pages.",
     href: "/games",
   },
   {
@@ -101,7 +133,8 @@ export default function AdminDashboardPage() {
             </h1>
 
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Manage players, games, rosters, guest hoopers, guest stats, media stories, and public platform content.
+              Manage players, rosters, games, guest hoopers, guest stats, media
+              stories, highlights, ticker updates, and public platform content.
             </p>
           </div>
 
@@ -123,24 +156,6 @@ export default function AdminDashboardPage() {
             <AdminLogoutButton />
           </div>
         </header>
-
-        <section className="mb-6 grid gap-4 md:grid-cols-2">
-          <PriorityCard
-            eyebrow="Priority"
-            title="Feed Guest Game Stats"
-            description="Use this when a guest hooper has played in a full game and you need to enter their box-score stats."
-            href="/admin/guest-game-stats"
-            buttonText="Open Guest Game Stats"
-          />
-
-          <PriorityCard
-            eyebrow="Priority"
-            title="Feed Guest 1v1 Stats"
-            description="Use this when a guest hooper has played in a 1v1 battle and you need to record their result."
-            href="/admin/guest-one-on-one-stats"
-            buttonText="Open Guest 1v1 Stats"
-          />
-        </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {adminCards.map((card) => (
@@ -179,40 +194,5 @@ export default function AdminDashboardPage() {
         </section>
       </div>
     </main>
-  );
-}
-
-function PriorityCard({
-  eyebrow,
-  title,
-  description,
-  href,
-  buttonText,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  href: string;
-  buttonText: string;
-}) {
-  return (
-    <div className="rounded-3xl border border-orange-500/50 bg-gradient-to-br from-slate-900 to-orange-950/30 p-5">
-      <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-        {eyebrow}
-      </div>
-
-      <h2 className="mt-2 text-2xl font-black">{title}</h2>
-
-      <p className="mt-3 text-sm leading-6 text-slate-300">
-        {description}
-      </p>
-
-      <Link
-        href={href}
-        className="mt-5 inline-flex rounded-2xl bg-orange-500 px-5 py-3 text-sm font-black text-black transition hover:bg-orange-400"
-      >
-        {buttonText}
-      </Link>
-    </div>
   );
 }
