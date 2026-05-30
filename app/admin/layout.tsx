@@ -132,5 +132,160 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {!isLoginPage ? <AdminDraftKeeper pathname={pathname} /> : null}
+      {children}
+    </>
+  );
+}
+
+function AdminDraftKeeper({ pathname }: { pathname: string }) {
+  const [draftExists, setDraftExists] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const storageKey = `fackts-admin-draft:${pathname}`;
+
+    function getFields() {
+      return Array.from(
+        document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+          "input, textarea, select"
+        )
+      ).filter((field) => {
+        if (field.closest("[data-no-draft='true']")) return false;
+        if (field instanceof HTMLInputElement && field.type === "password") return false;
+        if (field instanceof HTMLInputElement && field.type === "file") return false;
+        if (field instanceof HTMLInputElement && field.type === "hidden") return false;
+        if (field instanceof HTMLInputElement && field.type === "submit") return false;
+        if (field instanceof HTMLInputElement && field.type === "button") return false;
+        return true;
+      });
+    }
+
+    function getFieldKey(field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, index: number) {
+      return (
+        field.getAttribute("name") ||
+        field.getAttribute("id") ||
+        field.getAttribute("placeholder") ||
+        field.getAttribute("aria-label") ||
+        `field-${index}`
+      );
+    }
+
+    function saveDraft() {
+      const fields = getFields();
+
+      const values = fields.map((field, index) => {
+        const key = getFieldKey(field, index);
+
+        if (field instanceof HTMLInputElement && field.type === "checkbox") {
+          return {
+            key,
+            kind: "checkbox",
+            value: field.checked,
+          };
+        }
+
+        return {
+          key,
+          kind: "value",
+          value: field.value,
+        };
+      });
+
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          savedAt: new Date().toISOString(),
+          values,
+        })
+      );
+
+      setDraftExists(values.some((item) => String(item.value || "").length > 0));
+    }
+
+    function restoreDraft() {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) {
+        setDraftExists(false);
+        return;
+      }
+
+      let parsed: any = null;
+
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        localStorage.removeItem(storageKey);
+        setDraftExists(false);
+        return;
+      }
+
+      const savedValues = Array.isArray(parsed?.values) ? parsed.values : [];
+      if (savedValues.length === 0) {
+        setDraftExists(false);
+        return;
+      }
+
+      const fields = getFields();
+
+      fields.forEach((field, index) => {
+        const key = getFieldKey(field, index);
+        const saved = savedValues.find((item: any) => item.key === key);
+
+        if (!saved) return;
+
+        if (field instanceof HTMLInputElement && field.type === "checkbox") {
+          field.checked = Boolean(saved.value);
+          field.dispatchEvent(new Event("change", { bubbles: true }));
+          return;
+        }
+
+        field.value = String(saved.value ?? "");
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      setDraftExists(true);
+    }
+
+    const restoreTimer = window.setTimeout(restoreDraft, 500);
+
+    document.addEventListener("input", saveDraft, true);
+    document.addEventListener("change", saveDraft, true);
+
+    return () => {
+      window.clearTimeout(restoreTimer);
+      document.removeEventListener("input", saveDraft, true);
+      document.removeEventListener("change", saveDraft, true);
+    };
+  }, [pathname]);
+
+  function clearDraft() {
+    if (typeof window === "undefined") return;
+
+    localStorage.removeItem(`fackts-admin-draft:${pathname}`);
+    setDraftExists(false);
+    window.location.reload();
+  }
+
+  if (!draftExists) return null;
+
+  return (
+    <div className="fixed bottom-4 left-4 z-50 max-w-[calc(100vw-2rem)] rounded-2xl border border-orange-500/40 bg-slate-950/95 px-4 py-3 text-sm text-white shadow-2xl shadow-black/40 backdrop-blur">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-bold text-orange-300">Draft saved on this page</span>
+
+        <button
+          type="button"
+          onClick={clearDraft}
+          className="rounded-xl border border-white/10 px-3 py-1 text-xs font-black text-zinc-300 transition hover:border-orange-400 hover:text-orange-300"
+        >
+          Clear Draft
+        </button>
+      </div>
+    </div>
+  );
 }
