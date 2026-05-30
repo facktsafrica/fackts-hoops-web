@@ -40,6 +40,13 @@ type GameForm = {
   notes: string;
 };
 
+type SavedGameMemory = {
+  form: GameForm;
+  editingId: string | null;
+};
+
+const FORM_MEMORY_KEY = "fackts-admin-games-form-memory";
+
 const emptyForm: GameForm = {
   opponent: "",
   game_date: "",
@@ -164,6 +171,40 @@ function makeSafeFileName(name: string) {
     .replace(/^-|-$/g, "");
 }
 
+function saveFormMemory(form: GameForm, editingId: string | null) {
+  if (typeof window === "undefined") return;
+
+  const memory: SavedGameMemory = {
+    form,
+    editingId,
+  };
+
+  sessionStorage.setItem(FORM_MEMORY_KEY, JSON.stringify(memory));
+}
+
+function loadFormMemory() {
+  if (typeof window === "undefined") return null;
+
+  const raw = sessionStorage.getItem(FORM_MEMORY_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as SavedGameMemory;
+
+    if (!parsed?.form) return null;
+
+    return parsed;
+  } catch {
+    sessionStorage.removeItem(FORM_MEMORY_KEY);
+    return null;
+  }
+}
+
+function clearFormMemory() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(FORM_MEMORY_KEY);
+}
+
 export default function AdminGamesPage() {
   const [games, setGames] = useState<GameRow[]>([]);
   const [form, setForm] = useState<GameForm>(emptyForm);
@@ -172,6 +213,7 @@ export default function AdminGamesPage() {
   const [loadingPage, setLoadingPage] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [memoryLoaded, setMemoryLoaded] = useState(false);
 
   async function loadGames() {
     setLoadingPage(true);
@@ -194,8 +236,39 @@ export default function AdminGamesPage() {
   }
 
   useEffect(() => {
+    const memory = loadFormMemory();
+
+    if (memory) {
+      setForm({
+        ...emptyForm,
+        ...memory.form,
+      });
+
+      setEditingId(memory.editingId || null);
+    }
+
+    setMemoryLoaded(true);
     loadGames();
   }, []);
+
+  useEffect(() => {
+    if (!memoryLoaded) return;
+
+    const hasSomething =
+      form.opponent.trim() ||
+      form.game_date.trim() ||
+      form.venue.trim() ||
+      form.team_score.trim() ||
+      form.opponent_score.trim() ||
+      form.poster_url.trim() ||
+      form.video_url.trim() ||
+      form.notes.trim() ||
+      editingId;
+
+    if (hasSomething) {
+      saveFormMemory(form, editingId);
+    }
+  }, [form, editingId, memoryLoaded]);
 
   function updateField<K extends keyof GameForm>(field: K, value: GameForm[K]) {
     setForm((prev) => ({
@@ -211,7 +284,7 @@ export default function AdminGamesPage() {
     const savedVideoUrl = game.video_url || game.highlight_url || "";
     const savedTeamScore = getTeamScore(game);
 
-    setForm({
+    const nextForm: GameForm = {
       opponent: game.opponent || "",
       game_date: game.game_date || "",
       venue: game.venue || game.location || "",
@@ -229,7 +302,10 @@ export default function AdminGamesPage() {
       poster_position: game.poster_position || "center center",
       video_url: savedVideoUrl,
       notes: game.notes || "",
-    });
+    };
+
+    setForm(nextForm);
+    saveFormMemory(nextForm, game.id);
 
     setMessage("Editing selected game.");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -239,6 +315,7 @@ export default function AdminGamesPage() {
     setEditingId(null);
     setPosterFile(null);
     setForm(emptyForm);
+    clearFormMemory();
     setMessage("Edit cancelled.");
   }
 
@@ -352,12 +429,13 @@ export default function AdminGamesPage() {
 
     setEditingId(null);
     setPosterFile(null);
-
     setForm({
       ...emptyForm,
       match_type: form.match_type,
       venue: form.venue,
     });
+
+    clearFormMemory();
 
     await loadGames();
     setSaving(false);
@@ -378,6 +456,7 @@ export default function AdminGamesPage() {
       setEditingId(null);
       setPosterFile(null);
       setForm(emptyForm);
+      clearFormMemory();
     }
 
     setMessage("Game deleted.");
@@ -573,7 +652,8 @@ export default function AdminGamesPage() {
                         alt="Current game poster"
                         className="h-24 w-20 rounded-xl object-cover"
                         style={{
-                          objectPosition: form.poster_position || "center center",
+                          objectPosition:
+                            form.poster_position || "center center",
                         }}
                       />
 

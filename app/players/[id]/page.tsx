@@ -94,6 +94,19 @@ function calculateAverages(stats: any[]) {
   };
 }
 
+function splitPreviousTeams(value?: string | null) {
+  if (!value) return [];
+
+  return value
+    .split(/[,|\n]+/g)
+    .map((team) => team.trim())
+    .filter(Boolean);
+}
+
+function previousTeamHref(team: string) {
+  return `/players?previousTeam=${encodeURIComponent(team)}`;
+}
+
 export default async function PlayerProfilePage({
   params,
 }: {
@@ -147,7 +160,7 @@ export default async function PlayerProfilePage({
         )}
 
         <div className="absolute -left-20 top-10 h-60 w-60 rounded-full bg-orange-500/10 blur-3xl" />
-        <div className="absolute right-0 bottom-0 h-60 w-60 rounded-full bg-orange-400/10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-60 w-60 rounded-full bg-orange-400/10 blur-3xl" />
 
         <div className="relative mx-auto max-w-7xl px-6 py-12 md:py-16">
           <Link
@@ -237,7 +250,7 @@ export default async function PlayerProfilePage({
           <BioBlock title="Style of Play" value={player.style_of_play} />
           <BioBlock title="Strengths" value={player.strengths} />
           <BioBlock title="Improvement Areas" value={player.improvements} />
-          <BioBlock title="Previous Teams" value={player.previous_teams} />
+          <PreviousTeamsBlock value={player.previous_teams} />
         </div>
       </section>
 
@@ -334,6 +347,34 @@ function BioBlock({ title, value }: { title: string; value?: string | null }) {
       <div className="mt-3 leading-7 text-slate-300">
         {value && value.trim().length > 0 ? value : "Not added yet."}
       </div>
+    </div>
+  );
+}
+
+function PreviousTeamsBlock({ value }: { value?: string | null }) {
+  const teams = splitPreviousTeams(value);
+
+  return (
+    <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <div className="text-sm uppercase tracking-wide text-orange-300">
+        Previous Teams
+      </div>
+
+      {teams.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {teams.map((team) => (
+            <Link
+              key={team}
+              href={previousTeamHref(team)}
+              className="inline-flex max-w-full items-center rounded-full bg-orange-500 px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-black transition hover:bg-orange-400"
+            >
+              <span className="truncate">{team}</span>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 leading-7 text-slate-300">Not added yet.</div>
+      )}
     </div>
   );
 }
