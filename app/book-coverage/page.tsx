@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
-const FACKTS_PHONE_DISPLAY = "+254 700 000 000";
-const FACKTS_PHONE_TEL = "+254700000000";
-const FACKTS_WHATSAPP = "254700000000";
+const FACKTS_PHONE_DISPLAY = "+254 711 468 303";
+const FACKTS_PHONE_TEL = "+254711468303";
+const FACKTS_WHATSAPP = "254711468303";
 
 type BookingForm = {
   name: string;

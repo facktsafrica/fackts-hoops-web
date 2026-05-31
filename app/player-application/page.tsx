@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
-const FACKTS_PHONE_DISPLAY = "+254 700 000 000";
-const FACKTS_PHONE_TEL = "+254700000000";
-const FACKTS_WHATSAPP = "254700000000";
+const FACKTS_PHONE_DISPLAY = "+254 711 468 303";
+const FACKTS_PHONE_TEL = "+254711468303";
+const FACKTS_WHATSAPP = "254711468303";
 
 type PlayerApplicationForm = {
   fullName: string;
@@ -210,9 +210,18 @@ export default function PlayerApplicationPage() {
 
       <section className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid gap-4 md:grid-cols-3">
-          <InfoCard title="Player Profile" text="Get your basketball identity properly documented." />
-          <InfoCard title="Stats & Visibility" text="Build proof through game records, numbers, and performance history." />
-          <InfoCard title="Media Exposure" text="Open doors for highlights, stories, interviews, and future opportunities." />
+          <InfoCard
+            title="Player Profile"
+            text="Get your basketball identity properly documented."
+          />
+          <InfoCard
+            title="Stats & Visibility"
+            text="Build proof through game records, numbers, and performance history."
+          />
+          <InfoCard
+            title="Media Exposure"
+            text="Open doors for highlights, stories, interviews, and future opportunities."
+          />
         </div>
 
         <div className="mt-8 rounded-3xl border border-white/10 bg-zinc-950 p-6 sm:p-8">
