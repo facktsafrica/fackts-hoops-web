@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+<<<<<<< HEAD
+=======
+import { supabase } from "@/lib/supabase";
+>>>>>>> 3e77a30 (add player application review and approval flow)
 
 const FACKTS_PHONE_DISPLAY = "+254 711 468 303";
 const FACKTS_PHONE_TEL = "+254711468303";
@@ -9,6 +13,7 @@ const FACKTS_WHATSAPP = "254711468303";
 
 type PlayerApplicationForm = {
   fullName: string;
+<<<<<<< HEAD
   age: string;
   position: string;
   currentTeam: string;
@@ -18,10 +23,37 @@ type PlayerApplicationForm = {
   socialLink: string;
   highlightLink: string;
   playerGoal: string;
+=======
+  nickname: string;
+  email: string;
+  phone: string;
+  ageOrYearOfBirth: string;
+  location: string;
+
+  position: string;
+  height: string;
+  dominantHand: string;
+  currentTeamOrSchool: string;
+  previousTeams: string;
+  highestLevelPlayed: string;
+  yearsPlayed: string;
+
+  styleOfPlay: string;
+  strengths: string;
+  improvementAreas: string;
+
+  socialLink: string;
+  highlightLink: string;
+  playerGoal: string;
+
+  marketingConsent: boolean;
+  guardianAwareness: boolean;
+>>>>>>> 3e77a30 (add player application review and approval flow)
 };
 
 const emptyForm: PlayerApplicationForm = {
   fullName: "",
+<<<<<<< HEAD
   age: "",
   position: "",
   currentTeam: "",
@@ -31,6 +63,32 @@ const emptyForm: PlayerApplicationForm = {
   socialLink: "",
   highlightLink: "",
   playerGoal: "",
+=======
+  nickname: "",
+  email: "",
+  phone: "",
+  ageOrYearOfBirth: "",
+  location: "",
+
+  position: "",
+  height: "",
+  dominantHand: "",
+  currentTeamOrSchool: "",
+  previousTeams: "",
+  highestLevelPlayed: "",
+  yearsPlayed: "",
+
+  styleOfPlay: "",
+  strengths: "",
+  improvementAreas: "",
+
+  socialLink: "",
+  highlightLink: "",
+  playerGoal: "",
+
+  marketingConsent: false,
+  guardianAwareness: false,
+>>>>>>> 3e77a30 (add player application review and approval flow)
 };
 
 const positions = [
@@ -45,17 +103,50 @@ const positions = [
   "Not Sure",
 ];
 
+<<<<<<< HEAD
+=======
+const dominantHands = ["Right", "Left", "Both", "Not Sure"];
+
+const levels = [
+  "Beginner",
+  "School Level",
+  "High School",
+  "College / University",
+  "Club Level",
+  "County League",
+  "National League",
+  "Semi-Pro",
+  "Professional",
+  "Not Sure",
+];
+
+>>>>>>> 3e77a30 (add player application review and approval flow)
 function buildWhatsAppMessage(form: PlayerApplicationForm) {
   return [
     "Hello FACKTS Hoops, I need guidance on player application.",
     "",
     `Full Name: ${form.fullName || "Not provided"}`,
+<<<<<<< HEAD
     `Age / Year of Birth: ${form.age || "Not provided"}`,
     `Position: ${form.position || "Not provided"}`,
     `Current Team / School: ${form.currentTeam || "Not provided"}`,
     `Location: ${form.location || "Not provided"}`,
     `Phone: ${form.phone || "Not provided"}`,
     `Email: ${form.email || "Not provided"}`,
+=======
+    `Nickname: ${form.nickname || "Not provided"}`,
+    `Email: ${form.email || "Not provided"}`,
+    `Phone: ${form.phone || "Not provided"}`,
+    `Age / Year of Birth: ${form.ageOrYearOfBirth || "Not provided"}`,
+    `Location: ${form.location || "Not provided"}`,
+    `Position: ${form.position || "Not provided"}`,
+    `Height: ${form.height || "Not provided"}`,
+    `Dominant Hand: ${form.dominantHand || "Not provided"}`,
+    `Current Team / School: ${form.currentTeamOrSchool || "Not provided"}`,
+    `Previous Teams: ${form.previousTeams || "Not provided"}`,
+    `Highest Level Played: ${form.highestLevelPlayed || "Not provided"}`,
+    `Years Played: ${form.yearsPlayed || "Not provided"}`,
+>>>>>>> 3e77a30 (add player application review and approval flow)
     `Social Link: ${form.socialLink || "Not provided"}`,
     `Highlight Link: ${form.highlightLink || "Not provided"}`,
     "",
@@ -105,7 +196,11 @@ export default function PlayerApplicationPage() {
 
     if (!form.position.trim()) {
       setMessageType("error");
+<<<<<<< HEAD
       setMessage("Please select or enter your position.");
+=======
+      setMessage("Please select your position.");
+>>>>>>> 3e77a30 (add player application review and approval flow)
       return;
     }
 
@@ -113,6 +208,7 @@ export default function PlayerApplicationPage() {
     setMessageType("info");
     setMessage("Submitting your player application...");
 
+<<<<<<< HEAD
     try {
       const response = await fetch("/api/player-application", {
         method: "POST",
@@ -143,6 +239,56 @@ export default function PlayerApplicationPage() {
     } finally {
       setSubmitting(false);
     }
+=======
+    const payload = {
+      full_name: form.fullName.trim(),
+      nickname: form.nickname.trim() || null,
+      email: form.email.trim() || null,
+      phone: form.phone.trim() || null,
+      age_or_year_of_birth: form.ageOrYearOfBirth.trim() || null,
+      location: form.location.trim() || null,
+
+      position: form.position.trim() || null,
+      height: form.height.trim() || null,
+      dominant_hand: form.dominantHand.trim() || null,
+      current_team_or_school: form.currentTeamOrSchool.trim() || null,
+      previous_teams: form.previousTeams.trim() || null,
+      highest_level_played: form.highestLevelPlayed.trim() || null,
+      years_played: form.yearsPlayed.trim() || null,
+
+      style_of_play: form.styleOfPlay.trim() || null,
+      strengths: form.strengths.trim() || null,
+      improvement_areas: form.improvementAreas.trim() || null,
+
+      social_link: form.socialLink.trim() || null,
+      highlight_link: form.highlightLink.trim() || null,
+      player_goal: form.playerGoal.trim() || null,
+
+      marketing_consent: form.marketingConsent,
+      guardian_awareness: form.guardianAwareness,
+
+      application_status: "pending",
+    };
+
+    const { error } = await supabase
+      .from("player_applications")
+      .insert(payload);
+
+    if (error) {
+      setMessageType("error");
+      setMessage(`Submission failed: ${error.message}`);
+      setSubmitting(false);
+      return;
+    }
+
+    setMessageType("success");
+    setMessage(
+      "Player application submitted successfully. FACKTS Hoops will review and follow up."
+    );
+
+    setForm(emptyForm);
+    setSubmitting(false);
+>>>>>>> 3e77a30 (add player application review and approval flow)
   }
 
   function getMessageClass() {
@@ -232,14 +378,20 @@ export default function PlayerApplicationPage() {
           <h2 className="mt-2 text-2xl font-black">Fill and submit</h2>
 
           <p className="mt-3 text-sm leading-6 text-zinc-400">
+<<<<<<< HEAD
             Submit your details here. Your application will be saved for FACKTS
             Hoops to review and follow up.
+=======
+            Your application will be saved as pending. FACKTS Hoops will review
+            before any player profile is made public.
+>>>>>>> 3e77a30 (add player application review and approval flow)
           </p>
 
           {message ? <div className={getMessageClass()}>{message}</div> : null}
 
           <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
             <div className="grid gap-4 md:grid-cols-2">
+<<<<<<< HEAD
               <label className="block">
                 <div className="mb-2 text-sm font-bold text-zinc-300">
                   Full Name
@@ -398,6 +550,197 @@ export default function PlayerApplicationPage() {
                 className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400"
               />
             </label>
+=======
+              <TextInput
+                label="Full Name"
+                value={form.fullName}
+                onChange={(value) => updateField("fullName", value)}
+                placeholder="Example: Liam Mazaria"
+              />
+
+              <TextInput
+                label="Nickname"
+                value={form.nickname}
+                onChange={(value) => updateField("nickname", value)}
+                placeholder="Example: The Bucket"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextInput
+                label="Email"
+                type="email"
+                value={form.email}
+                onChange={(value) => updateField("email", value)}
+                placeholder="example@email.com"
+              />
+
+              <TextInput
+                label="Phone"
+                value={form.phone}
+                onChange={(value) => updateField("phone", value)}
+                placeholder="Example: 07..."
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextInput
+                label="Age / Year of Birth"
+                value={form.ageOrYearOfBirth}
+                onChange={(value) => updateField("ageOrYearOfBirth", value)}
+                placeholder="Example: 18 or 2008"
+              />
+
+              <TextInput
+                label="Location"
+                value={form.location}
+                onChange={(value) => updateField("location", value)}
+                placeholder="Example: Nairobi"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <SelectInput
+                label="Position"
+                value={form.position}
+                onChange={(value) => updateField("position", value)}
+                options={positions}
+                placeholder="Select position"
+              />
+
+              <TextInput
+                label="Height"
+                value={form.height}
+                onChange={(value) => updateField("height", value)}
+                placeholder="Example: 6'1 or 185cm"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <SelectInput
+                label="Dominant Hand"
+                value={form.dominantHand}
+                onChange={(value) => updateField("dominantHand", value)}
+                options={dominantHands}
+                placeholder="Select hand"
+              />
+
+              <SelectInput
+                label="Highest Level Played"
+                value={form.highestLevelPlayed}
+                onChange={(value) => updateField("highestLevelPlayed", value)}
+                options={levels}
+                placeholder="Select level"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextInput
+                label="Current Team / School"
+                value={form.currentTeamOrSchool}
+                onChange={(value) => updateField("currentTeamOrSchool", value)}
+                placeholder="Example: ACK Kahawa Sukari"
+              />
+
+              <TextInput
+                label="Years Played"
+                value={form.yearsPlayed}
+                onChange={(value) => updateField("yearsPlayed", value)}
+                placeholder="Example: 4 years"
+              />
+            </div>
+
+            <TextArea
+              label="Previous Teams"
+              value={form.previousTeams}
+              onChange={(value) => updateField("previousTeams", value)}
+              placeholder="List previous teams, schools, clubs, or leagues."
+              rows={3}
+            />
+
+            <TextArea
+              label="Style of Play"
+              value={form.styleOfPlay}
+              onChange={(value) => updateField("styleOfPlay", value)}
+              placeholder="Example: Fast guard, strong defender, slasher, shooter, playmaker..."
+              rows={3}
+            />
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextArea
+                label="Strengths"
+                value={form.strengths}
+                onChange={(value) => updateField("strengths", value)}
+                placeholder="Example: Handles, shooting, finishing, defense, leadership..."
+                rows={4}
+              />
+
+              <TextArea
+                label="Improvement Areas"
+                value={form.improvementAreas}
+                onChange={(value) => updateField("improvementAreas", value)}
+                placeholder="Example: Fitness, left hand, shooting range, decision-making..."
+                rows={4}
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextInput
+                label="Instagram / TikTok / YouTube"
+                value={form.socialLink}
+                onChange={(value) => updateField("socialLink", value)}
+                placeholder="Paste your profile link"
+              />
+
+              <TextInput
+                label="Highlight Video Link"
+                value={form.highlightLink}
+                onChange={(value) => updateField("highlightLink", value)}
+                placeholder="YouTube, TikTok, Instagram, Google Drive, etc."
+              />
+            </div>
+
+            <TextArea
+              label="What do you want from FACKTS Hoops?"
+              value={form.playerGoal}
+              onChange={(value) => updateField("playerGoal", value)}
+              placeholder="Example: I want a player profile, media feature, stats tracking, exposure, highlights, or representation guidance."
+              rows={5}
+            />
+
+            <div className="grid gap-3 rounded-3xl border border-white/10 bg-black/40 p-4">
+              <label className="flex items-start gap-3 text-sm leading-6 text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={form.marketingConsent}
+                  onChange={(event) =>
+                    updateField("marketingConsent", event.target.checked)
+                  }
+                  className="mt-1 h-5 w-5 accent-orange-500"
+                />
+                <span>
+                  I agree to receive FACKTS Hoops updates, opportunities, event
+                  information, player features, and communication by email or
+                  WhatsApp.
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm leading-6 text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={form.guardianAwareness}
+                  onChange={(event) =>
+                    updateField("guardianAwareness", event.target.checked)
+                  }
+                  className="mt-1 h-5 w-5 accent-orange-500"
+                />
+                <span>
+                  If I am under 18, I confirm that my parent or guardian is
+                  aware of this application.
+                </span>
+              </label>
+            </div>
+>>>>>>> 3e77a30 (add player application review and approval flow)
 
             <div className="flex flex-wrap gap-3">
               <button
@@ -437,5 +780,91 @@ function InfoCard({ title, text }: { title: string; text: string }) {
       <h2 className="text-xl font-black text-orange-300">{title}</h2>
       <p className="mt-3 text-sm leading-6 text-zinc-400">{text}</p>
     </div>
+  );
+}
+
+function TextInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-bold text-zinc-300">{label}</div>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400"
+      />
+    </label>
+  );
+}
+
+function SelectInput({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-bold text-zinc-300">{label}</div>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function TextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  rows: number;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-bold text-zinc-300">{label}</div>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400"
+      />
+    </label>
   );
 }
