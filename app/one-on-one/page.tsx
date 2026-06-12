@@ -463,10 +463,10 @@ export default async function OneOnOnePage() {
 
   return (
     <main
-      className="min-h-screen bg-black bg-cover bg-fixed bg-center text-white"
+      className="min-h-screen bg-black bg-cover bg-scroll bg-[position:left_top] text-white md:bg-fixed md:bg-[position:center_top]"
       style={{
         backgroundImage:
-          "linear-gradient(rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0.92)), url('/images/one-on-one-bg.png')",
+          "linear-gradient(rgba(2, 6, 23, 0.72), rgba(2, 6, 23, 0.9)), url('/images/one-on-one-bg.png')",
       }}
     >
       <section className="border-b border-white/10 bg-black/40 backdrop-blur-sm">
