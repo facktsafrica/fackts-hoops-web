@@ -10,7 +10,7 @@ import {
 } from "react";
 import { supabase } from "@/lib/supabase";
 
-type PersonType = "fackts_player" | "guest_hooper" | "external";
+type PlayerType = "fackts_player" | "guest_hooper" | "external";
 type MatchStatus = "upcoming" | "completed" | "cancelled";
 
 type Player = {
@@ -30,9 +30,16 @@ type GuestHooper = {
 
 type OneOnOneRow = {
   id: string;
+
+  match_number: string | null;
+  match_title: string | null;
+  match_type: string | null;
+  court: string | null;
+
   participant_type: string | null;
   fackts_player_id: string | null;
   guest_hooper_id: string | null;
+  participant_name: string | null;
 
   opponent_type: string | null;
   opponent_player_id: string | null;
@@ -47,6 +54,7 @@ type OneOnOneRow = {
   points_allowed: number | null;
   result: string | null;
   status: string | null;
+
   notes: string | null;
   poster_url: string | null;
   video_url: string | null;
@@ -56,66 +64,90 @@ type OneOnOneRow = {
 };
 
 type FormState = {
-  participantType: PersonType;
-  facktsPlayerId: string;
-  guestHooperId: string;
+  matchNumber: string;
+  matchTitle: string;
+  matchType: string;
+  court: string;
 
-  opponentType: PersonType;
-  opponentPlayerId: string;
-  opponentGuestHooperId: string;
-  opponentName: string;
+  player1Type: PlayerType;
+  player1FacktsId: string;
+  player1GuestId: string;
+  player1ExternalName: string;
+
+  player2Type: PlayerType;
+  player2FacktsId: string;
+  player2GuestId: string;
+  player2ExternalName: string;
 
   matchDate: string;
   venue: string;
   location: string;
 
-  pointsScored: string;
-  pointsAllowed: string;
+  player1Score: string;
+  player2Score: string;
   status: MatchStatus;
-  notes: string;
-  posterUrl: string;
+
   videoUrl: string;
   highlightUrl: string;
+  notes: string;
 };
 
 const emptyForm: FormState = {
-  participantType: "fackts_player",
-  facktsPlayerId: "",
-  guestHooperId: "",
+  matchNumber: "",
+  matchTitle: "",
+  matchType: "1v1",
+  court: "",
 
-  opponentType: "external",
-  opponentPlayerId: "",
-  opponentGuestHooperId: "",
-  opponentName: "",
+  player1Type: "fackts_player",
+  player1FacktsId: "",
+  player1GuestId: "",
+  player1ExternalName: "",
+
+  player2Type: "external",
+  player2FacktsId: "",
+  player2GuestId: "",
+  player2ExternalName: "",
 
   matchDate: "",
   venue: "",
   location: "",
 
-  pointsScored: "",
-  pointsAllowed: "",
+  player1Score: "",
+  player2Score: "",
   status: "upcoming",
-  notes: "",
-  posterUrl: "",
+
   videoUrl: "",
   highlightUrl: "",
+  notes: "",
 };
+
+const playerTypeOptions = [
+  { label: "FACKTS Player", value: "fackts_player" },
+  { label: "Guest Hooper", value: "guest_hooper" },
+  { label: "External Player", value: "external" },
+];
+
+const statusOptions = [
+  { label: "Upcoming", value: "upcoming" },
+  { label: "Completed", value: "completed" },
+  { label: "Cancelled", value: "cancelled" },
+];
+
+const matchTypeOptions = [
+  { label: "1v1", value: "1v1" },
+  { label: "Main Event", value: "Main Event" },
+  { label: "Qualifier", value: "Qualifier" },
+  { label: "Friendly", value: "Friendly" },
+  { label: "Rematch", value: "Rematch" },
+];
 
 function getPersonName(person?: Player | GuestHooper | null) {
   if (!person) return "Unknown";
   return person.full_name || person.name || person.nickname || "Unknown";
 }
 
-function getResult(pointsScored: string, pointsAllowed: string) {
-  if (pointsScored.trim() === "" || pointsAllowed.trim() === "") return null;
-
-  const scored = Number(pointsScored);
-  const allowed = Number(pointsAllowed);
-
-  if (Number.isNaN(scored) || Number.isNaN(allowed)) return null;
-  if (scored > allowed) return "win";
-  if (scored < allowed) return "loss";
-  return "draw";
+function safeText(value?: string | null) {
+  return value && value.trim() ? value : "Not added";
 }
 
 function statusLabel(status?: string | null) {
@@ -128,8 +160,16 @@ function resultLabel(result?: string | null) {
   return result.charAt(0).toUpperCase() + result.slice(1);
 }
 
-function safeText(value?: string | null) {
-  return value && value.trim() ? value : "Not added";
+function getResult(player1Score: string, player2Score: string) {
+  if (player1Score.trim() === "" || player2Score.trim() === "") return null;
+
+  const score1 = Number(player1Score);
+  const score2 = Number(player2Score);
+
+  if (Number.isNaN(score1) || Number.isNaN(score2)) return null;
+  if (score1 > score2) return "win";
+  if (score1 < score2) return "loss";
+  return "draw";
 }
 
 function toInputDateTime(value?: string | null) {
@@ -140,13 +180,22 @@ function toInputDateTime(value?: string | null) {
 
   const pad = (num: number) => String(num).padStart(2, "0");
 
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+function makeSafeFileName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
 }
 
 export default function AdminOneOnOnePage() {
@@ -156,6 +205,11 @@ export default function AdminOneOnOnePage() {
 
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState("");
+
+  const [posterFile, setPosterFile] = useState<File | null>(null);
+  const [posterPreview, setPosterPreview] = useState("");
+  const [existingPosterUrl, setExistingPosterUrl] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -183,6 +237,7 @@ export default function AdminOneOnOnePage() {
       supabase
         .from("guest_one_on_one_stats")
         .select("*")
+        .order("match_number", { ascending: true })
         .order("created_at", { ascending: false }),
     ]);
 
@@ -220,37 +275,40 @@ export default function AdminOneOnOnePage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleParticipantTypeChange(event: ChangeEvent<HTMLSelectElement>) {
-    const value = event.target.value as PersonType;
+  function handlePlayer1TypeChange(event: ChangeEvent<HTMLSelectElement>) {
+    const value = event.target.value as PlayerType;
 
     setForm((prev) => ({
       ...prev,
-      participantType: value,
-      facktsPlayerId: value === "fackts_player" ? prev.facktsPlayerId : "",
-      guestHooperId: value === "guest_hooper" ? prev.guestHooperId : "",
+      player1Type: value,
+      player1FacktsId: value === "fackts_player" ? prev.player1FacktsId : "",
+      player1GuestId: value === "guest_hooper" ? prev.player1GuestId : "",
+      player1ExternalName: value === "external" ? prev.player1ExternalName : "",
     }));
   }
 
-  function handleOpponentTypeChange(event: ChangeEvent<HTMLSelectElement>) {
-    const value = event.target.value as PersonType;
+  function handlePlayer2TypeChange(event: ChangeEvent<HTMLSelectElement>) {
+    const value = event.target.value as PlayerType;
 
     setForm((prev) => ({
       ...prev,
-      opponentType: value,
-      opponentPlayerId: value === "fackts_player" ? prev.opponentPlayerId : "",
-      opponentGuestHooperId:
-        value === "guest_hooper" ? prev.opponentGuestHooperId : "",
-      opponentName: value === "external" ? prev.opponentName : "",
+      player2Type: value,
+      player2FacktsId: value === "fackts_player" ? prev.player2FacktsId : "",
+      player2GuestId: value === "guest_hooper" ? prev.player2GuestId : "",
+      player2ExternalName: value === "external" ? prev.player2ExternalName : "",
     }));
   }
 
   function resetForm() {
     setForm(emptyForm);
     setEditingId("");
+    setPosterFile(null);
+    setPosterPreview("");
+    setExistingPosterUrl("");
     setMessage("");
   }
 
-  function getParticipantName(row: OneOnOneRow) {
+  function getPlayer1Name(row: OneOnOneRow) {
     if (row.participant_type === "fackts_player" && row.fackts_player_id) {
       return getPersonName(playerMap.get(row.fackts_player_id));
     }
@@ -259,10 +317,10 @@ export default function AdminOneOnOnePage() {
       return getPersonName(guestMap.get(row.guest_hooper_id));
     }
 
-    return "External Player";
+    return row.participant_name || "External Player";
   }
 
-  function getOpponentName(row: OneOnOneRow) {
+  function getPlayer2Name(row: OneOnOneRow) {
     if (row.opponent_type === "fackts_player" && row.opponent_player_id) {
       return getPersonName(playerMap.get(row.opponent_player_id));
     }
@@ -271,126 +329,196 @@ export default function AdminOneOnOnePage() {
       return getPersonName(guestMap.get(row.opponent_guest_hooper_id));
     }
 
-    return row.opponent_name || "External Opponent";
+    return row.opponent_name || "External Player";
+  }
+
+  function getWinnerName(row: OneOnOneRow) {
+    if (row.status !== "completed") return "Not decided";
+
+    const score1 = row.points_scored ?? null;
+    const score2 = row.points_allowed ?? null;
+
+    if (score1 === null || score2 === null) return "Not decided";
+    if (score1 > score2) return getPlayer1Name(row);
+    if (score2 > score1) return getPlayer2Name(row);
+
+    return "Draw";
   }
 
   function editMatch(row: OneOnOneRow) {
     setEditingId(row.id);
 
     setForm({
-      participantType: (row.participant_type as PersonType) || "fackts_player",
-      facktsPlayerId: row.fackts_player_id || "",
-      guestHooperId: row.guest_hooper_id || "",
+      matchNumber: row.match_number || "",
+      matchTitle: row.match_title || "",
+      matchType: row.match_type || "1v1",
+      court: row.court || "",
 
-      opponentType: (row.opponent_type as PersonType) || "external",
-      opponentPlayerId: row.opponent_player_id || "",
-      opponentGuestHooperId: row.opponent_guest_hooper_id || "",
-      opponentName: row.opponent_name || "",
+      player1Type: (row.participant_type as PlayerType) || "fackts_player",
+      player1FacktsId: row.fackts_player_id || "",
+      player1GuestId: row.guest_hooper_id || "",
+      player1ExternalName: row.participant_name || "",
+
+      player2Type: (row.opponent_type as PlayerType) || "external",
+      player2FacktsId: row.opponent_player_id || "",
+      player2GuestId: row.opponent_guest_hooper_id || "",
+      player2ExternalName: row.opponent_name || "",
 
       matchDate: toInputDateTime(row.match_date),
       venue: row.venue || "",
       location: row.location || "",
 
-      pointsScored:
+      player1Score:
         row.points_scored === null || row.points_scored === undefined
           ? ""
           : String(row.points_scored),
-      pointsAllowed:
+      player2Score:
         row.points_allowed === null || row.points_allowed === undefined
           ? ""
           : String(row.points_allowed),
       status: (row.status as MatchStatus) || "upcoming",
-      notes: row.notes || "",
-      posterUrl: row.poster_url || "",
+
       videoUrl: row.video_url || "",
       highlightUrl: row.highlight_url || "",
+      notes: row.notes || "",
     });
 
+    setPosterFile(null);
+    setPosterPreview("");
+    setExistingPosterUrl(row.poster_url || "");
     setMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  async function uploadPoster() {
+    if (!posterFile) return existingPosterUrl || null;
+
+    const safeName =
+      makeSafeFileName(posterFile.name) || `one-on-one-poster-${Date.now()}.jpg`;
+
+    const filePath = `posters/${Date.now()}-${safeName}`;
+
+    const uploadResult = await supabase.storage
+      .from("one-on-one-posters")
+      .upload(filePath, posterFile, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (uploadResult.error) {
+      throw new Error(uploadResult.error.message);
+    }
+
+    const publicUrlResult = supabase.storage
+      .from("one-on-one-posters")
+      .getPublicUrl(filePath);
+
+    return publicUrlResult.data.publicUrl;
+  }
+
+  function validateForm() {
+    if (form.player1Type === "fackts_player" && !form.player1FacktsId) {
+      return "Select Player 1.";
+    }
+
+    if (form.player1Type === "guest_hooper" && !form.player1GuestId) {
+      return "Select Player 1 guest hooper.";
+    }
+
+    if (form.player1Type === "external" && !form.player1ExternalName.trim()) {
+      return "Enter Player 1 external name.";
+    }
+
+    if (form.player2Type === "fackts_player" && !form.player2FacktsId) {
+      return "Select Player 2.";
+    }
+
+    if (form.player2Type === "guest_hooper" && !form.player2GuestId) {
+      return "Select Player 2 guest hooper.";
+    }
+
+    if (form.player2Type === "external" && !form.player2ExternalName.trim()) {
+      return "Enter Player 2 external name.";
+    }
+
+    if (form.player1Score.trim() && Number.isNaN(Number(form.player1Score))) {
+      return "Player 1 score must be a number.";
+    }
+
+    if (form.player2Score.trim() && Number.isNaN(Number(form.player2Score))) {
+      return "Player 2 score must be a number.";
+    }
+
+    return "";
+  }
+
   async function saveMatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const validationError = validateForm();
+
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+
     setSaving(true);
     setMessage("");
 
-    if (form.participantType === "fackts_player" && !form.facktsPlayerId) {
-      setMessage("Select the FACKTS player.");
+    let uploadedPosterUrl: string | null = null;
+
+    try {
+      uploadedPosterUrl = await uploadPoster();
+    } catch (error: unknown) {
+      setMessage(`Poster upload failed: ${getErrorMessage(error)}`);
       setSaving(false);
       return;
     }
 
-    if (form.participantType === "guest_hooper" && !form.guestHooperId) {
-      setMessage("Select the guest hooper.");
-      setSaving(false);
-      return;
-    }
-
-    if (form.opponentType === "fackts_player" && !form.opponentPlayerId) {
-      setMessage("Select the opponent FACKTS player.");
-      setSaving(false);
-      return;
-    }
-
-    if (form.opponentType === "guest_hooper" && !form.opponentGuestHooperId) {
-      setMessage("Select the opponent guest hooper.");
-      setSaving(false);
-      return;
-    }
-
-    if (form.opponentType === "external" && !form.opponentName.trim()) {
-      setMessage("Type the external opponent name.");
-      setSaving(false);
-      return;
-    }
-
-    const scored =
-      form.pointsScored.trim() === "" ? null : Number(form.pointsScored);
-    const allowed =
-      form.pointsAllowed.trim() === "" ? null : Number(form.pointsAllowed);
-
-    if (scored !== null && Number.isNaN(scored)) {
-      setMessage("Points scored must be a number.");
-      setSaving(false);
-      return;
-    }
-
-    if (allowed !== null && Number.isNaN(allowed)) {
-      setMessage("Points allowed must be a number.");
-      setSaving(false);
-      return;
-    }
+    const score1 =
+      form.player1Score.trim() === "" ? null : Number(form.player1Score);
+    const score2 =
+      form.player2Score.trim() === "" ? null : Number(form.player2Score);
 
     const payload = {
-      participant_type: form.participantType,
-      fackts_player_id:
-        form.participantType === "fackts_player" ? form.facktsPlayerId : null,
-      guest_hooper_id:
-        form.participantType === "guest_hooper" ? form.guestHooperId : null,
+      match_number: form.matchNumber.trim() || null,
+      match_title: form.matchTitle.trim() || null,
+      match_type: form.matchType,
+      court: form.court.trim() || null,
 
-      opponent_type: form.opponentType,
-      opponent_player_id:
-        form.opponentType === "fackts_player" ? form.opponentPlayerId : null,
-      opponent_guest_hooper_id:
-        form.opponentType === "guest_hooper"
-          ? form.opponentGuestHooperId
+      participant_type: form.player1Type,
+      fackts_player_id:
+        form.player1Type === "fackts_player" ? form.player1FacktsId : null,
+      guest_hooper_id:
+        form.player1Type === "guest_hooper" ? form.player1GuestId : null,
+      participant_name:
+        form.player1Type === "external"
+          ? form.player1ExternalName.trim()
           : null,
+
+      opponent_type: form.player2Type,
+      opponent_player_id:
+        form.player2Type === "fackts_player" ? form.player2FacktsId : null,
+      opponent_guest_hooper_id:
+        form.player2Type === "guest_hooper" ? form.player2GuestId : null,
       opponent_name:
-        form.opponentType === "external" ? form.opponentName.trim() : null,
+        form.player2Type === "external"
+          ? form.player2ExternalName.trim()
+          : null,
 
       match_date: form.matchDate ? new Date(form.matchDate).toISOString() : null,
       venue: form.venue.trim() || null,
       location: form.location.trim() || null,
 
-      points_scored: scored,
-      points_allowed: allowed,
-      result: getResult(form.pointsScored, form.pointsAllowed),
+      points_scored: score1,
+      points_allowed: score2,
+      result: getResult(form.player1Score, form.player2Score),
       status: form.status,
-      notes: form.notes.trim() || null,
-      poster_url: form.posterUrl.trim() || null,
+
+      poster_url: uploadedPosterUrl,
       video_url: form.videoUrl.trim() || null,
       highlight_url: form.highlightUrl.trim() || null,
+      notes: form.notes.trim() || null,
     };
 
     const result = editingId
@@ -406,7 +534,7 @@ export default function AdminOneOnOnePage() {
       return;
     }
 
-    setMessage(editingId ? "1v1 game updated." : "1v1 game created.");
+    setMessage(editingId ? "1v1 match updated." : "1v1 match created.");
     setSaving(false);
     resetForm();
     await loadData();
@@ -414,9 +542,7 @@ export default function AdminOneOnOnePage() {
 
   async function deleteMatch(row: OneOnOneRow) {
     const confirmed = window.confirm(
-      `Delete this 1v1 game: ${getParticipantName(row)} vs ${getOpponentName(
-        row
-      )}?`
+      `Delete ${getPlayer1Name(row)} vs ${getPlayer2Name(row)}?`
     );
 
     if (!confirmed) return;
@@ -430,12 +556,12 @@ export default function AdminOneOnOnePage() {
       .eq("id", row.id);
 
     if (error) {
-      setMessage(`Failed to delete 1v1 game: ${error.message}`);
+      setMessage(`Failed to delete 1v1 match: ${error.message}`);
       setSaving(false);
       return;
     }
 
-    setMessage("1v1 game deleted.");
+    setMessage("1v1 match deleted.");
     setSaving(false);
 
     if (editingId === row.id) resetForm();
@@ -452,12 +578,12 @@ export default function AdminOneOnOnePage() {
             </p>
 
             <h1 className="mt-2 text-4xl font-black tracking-tight">
-              Manage One-on-One Games
+              One-on-One Match Setup
             </h1>
 
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Set up 1v1 battles, update scores, add venue details, and attach
-              videos or highlights. The public 1v1 page will read from this.
+              Set up 1v1 battles using Player 1 vs Player 2, upload posters,
+              update scores, and manage the public 1v1 page.
             </p>
           </div>
 
@@ -495,7 +621,7 @@ export default function AdminOneOnOnePage() {
               </p>
 
               <h2 className="mt-2 text-2xl font-black">
-                {editingId ? "Update 1v1 Game" : "Set Up New 1v1 Game"}
+                {editingId ? "Update 1v1 Match" : "Set Up New 1v1 Match"}
               </h2>
             </div>
 
@@ -511,68 +637,50 @@ export default function AdminOneOnOnePage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <FieldSelect
-              label="Participant Type"
-              value={form.participantType}
-              onChange={handleParticipantTypeChange}
-              options={[
-                { label: "FACKTS Player", value: "fackts_player" },
-                { label: "Guest Hooper", value: "guest_hooper" },
-              ]}
+            <FieldInput
+              label="Match Number"
+              value={form.matchNumber}
+              onChange={(value) => updateField("matchNumber", value)}
+              placeholder="Example: 1, 2, 3, Main Event"
             />
 
-            {form.participantType === "fackts_player" ? (
-              <FieldSelect
-                label="FACKTS Player"
-                value={form.facktsPlayerId}
-                onChange={(event) =>
-                  updateField("facktsPlayerId", event.target.value)
-                }
-                options={[
-                  { label: "Select FACKTS player", value: "" },
-                  ...players.map((player) => ({
-                    label: getPersonName(player),
-                    value: player.id,
-                  })),
-                ]}
-              />
-            ) : (
-              <FieldSelect
-                label="Guest Hooper"
-                value={form.guestHooperId}
-                onChange={(event) =>
-                  updateField("guestHooperId", event.target.value)
-                }
-                options={[
-                  { label: "Select guest hooper", value: "" },
-                  ...guests.map((guest) => ({
-                    label: getPersonName(guest),
-                    value: guest.id,
-                  })),
-                ]}
-              />
-            )}
-
-            <FieldSelect
-              label="Opponent Type"
-              value={form.opponentType}
-              onChange={handleOpponentTypeChange}
-              options={[
-                { label: "External Opponent", value: "external" },
-                { label: "FACKTS Player", value: "fackts_player" },
-                { label: "Guest Hooper", value: "guest_hooper" },
-              ]}
+            <FieldInput
+              label="Match Title"
+              value={form.matchTitle}
+              onChange={(value) => updateField("matchTitle", value)}
+              placeholder="Example: Opening Battle / Main Event"
             />
 
-            {form.opponentType === "fackts_player" ? (
+            <FieldSelect
+              label="Match Type"
+              value={form.matchType}
+              onChange={(event) => updateField("matchType", event.target.value)}
+              options={matchTypeOptions}
+            />
+
+            <FieldInput
+              label="Court"
+              value={form.court}
+              onChange={(value) => updateField("court", value)}
+              placeholder="Example: Court 1"
+            />
+
+            <FieldSelect
+              label="Player 1 Type"
+              value={form.player1Type}
+              onChange={handlePlayer1TypeChange}
+              options={playerTypeOptions}
+            />
+
+            {form.player1Type === "fackts_player" ? (
               <FieldSelect
-                label="Opponent FACKTS Player"
-                value={form.opponentPlayerId}
+                label="Player 1"
+                value={form.player1FacktsId}
                 onChange={(event) =>
-                  updateField("opponentPlayerId", event.target.value)
+                  updateField("player1FacktsId", event.target.value)
                 }
                 options={[
-                  { label: "Select opponent player", value: "" },
+                  { label: "Select Player 1", value: "" },
                   ...players.map((player) => ({
                     label: getPersonName(player),
                     value: player.id,
@@ -581,15 +689,15 @@ export default function AdminOneOnOnePage() {
               />
             ) : null}
 
-            {form.opponentType === "guest_hooper" ? (
+            {form.player1Type === "guest_hooper" ? (
               <FieldSelect
-                label="Opponent Guest Hooper"
-                value={form.opponentGuestHooperId}
+                label="Player 1 Guest Hooper"
+                value={form.player1GuestId}
                 onChange={(event) =>
-                  updateField("opponentGuestHooperId", event.target.value)
+                  updateField("player1GuestId", event.target.value)
                 }
                 options={[
-                  { label: "Select opponent guest", value: "" },
+                  { label: "Select Player 1", value: "" },
                   ...guests.map((guest) => ({
                     label: getPersonName(guest),
                     value: guest.id,
@@ -598,12 +706,62 @@ export default function AdminOneOnOnePage() {
               />
             ) : null}
 
-            {form.opponentType === "external" ? (
+            {form.player1Type === "external" ? (
               <FieldInput
-                label="External Opponent Name"
-                value={form.opponentName}
-                onChange={(value) => updateField("opponentName", value)}
-                placeholder="Example: ISO7 / Juja Hooper / Langata Champ"
+                label="Player 1 External Name"
+                value={form.player1ExternalName}
+                onChange={(value) => updateField("player1ExternalName", value)}
+                placeholder="Example: Juja Champ"
+              />
+            ) : null}
+
+            <FieldSelect
+              label="Player 2 Type"
+              value={form.player2Type}
+              onChange={handlePlayer2TypeChange}
+              options={playerTypeOptions}
+            />
+
+            {form.player2Type === "fackts_player" ? (
+              <FieldSelect
+                label="Player 2"
+                value={form.player2FacktsId}
+                onChange={(event) =>
+                  updateField("player2FacktsId", event.target.value)
+                }
+                options={[
+                  { label: "Select Player 2", value: "" },
+                  ...players.map((player) => ({
+                    label: getPersonName(player),
+                    value: player.id,
+                  })),
+                ]}
+              />
+            ) : null}
+
+            {form.player2Type === "guest_hooper" ? (
+              <FieldSelect
+                label="Player 2 Guest Hooper"
+                value={form.player2GuestId}
+                onChange={(event) =>
+                  updateField("player2GuestId", event.target.value)
+                }
+                options={[
+                  { label: "Select Player 2", value: "" },
+                  ...guests.map((guest) => ({
+                    label: getPersonName(guest),
+                    value: guest.id,
+                  })),
+                ]}
+              />
+            ) : null}
+
+            {form.player2Type === "external" ? (
+              <FieldInput
+                label="Player 2 External Name"
+                value={form.player2ExternalName}
+                onChange={(value) => updateField("player2ExternalName", value)}
+                placeholder="Example: ISO7 / Juja Hooper"
               />
             ) : null}
 
@@ -635,50 +793,77 @@ export default function AdminOneOnOnePage() {
               onChange={(event) =>
                 updateField("status", event.target.value as MatchStatus)
               }
-              options={[
-                { label: "Upcoming", value: "upcoming" },
-                { label: "Completed", value: "completed" },
-                { label: "Cancelled", value: "cancelled" },
-              ]}
+              options={statusOptions}
             />
 
             <FieldInput
-              label="Participant Points"
+              label="Player 1 Score"
               type="number"
-              value={form.pointsScored}
-              onChange={(value) => updateField("pointsScored", value)}
+              value={form.player1Score}
+              onChange={(value) => updateField("player1Score", value)}
               placeholder="Example: 11"
             />
 
             <FieldInput
-              label="Opponent Points"
+              label="Player 2 Score"
               type="number"
-              value={form.pointsAllowed}
-              onChange={(value) => updateField("pointsAllowed", value)}
+              value={form.player2Score}
+              onChange={(value) => updateField("player2Score", value)}
               placeholder="Example: 8"
             />
 
-            <FieldInput
-              label="Poster URL"
-              value={form.posterUrl}
-              onChange={(value) => updateField("posterUrl", value)}
-              placeholder="Optional poster image URL"
-            />
+            <label className="block">
+              <div className="mb-2 text-sm font-bold text-slate-300">
+                Upload Match Poster
+              </div>
+
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  setPosterFile(file);
+
+                  if (file) {
+                    setPosterPreview(URL.createObjectURL(file));
+                  } else {
+                    setPosterPreview("");
+                  }
+                }}
+                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white file:mr-4 file:rounded-full file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-black file:text-black"
+              />
+
+              {posterFile ? (
+                <div className="mt-2 text-xs font-bold text-orange-300">
+                  Selected: {posterFile.name}
+                </div>
+              ) : null}
+            </label>
 
             <FieldInput
-              label="Video URL"
+              label="Full Game Video Link"
               value={form.videoUrl}
               onChange={(value) => updateField("videoUrl", value)}
               placeholder="YouTube, Vimeo, or MP4 link"
             />
 
             <FieldInput
-              label="Highlight URL"
+              label="Highlight Video Link"
               value={form.highlightUrl}
               onChange={(value) => updateField("highlightUrl", value)}
               placeholder="Optional highlight link"
             />
           </div>
+
+          {posterPreview || existingPosterUrl ? (
+            <div className="mt-4 overflow-hidden rounded-3xl border border-white/10 bg-black/30">
+              <img
+                src={posterPreview || existingPosterUrl}
+                alt="1v1 poster preview"
+                className="max-h-[460px] w-full object-cover"
+              />
+            </div>
+          ) : null}
 
           <label className="mt-4 block">
             <div className="mb-2 text-sm font-bold text-slate-300">Notes</div>
@@ -686,7 +871,7 @@ export default function AdminOneOnOnePage() {
               value={form.notes}
               onChange={(event) => updateField("notes", event.target.value)}
               rows={4}
-              placeholder="Add match story, rules, callouts, or notes..."
+              placeholder="Add match story, callouts, rules, or notes..."
               className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
             />
           </label>
@@ -700,8 +885,8 @@ export default function AdminOneOnOnePage() {
               {saving
                 ? "Saving..."
                 : editingId
-                ? "Update 1v1 Game"
-                : "Create 1v1 Game"}
+                ? "Update 1v1 Match"
+                : "Create 1v1 Match"}
             </button>
 
             <button
@@ -718,9 +903,9 @@ export default function AdminOneOnOnePage() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                Existing 1v1 Games
+                Existing 1v1 Matches
               </p>
-              <h2 className="mt-2 text-2xl font-black">Manage Records</h2>
+              <h2 className="mt-2 text-2xl font-black">Manage Fight Card</h2>
             </div>
 
             <button
@@ -734,11 +919,11 @@ export default function AdminOneOnOnePage() {
 
           {loading ? (
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-400">
-              Loading 1v1 games...
+              Loading 1v1 matches...
             </div>
           ) : matches.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-400">
-              No 1v1 games found yet.
+              No 1v1 matches found yet.
             </div>
           ) : (
             <div className="grid gap-3">
@@ -749,26 +934,49 @@ export default function AdminOneOnOnePage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-xl font-black text-white">
-                        {getParticipantName(match)} vs {getOpponentName(match)}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-200">
+                          {match.match_number
+                            ? `#${match.match_number}`
+                            : "No Order"}
+                        </span>
+
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-300">
+                          {safeText(match.match_type)}
+                        </span>
+
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-300">
+                          {statusLabel(match.status)}
+                        </span>
                       </div>
 
+                      <div className="mt-3 text-xl font-black text-white">
+                        {getPlayer1Name(match)} vs {getPlayer2Name(match)}
+                      </div>
+
+                      {match.match_title ? (
+                        <div className="mt-1 text-sm font-bold text-orange-200">
+                          {match.match_title}
+                        </div>
+                      ) : null}
+
                       <div className="mt-1 text-sm leading-6 text-slate-400">
-                        {safeText(match.venue)} • {safeText(match.location)}
+                        {safeText(match.venue)} • {safeText(match.location)} •{" "}
+                        {safeText(match.court)}
                       </div>
 
                       <div className="mt-2 flex flex-wrap gap-2 text-xs font-black">
-                        <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-orange-200">
-                          {statusLabel(match.status)}
-                        </span>
-
                         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
-                          {match.points_scored ?? "-"} -{" "}
+                          Score: {match.points_scored ?? "-"} -{" "}
                           {match.points_allowed ?? "-"}
                         </span>
 
                         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
-                          {resultLabel(match.result)}
+                          Result: {resultLabel(match.result)}
+                        </span>
+
+                        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+                          Winner: {getWinnerName(match)}
                         </span>
                       </div>
                     </div>
