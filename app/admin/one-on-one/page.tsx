@@ -121,6 +121,8 @@ const emptyForm: FormState = {
   notes: "",
 };
 
+const ONE_ON_ONE_DRAFT_KEY = "fackts-admin-one-on-one-draft";
+
 const playerTypeOptions = [
   { label: "FACKTS Player", value: "fackts_player" },
   { label: "Guest Hooper", value: "guest_hooper" },
@@ -198,6 +200,47 @@ function getErrorMessage(error: unknown) {
   return "Unknown error";
 }
 
+function saveDraftToBrowser(
+  form: FormState,
+  editingId: string,
+  existingPosterUrl: string
+) {
+  if (typeof window === "undefined") return;
+
+  localStorage.setItem(
+    ONE_ON_ONE_DRAFT_KEY,
+    JSON.stringify({
+      form,
+      editingId,
+      existingPosterUrl,
+    })
+  );
+}
+
+function loadDraftFromBrowser() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const savedDraft = localStorage.getItem(ONE_ON_ONE_DRAFT_KEY);
+
+    if (!savedDraft) return null;
+
+    return JSON.parse(savedDraft) as {
+      form?: Partial<FormState>;
+      editingId?: string;
+      existingPosterUrl?: string;
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearDraftFromBrowser() {
+  if (typeof window === "undefined") return;
+
+  localStorage.removeItem(ONE_ON_ONE_DRAFT_KEY);
+}
+
 export default function AdminOneOnOnePage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [guests, setGuests] = useState<GuestHooper[]>([]);
@@ -214,6 +257,7 @@ export default function AdminOneOnOnePage() {
   const [saving, setSaving] = useState(false);
 
   const [message, setMessage] = useState("");
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   const playerMap = useMemo(() => {
     const map = new Map<string, Player>();
@@ -271,6 +315,28 @@ export default function AdminOneOnOnePage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const draft = loadDraftFromBrowser();
+
+    if (draft?.form) {
+      setForm({
+        ...emptyForm,
+        ...draft.form,
+      });
+
+      setEditingId(draft.editingId || "");
+      setExistingPosterUrl(draft.existingPosterUrl || "");
+    }
+
+    setDraftLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftLoaded) return;
+
+    saveDraftToBrowser(form, editingId, existingPosterUrl);
+  }, [form, editingId, existingPosterUrl, draftLoaded]);
+
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -306,6 +372,7 @@ export default function AdminOneOnOnePage() {
     setPosterPreview("");
     setExistingPosterUrl("");
     setMessage("");
+    clearDraftFromBrowser();
   }
 
   function getPlayer1Name(row: OneOnOneRow) {
@@ -492,9 +559,7 @@ export default function AdminOneOnOnePage() {
       guest_hooper_id:
         form.player1Type === "guest_hooper" ? form.player1GuestId : null,
       participant_name:
-        form.player1Type === "external"
-          ? form.player1ExternalName.trim()
-          : null,
+        form.player1Type === "external" ? form.player1ExternalName.trim() : null,
 
       opponent_type: form.player2Type,
       opponent_player_id:
@@ -502,9 +567,7 @@ export default function AdminOneOnOnePage() {
       opponent_guest_hooper_id:
         form.player2Type === "guest_hooper" ? form.player2GuestId : null,
       opponent_name:
-        form.player2Type === "external"
-          ? form.player2ExternalName.trim()
-          : null,
+        form.player2Type === "external" ? form.player2ExternalName.trim() : null,
 
       match_date: form.matchDate ? new Date(form.matchDate).toISOString() : null,
       venue: form.venue.trim() || null,
@@ -529,7 +592,7 @@ export default function AdminOneOnOnePage() {
       : await supabase.from("guest_one_on_one_stats").insert(payload);
 
     if (result.error) {
-      setMessage(`Failed to save 1v1 game: ${result.error.message}`);
+      setMessage(`Failed to save 1v1 match: ${result.error.message}`);
       setSaving(false);
       return;
     }
@@ -584,6 +647,11 @@ export default function AdminOneOnOnePage() {
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
               Set up 1v1 battles using Player 1 vs Player 2, upload posters,
               update scores, and manage the public 1v1 page.
+            </p>
+
+            <p className="mt-2 text-xs font-bold text-slate-500">
+              Draft autosaves while typing. After saving or clearing, the form
+              resets cleanly.
             </p>
           </div>
 
@@ -838,6 +906,11 @@ export default function AdminOneOnOnePage() {
                   Selected: {posterFile.name}
                 </div>
               ) : null}
+
+              <div className="mt-2 text-xs leading-5 text-slate-500">
+                Note: selected upload files cannot be restored by the browser
+                after leaving the page. Links/text are autosaved.
+              </div>
             </label>
 
             <FieldInput
