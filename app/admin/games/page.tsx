@@ -1,25 +1,32 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+
+type GameStatus = "upcoming" | "completed" | "postponed" | "cancelled";
 
 type GameRow = {
   id: string;
+  title?: string | null;
+  game_title?: string | null;
   opponent?: string | null;
+  opponent_name?: string | null;
+  team_name?: string | null;
   game_date?: string | null;
+  date?: string | null;
   venue?: string | null;
   location?: string | null;
-  match_type?: string | null;
-  game_type?: string | null;
-  team_score?: number | string | null;
-  opponent_score?: number | string | null;
+  status?: string | null;
   fackts_score?: number | string | null;
-  is_upcoming?: boolean | null;
+  opponent_score?: number | string | null;
+  home_score?: number | string | null;
+  away_score?: number | string | null;
   poster_url?: string | null;
+  game_poster_url?: string | null;
   image_url?: string | null;
-  poster_position?: string | null;
   video_url?: string | null;
+  game_video_url?: string | null;
   highlight_url?: string | null;
   notes?: string | null;
   created_at?: string | null;
@@ -27,182 +34,114 @@ type GameRow = {
 };
 
 type GameForm = {
+  title: string;
   opponent: string;
   game_date: string;
   venue: string;
-  match_type: string;
-  team_score: string;
+  location: string;
+  status: GameStatus;
+  fackts_score: string;
   opponent_score: string;
-  is_upcoming: boolean;
   poster_url: string;
-  poster_position: string;
   video_url: string;
+  highlight_url: string;
   notes: string;
 };
 
-type SavedGameMemory = {
-  form: GameForm;
-  editingId: string | null;
-};
-
-const FORM_MEMORY_KEY = "fackts-admin-games-form-memory";
-
 const emptyForm: GameForm = {
+  title: "",
   opponent: "",
   game_date: "",
   venue: "",
-  match_type: "Friendly",
-  team_score: "",
+  location: "",
+  status: "upcoming",
+  fackts_score: "",
   opponent_score: "",
-  is_upcoming: true,
   poster_url: "",
-  poster_position: "center center",
   video_url: "",
+  highlight_url: "",
   notes: "",
 };
 
-const matchTypes = [
-  "Friendly",
-  "Court Takeover",
-  "League Game",
-  "Tournament",
-  "Playoff",
-  "Final",
-  "1st Leg",
-  "2nd Leg",
-  "Game 1",
-  "Game 2",
-  "Game 3",
-  "Game 4",
-  "Game 5",
-  "Scrimmage",
-];
+function getTitle(game: GameRow) {
+  return game.game_title || game.title || "FACKTS Game";
+}
 
-const imagePositions = [
-  { label: "Center", value: "center center" },
-  { label: "Top", value: "center top" },
-  { label: "Bottom", value: "center bottom" },
-  { label: "Left", value: "left center" },
-  { label: "Right", value: "right center" },
-  { label: "Top Left", value: "left top" },
-  { label: "Top Right", value: "right top" },
-  { label: "Bottom Left", value: "left bottom" },
-  { label: "Bottom Right", value: "right bottom" },
-];
+function getOpponent(game: GameRow) {
+  return game.opponent || game.opponent_name || game.team_name || "Opponent";
+}
+
+function getGameDate(game: GameRow) {
+  return game.game_date || game.date || "";
+}
+
+function getPosterUrl(game: GameRow) {
+  return game.poster_url || game.game_poster_url || game.image_url || "";
+}
+
+function getVideoUrl(game: GameRow) {
+  return game.video_url || game.game_video_url || "";
+}
+
+function getFacktsScore(game: GameRow) {
+  return game.fackts_score ?? game.home_score ?? "";
+}
+
+function getOpponentScore(game: GameRow) {
+  return game.opponent_score ?? game.away_score ?? "";
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "No date added";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "No date added";
+
+  return date.toLocaleString("en-KE", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+
+  return localDate.toISOString().slice(0, 16);
+}
 
 function numberOrNull(value: string) {
   if (value.trim() === "") return null;
+
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+
+  if (Number.isNaN(parsed)) return null;
+
+  return parsed;
 }
 
-function getTeamScore(game: GameRow) {
-  if (game.team_score !== null && game.team_score !== undefined) {
-    return game.team_score;
+function normalizeStatus(value?: string | null): GameStatus {
+  const status = (value || "").toLowerCase().trim();
+
+  if (status === "completed" || status === "played" || status === "final") {
+    return "completed";
   }
 
-  if (game.fackts_score !== null && game.fackts_score !== undefined) {
-    return game.fackts_score;
-  }
+  if (status === "postponed") return "postponed";
+  if (status === "cancelled") return "cancelled";
 
-  return null;
-}
-
-function getDisplayScore(game: GameRow) {
-  const teamScore = getTeamScore(game);
-  const opponentScore = game.opponent_score;
-
-  if (
-    teamScore === null ||
-    teamScore === undefined ||
-    opponentScore === null ||
-    opponentScore === undefined
-  ) {
-    return "Score not posted";
-  }
-
-  return `${teamScore} - ${opponentScore}`;
-}
-
-function hasScore(game: GameRow) {
-  const teamScore = getTeamScore(game);
-  const opponentScore = game.opponent_score;
-
-  return (
-    teamScore !== null &&
-    teamScore !== undefined &&
-    opponentScore !== null &&
-    opponentScore !== undefined
-  );
-}
-
-function getGameStatus(game: GameRow) {
-  if (game.is_upcoming && !hasScore(game)) return "Upcoming";
-
-  if (hasScore(game)) {
-    const teamScore = Number(getTeamScore(game) ?? 0);
-    const opponentScore = Number(game.opponent_score ?? 0);
-
-    if (teamScore > opponentScore) return "Win";
-    if (teamScore < opponentScore) return "Loss";
-    return "Draw";
-  }
-
-  return "Awaiting Result";
-}
-
-function getGameTitle(game: GameRow) {
-  return `FACKTS vs ${game.opponent || "Opponent"}`;
-}
-
-function getGameVenue(game: GameRow) {
-  return game.venue || game.location || "Venue not added";
-}
-
-function cleanUrl(value: string) {
-  return value.trim();
-}
-
-function makeSafeFileName(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9.]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function saveFormMemory(form: GameForm, editingId: string | null) {
-  if (typeof window === "undefined") return;
-
-  const memory: SavedGameMemory = {
-    form,
-    editingId,
-  };
-
-  sessionStorage.setItem(FORM_MEMORY_KEY, JSON.stringify(memory));
-}
-
-function loadFormMemory() {
-  if (typeof window === "undefined") return null;
-
-  const raw = sessionStorage.getItem(FORM_MEMORY_KEY);
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as SavedGameMemory;
-
-    if (!parsed?.form) return null;
-
-    return parsed;
-  } catch {
-    sessionStorage.removeItem(FORM_MEMORY_KEY);
-    return null;
-  }
-}
-
-function clearFormMemory() {
-  if (typeof window === "undefined") return;
-  sessionStorage.removeItem(FORM_MEMORY_KEY);
+  return "upcoming";
 }
 
 export default function AdminGamesPage() {
@@ -210,649 +149,628 @@ export default function AdminGamesPage() {
   const [form, setForm] = useState<GameForm>(emptyForm);
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [loadingPage, setLoadingPage] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
-  const [memoryLoaded, setMemoryLoaded] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const sortedGames = useMemo(() => {
+    return [...games].sort((a, b) => {
+      const aTime = new Date(getGameDate(a) || a.created_at || "").getTime();
+      const bTime = new Date(getGameDate(b) || b.created_at || "").getTime();
+
+      const safeA = Number.isNaN(aTime) ? 0 : aTime;
+      const safeB = Number.isNaN(bTime) ? 0 : bTime;
+
+      return safeB - safeA;
+    });
+  }, [games]);
+
+  useEffect(() => {
+    loadGames();
+  }, []);
 
   async function loadGames() {
-    setLoadingPage(true);
-    setMessage("");
+    setLoading(true);
+    setErrorMessage("");
 
     const { data, error } = await supabase
       .from("games")
       .select("*")
-      .order("game_date", { ascending: false })
-      .order("created_at", { ascending: false });
+      .order("game_date", { ascending: false });
 
     if (error) {
-      setMessage(`Failed to load games: ${error.message}`);
-      setLoadingPage(false);
+      setErrorMessage(error.message);
+      setGames([]);
+      setLoading(false);
       return;
     }
 
     setGames((data || []) as GameRow[]);
-    setLoadingPage(false);
+    setLoading(false);
   }
 
-  useEffect(() => {
-    const memory = loadFormMemory();
+  function handleChange(
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) {
+    const { name, value } = event.target;
 
-    if (memory) {
-      setForm({
-        ...emptyForm,
-        ...memory.form,
-      });
-
-      setEditingId(memory.editingId || null);
-    }
-
-    setMemoryLoaded(true);
-    loadGames();
-  }, []);
-
-  useEffect(() => {
-    if (!memoryLoaded) return;
-
-    const hasSomething =
-      form.opponent.trim() ||
-      form.game_date.trim() ||
-      form.venue.trim() ||
-      form.team_score.trim() ||
-      form.opponent_score.trim() ||
-      form.poster_url.trim() ||
-      form.video_url.trim() ||
-      form.notes.trim() ||
-      editingId;
-
-    if (hasSomething) {
-      saveFormMemory(form, editingId);
-    }
-  }, [form, editingId, memoryLoaded]);
-
-  function updateField<K extends keyof GameForm>(field: K, value: GameForm[K]) {
-    setForm((prev) => ({
-      ...prev,
-      [field]: value,
+    setForm((current) => ({
+      ...current,
+      [name]: value,
     }));
   }
 
-  function handleEdit(game: GameRow) {
+  function handlePosterChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] || null;
+    setPosterFile(file);
+  }
+
+  function resetForm() {
+    setForm(emptyForm);
+    setPosterFile(null);
+    setEditingId(null);
+    setMessage("");
+    setErrorMessage("");
+  }
+
+  function startEdit(game: GameRow) {
     setEditingId(game.id);
     setPosterFile(null);
+    setMessage("");
+    setErrorMessage("");
 
-    const savedVideoUrl = game.video_url || game.highlight_url || "";
-    const savedTeamScore = getTeamScore(game);
-
-    const nextForm: GameForm = {
-      opponent: game.opponent || "",
-      game_date: game.game_date || "",
-      venue: game.venue || game.location || "",
-      match_type: game.match_type || game.game_type || "Friendly",
-      team_score:
-        savedTeamScore !== null && savedTeamScore !== undefined
-          ? String(savedTeamScore)
-          : "",
-      opponent_score:
-        game.opponent_score !== null && game.opponent_score !== undefined
-          ? String(game.opponent_score)
-          : "",
-      is_upcoming: Boolean(game.is_upcoming),
-      poster_url: game.poster_url || game.image_url || "",
-      poster_position: game.poster_position || "center center",
-      video_url: savedVideoUrl,
+    setForm({
+      title: getTitle(game) === "FACKTS Game" ? "" : getTitle(game),
+      opponent: getOpponent(game) === "Opponent" ? "" : getOpponent(game),
+      game_date: toDateTimeLocal(getGameDate(game)),
+      venue: game.venue || "",
+      location: game.location || "",
+      status: normalizeStatus(game.status),
+      fackts_score: String(getFacktsScore(game) ?? ""),
+      opponent_score: String(getOpponentScore(game) ?? ""),
+      poster_url: getPosterUrl(game),
+      video_url: getVideoUrl(game),
+      highlight_url: game.highlight_url || "",
       notes: game.notes || "",
-    };
+    });
 
-    setForm(nextForm);
-    saveFormMemory(nextForm, game.id);
-
-    setMessage("Editing selected game.");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setPosterFile(null);
-    setForm(emptyForm);
-    clearFormMemory();
-    setMessage("Edit cancelled.");
-  }
+  async function uploadPoster() {
+    if (!posterFile) return form.poster_url;
 
-  async function uploadPosterImage() {
-    if (!posterFile) return form.poster_url.trim() || null;
+    const fileExt = posterFile.name.split(".").pop() || "png";
+    const fileName = `game-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${fileExt}`;
 
-    const cleanName = makeSafeFileName(posterFile.name);
-    const fileName = cleanName || `game-poster-${Date.now()}.jpg`;
-    const filePath = `posters/${Date.now()}-${fileName}`;
-
-    const uploadResult = await supabase.storage
+    const { error } = await supabase.storage
       .from("game-posters")
-      .upload(filePath, posterFile, {
+      .upload(fileName, posterFile, {
         cacheControl: "3600",
         upsert: false,
       });
 
-    if (uploadResult.error) {
-      throw new Error(uploadResult.error.message);
+    if (error) {
+      throw new Error(error.message);
     }
 
-    const publicUrlResult = supabase.storage
-      .from("game-posters")
-      .getPublicUrl(filePath);
+    const { data } = supabase.storage.from("game-posters").getPublicUrl(fileName);
 
-    return publicUrlResult.data.publicUrl;
+    return data.publicUrl;
   }
 
-  async function handleSave(event: FormEvent) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setSaving(true);
     setMessage("");
-
-    if (!form.opponent.trim()) {
-      setMessage("Please enter the opponent name.");
-      setSaving(false);
-      return;
-    }
-
-    if (!form.game_date) {
-      setMessage("Please enter the game date.");
-      setSaving(false);
-      return;
-    }
-
-    let posterUrl: string | null = null;
+    setErrorMessage("");
 
     try {
-      posterUrl = await uploadPosterImage();
-    } catch (error: any) {
-      setMessage(`Poster upload failed: ${error.message}`);
-      setSaving(false);
-      return;
-    }
+      const posterUrl = await uploadPoster();
 
-    const teamScore = numberOrNull(form.team_score);
-    const opponentScore = numberOrNull(form.opponent_score);
-    const scoreHasBeenEntered = teamScore !== null && opponentScore !== null;
-    const videoUrl = cleanUrl(form.video_url);
+      const payload = {
+        game_title: form.title.trim() || null,
+        opponent: form.opponent.trim() || null,
+        game_date: form.game_date ? new Date(form.game_date).toISOString() : null,
+        venue: form.venue.trim() || null,
+        location: form.location.trim() || null,
+        status: form.status,
+        fackts_score: numberOrNull(form.fackts_score),
+        opponent_score: numberOrNull(form.opponent_score),
+        poster_url: posterUrl || null,
+        video_url: form.video_url.trim() || null,
+        highlight_url: form.highlight_url.trim() || null,
+        notes: form.notes.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
 
-    const payload = {
-      opponent: form.opponent.trim(),
-      game_date: form.game_date,
-      venue: form.venue.trim() || null,
-      match_type: form.match_type,
-      team_score: teamScore,
-      opponent_score: opponentScore,
-      is_upcoming: scoreHasBeenEntered ? false : form.is_upcoming,
-      poster_url: posterUrl,
-      poster_position: form.poster_position || "center center",
-      video_url: videoUrl || null,
-      highlight_url: videoUrl || null,
-      notes: form.notes.trim() || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    const saveResult = editingId
-      ? await supabase
+      if (editingId) {
+        const { error } = await supabase
           .from("games")
           .update(payload)
-          .eq("id", editingId)
-          .select("id, video_url, highlight_url, poster_url")
-          .single()
-      : await supabase
-          .from("games")
-          .insert(payload)
-          .select("id, video_url, highlight_url, poster_url")
-          .single();
+          .eq("id", editingId);
 
-    if (saveResult.error) {
-      setMessage(
-        editingId
-          ? `Failed to update game: ${saveResult.error.message}`
-          : `Failed to save game: ${saveResult.error.message}`
-      );
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        setMessage("Game updated successfully.");
+      } else {
+        const { error } = await supabase.from("games").insert({
+          ...payload,
+          created_at: new Date().toISOString(),
+        });
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        setMessage("Game added successfully.");
+      }
+
+      resetForm();
+      await loadGames();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong.";
+
+      setErrorMessage(message);
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const savedVideo =
-      saveResult.data?.video_url || saveResult.data?.highlight_url || "";
-
-    const savedPoster = saveResult.data?.poster_url || "";
-
-    setMessage(
-      `${editingId ? "Game updated." : "Game saved."} ${
-        savedPoster ? "Poster saved." : "No poster uploaded."
-      } ${savedVideo ? "Video link saved." : "No video link saved."}`
-    );
-
-    setEditingId(null);
-    setPosterFile(null);
-    setForm({
-      ...emptyForm,
-      match_type: form.match_type,
-      venue: form.venue,
-    });
-
-    clearFormMemory();
-
-    await loadGames();
-    setSaving(false);
   }
 
-  async function handleDelete(gameId: string) {
-    const yes = window.confirm("Delete this game?");
-    if (!yes) return;
+  async function deleteGame(gameId: string) {
+    const confirmed = window.confirm(
+      "Delete this game from admin? This will remove the game record from the website."
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(gameId);
+    setMessage("");
+    setErrorMessage("");
 
     const { error } = await supabase.from("games").delete().eq("id", gameId);
 
     if (error) {
-      setMessage(`Failed to delete game: ${error.message}`);
+      setErrorMessage(error.message);
+      setDeletingId(null);
       return;
     }
 
-    if (editingId === gameId) {
-      setEditingId(null);
-      setPosterFile(null);
-      setForm(emptyForm);
-      clearFormMemory();
-    }
-
-    setMessage("Game deleted.");
+    setMessage("Game deleted successfully.");
+    setDeletingId(null);
     await loadGames();
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white md:px-6 md:py-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-8">
-          <Link
-            href="/admin"
-            className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
-          >
-            Back to Admin
-          </Link>
-
-          <div className="mt-4 text-sm uppercase tracking-[0.25em] text-orange-300">
-            FACKTS Admin
-          </div>
-
-          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
-            Games
-          </h1>
-
-          <p className="mt-3 text-slate-400">
-            Create fixtures, update game scores, add posters, and link full game
-            videos for fans to watch inside the app.
-          </p>
-        </header>
-
-        {message ? (
-          <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300">
-            {message}
-          </div>
-        ) : null}
-
-        {loadingPage ? (
-          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
-            Loading games...
-          </div>
-        ) : (
-          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 md:p-6">
-              <div className="mb-5 flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm uppercase tracking-wide text-orange-300">
-                    {editingId ? "Edit Game" : "Add Game"}
-                  </div>
-
-                  <h2 className="mt-1 text-2xl font-bold">
-                    {editingId ? "Update Game" : "Create Game"}
-                  </h2>
-                </div>
-
-                {editingId ? (
-                  <button
-                    type="button"
-                    onClick={cancelEdit}
-                    className="rounded-2xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-800"
-                  >
-                    Cancel Edit
-                  </button>
-                ) : null}
+    <main className="min-h-screen bg-black text-white">
+      <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.22),_transparent_35%),linear-gradient(135deg,_#050505,_#111111_45%,_#020202)]">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="mb-3 inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-orange-300">
+                Admin Panel
               </div>
 
-              <form onSubmit={handleSave} className="space-y-4">
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-300">
-                    Opponent
-                  </div>
+              <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
+                Manage Games
+              </h1>
 
-                  <input
-                    value={form.opponent}
-                    onChange={(event) =>
-                      updateField("opponent", event.target.value)
-                    }
-                    placeholder="Example: ACK Baptist"
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                  />
-                </label>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
+                Add fixtures, update scores, restore posters, attach game video
+                links, and manage completed results.
+              </p>
+            </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="block">
-                    <div className="mb-2 text-sm font-medium text-slate-300">
-                      Game Date
-                    </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/admin"
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
+              >
+                Admin Home
+              </Link>
 
-                    <input
-                      type="date"
-                      value={form.game_date}
-                      onChange={(event) =>
-                        updateField("game_date", event.target.value)
-                      }
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                    />
-                  </label>
+              <Link
+                href="/games"
+                className="rounded-full border border-orange-400/40 bg-orange-500 px-4 py-2 text-sm font-black text-black transition hover:bg-orange-400"
+              >
+                View Public Games
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
 
-                  <label className="block">
-                    <div className="mb-2 text-sm font-medium text-slate-300">
-                      Venue
-                    </div>
+      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[430px_1fr] lg:px-8">
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-3xl border border-white/10 bg-zinc-950 p-5 shadow-2xl shadow-black/40"
+        >
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+                {editingId ? "Editing Game" : "New Game"}
+              </p>
 
-                    <input
-                      value={form.venue}
-                      onChange={(event) =>
-                        updateField("venue", event.target.value)
-                      }
-                      placeholder="Example: ACK Kahawa Sukari"
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                    />
-                  </label>
-                </div>
+              <h2 className="mt-1 text-2xl font-black">
+                {editingId ? "Update Game" : "Add Game"}
+              </h2>
+            </div>
 
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-300">
-                    Match Type
-                  </div>
+            {editingId ? (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-white transition hover:border-orange-400/60"
+              >
+                Cancel Edit
+              </button>
+            ) : null}
+          </div>
 
-                  <select
-                    value={form.match_type}
-                    onChange={(event) =>
-                      updateField("match_type", event.target.value)
-                    }
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                  >
-                    {matchTypes.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+          {message ? (
+            <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">
+              {message}
+            </div>
+          ) : null}
 
-                <div className="grid gap-4 md:grid-cols-3">
-                  <label className="block">
-                    <div className="mb-2 text-sm font-medium text-slate-300">
-                      FACKTS Score
-                    </div>
+          {errorMessage ? (
+            <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+              {errorMessage}
+            </div>
+          ) : null}
 
-                    <input
-                      type="number"
-                      value={form.team_score}
-                      onChange={(event) =>
-                        updateField("team_score", event.target.value)
-                      }
-                      placeholder="Leave blank"
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                    />
-                  </label>
+          <div className="space-y-4">
+            <Field label="Game Title">
+              <input
+                name="title"
+                value={form.title}
+                onChange={handleChange}
+                placeholder="e.g. FACKTS vs Juja All Stars"
+                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+              />
+            </Field>
 
-                  <label className="block">
-                    <div className="mb-2 text-sm font-medium text-slate-300">
-                      Opponent Score
-                    </div>
+            <Field label="Opponent / Team">
+              <input
+                name="opponent"
+                value={form.opponent}
+                onChange={handleChange}
+                placeholder="e.g. JKUAT, Langata Downtown, Juja Basketball League"
+                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+              />
+            </Field>
 
-                    <input
-                      type="number"
-                      value={form.opponent_score}
-                      onChange={(event) =>
-                        updateField("opponent_score", event.target.value)
-                      }
-                      placeholder="Leave blank"
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                    />
-                  </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Game Date & Time">
+                <input
+                  type="datetime-local"
+                  name="game_date"
+                  value={form.game_date}
+                  onChange={handleChange}
+                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-orange-400"
+                />
+              </Field>
 
-                  <label className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-300">
-                      Upcoming
-                    </span>
-
-                    <input
-                      type="checkbox"
-                      checked={form.is_upcoming}
-                      onChange={(event) =>
-                        updateField("is_upcoming", event.target.checked)
-                      }
-                      className="h-5 w-5 accent-orange-500"
-                    />
-                  </label>
-                </div>
-
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-300">
-                    Upload Poster Image
-                  </div>
-
-                  {form.poster_url ? (
-                    <div className="mb-3 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                      <img
-                        src={form.poster_url}
-                        alt="Current game poster"
-                        className="h-24 w-20 rounded-xl object-cover"
-                        style={{
-                          objectPosition:
-                            form.poster_position || "center center",
-                        }}
-                      />
-
-                      <div>
-                        <div className="text-sm font-bold text-white">
-                          Current poster will remain
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          Upload a new image only if you want to replace it.
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) =>
-                      setPosterFile(event.target.files?.[0] || null)
-                    }
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white file:mr-4 file:rounded-full file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-bold file:text-black"
-                  />
-
-                  {posterFile ? (
-                    <p className="mt-2 text-xs font-bold text-orange-300">
-                      Selected: {posterFile.name}
-                    </p>
-                  ) : null}
-                </label>
-
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-300">
-                    Poster Position
-                  </div>
-
-                  <select
-                    value={form.poster_position}
-                    onChange={(event) =>
-                      updateField("poster_position", event.target.value)
-                    }
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                  >
-                    {imagePositions.map((position) => (
-                      <option key={position.value} value={position.value}>
-                        {position.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-300">
-                    Game Video Link
-                  </div>
-
-                  <input
-                    value={form.video_url}
-                    onChange={(event) =>
-                      updateField("video_url", event.target.value)
-                    }
-                    placeholder="Paste YouTube, Vimeo, or direct video link"
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                  />
-                </label>
-
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-300">
-                    Notes
-                  </div>
-
-                  <textarea
-                    value={form.notes}
-                    onChange={(event) =>
-                      updateField("notes", event.target.value)
-                    }
-                    rows={3}
-                    placeholder="Optional game notes"
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                  />
-                </label>
-
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+              <Field label="Status">
+                <select
+                  name="status"
+                  value={form.status}
+                  onChange={handleChange}
+                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-orange-400"
                 >
-                  {saving
-                    ? editingId
-                      ? "Updating..."
-                      : "Saving..."
-                    : editingId
-                    ? "Update Game"
-                    : "Save Game"}
-                </button>
-              </form>
-            </section>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="completed">Completed</option>
+                  <option value="postponed">Postponed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </Field>
+            </div>
 
-            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 md:p-6">
-              <div className="mb-5 flex items-end justify-between gap-4">
-                <div>
-                  <div className="text-sm uppercase tracking-wide text-orange-300">
-                    Saved Games
-                  </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Venue">
+                <input
+                  name="venue"
+                  value={form.venue}
+                  onChange={handleChange}
+                  placeholder="e.g. JKUAT Court"
+                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+                />
+              </Field>
 
-                  <h2 className="mt-1 text-2xl font-bold">
-                    Fixtures & Results
-                  </h2>
+              <Field label="Location">
+                <input
+                  name="location"
+                  value={form.location}
+                  onChange={handleChange}
+                  placeholder="e.g. Juja"
+                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="FACKTS Score">
+                <input
+                  type="number"
+                  name="fackts_score"
+                  value={form.fackts_score}
+                  onChange={handleChange}
+                  placeholder="e.g. 67"
+                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+                />
+              </Field>
+
+              <Field label="Opponent Score">
+                <input
+                  type="number"
+                  name="opponent_score"
+                  value={form.opponent_score}
+                  onChange={handleChange}
+                  placeholder="e.g. 63"
+                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+                />
+              </Field>
+            </div>
+
+            <Field label="Game Poster Upload">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePosterChange}
+                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-zinc-300 outline-none file:mr-4 file:rounded-full file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-xs file:font-black file:text-black"
+              />
+
+              <p className="mt-2 text-xs text-zinc-500">
+                Uploading a new poster will replace the poster URL for this
+                game. Existing uploaded posters remain safe unless you overwrite
+                them.
+              </p>
+            </Field>
+
+            <Field label="Current Poster URL">
+              <input
+                name="poster_url"
+                value={form.poster_url}
+                onChange={handleChange}
+                placeholder="Poster URL will appear here after upload"
+                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+              />
+
+              {form.poster_url ? (
+                <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black">
+                  <img
+                    src={form.poster_url}
+                    alt="Current game poster"
+                    className="h-48 w-full object-cover"
+                  />
                 </div>
+              ) : null}
+            </Field>
 
-                <div className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
-                  {games.length} games
-                </div>
-              </div>
+            <Field label="Full Game Video Link">
+              <input
+                name="video_url"
+                value={form.video_url}
+                onChange={handleChange}
+                placeholder="Paste YouTube, TikTok, Instagram, or Google Drive link"
+                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+              />
+            </Field>
 
-              {games.length > 0 ? (
-                <div className="space-y-3">
-                  {games.map((game) => (
-                    <article
-                      key={game.id}
-                      className={
-                        editingId === game.id
-                          ? "rounded-2xl border border-orange-500/60 bg-orange-500/10 p-4"
-                          : "rounded-2xl border border-slate-800 bg-slate-950 p-4"
-                      }
-                    >
-                      <div className="flex flex-wrap items-start gap-4">
-                        {game.poster_url || game.image_url ? (
-                          <img
-                            src={game.poster_url || game.image_url || ""}
-                            alt={getGameTitle(game)}
-                            className="h-28 w-20 rounded-xl object-cover"
-                            style={{
-                              objectPosition:
-                                game.poster_position || "center center",
-                            }}
-                          />
-                        ) : null}
+            <Field label="Highlight Video Link">
+              <input
+                name="highlight_url"
+                value={form.highlight_url}
+                onChange={handleChange}
+                placeholder="Optional highlight link"
+                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+              />
+            </Field>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="text-lg font-black text-white">
-                            {getGameTitle(game)}
+            <Field label="Notes">
+              <textarea
+                name="notes"
+                value={form.notes}
+                onChange={handleChange}
+                rows={4}
+                placeholder="Short game notes, story, recap, or admin reminder"
+                className="w-full resize-none rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
+              />
+            </Field>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving
+                ? "Saving..."
+                : editingId
+                  ? "Save Game Changes"
+                  : "Add Game"}
+            </button>
+          </div>
+        </form>
+
+        <div className="rounded-3xl border border-white/10 bg-zinc-950 p-5 shadow-2xl shadow-black/40">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+                Games Database
+              </p>
+
+              <h2 className="mt-1 text-2xl font-black">Existing Games</h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={loadGames}
+              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-white transition hover:border-orange-400/60"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="rounded-2xl border border-white/10 bg-black p-5 text-sm font-bold text-zinc-400">
+              Loading games...
+            </div>
+          ) : sortedGames.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-black p-5 text-sm font-bold text-zinc-400">
+              No games found yet.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {sortedGames.map((game) => {
+                const posterUrl = getPosterUrl(game);
+                const videoUrl = getVideoUrl(game);
+                const facktsScore = getFacktsScore(game);
+                const opponentScore = getOpponentScore(game);
+
+                return (
+                  <article
+                    key={game.id}
+                    className="overflow-hidden rounded-2xl border border-white/10 bg-black"
+                  >
+                    {posterUrl ? (
+                      <div className="h-52 w-full overflow-hidden bg-zinc-900">
+                        <img
+                          src={posterUrl}
+                          alt={getTitle(game)}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[11px] font-black uppercase text-orange-300">
+                              {normalizeStatus(game.status)}
+                            </span>
+
+                            {videoUrl ? (
+                              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] font-black uppercase text-blue-200">
+                                Video Added
+                              </span>
+                            ) : null}
+
+                            {posterUrl ? (
+                              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-black uppercase text-emerald-200">
+                                Poster Added
+                              </span>
+                            ) : null}
                           </div>
 
-                          <div className="mt-1 text-sm text-slate-400">
-                            {game.game_date || "Date not added"} |{" "}
-                            {getGameVenue(game)}
-                          </div>
+                          <h3 className="truncate text-xl font-black text-white">
+                            {getTitle(game)}
+                          </h3>
 
-                          <div className="mt-2 text-sm font-bold text-orange-300">
-                            {getDisplayScore(game)} | {getGameStatus(game)}
-                          </div>
+                          <p className="mt-1 text-sm font-bold text-zinc-400">
+                            FACKTS vs {getOpponent(game)}
+                          </p>
 
-                          {game.video_url || game.highlight_url ? (
-                            <div className="mt-2 text-xs font-bold text-orange-300">
-                              Video linked
-                            </div>
-                          ) : (
-                            <div className="mt-2 text-xs font-bold text-slate-600">
-                              No video linked
-                            </div>
-                          )}
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {formatDate(getGameDate(game))}
+                          </p>
 
-                          {game.notes ? (
-                            <p className="mt-2 text-sm leading-6 text-slate-500">
-                              {game.notes}
-                            </p>
-                          ) : null}
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {[game.venue, game.location]
+                              .filter(Boolean)
+                              .join(" • ") || "No venue/location added"}
+                          </p>
                         </div>
 
-                        <div className="flex flex-col gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(game)}
-                            className="rounded-2xl border border-orange-500/40 px-3 py-2 text-sm text-orange-300 hover:bg-orange-500/10"
-                          >
-                            Edit
-                          </button>
+                        <div className="shrink-0 rounded-2xl border border-white/10 bg-zinc-950 px-5 py-3 text-center">
+                          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">
+                            Score
+                          </p>
 
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(game.id)}
-                            className="rounded-2xl border border-rose-500/30 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
-                          >
-                            Delete
-                          </button>
+                          <p className="mt-1 text-2xl font-black text-white">
+                            {facktsScore !== "" && facktsScore !== null
+                              ? facktsScore
+                              : "-"}{" "}
+                            -{" "}
+                            {opponentScore !== "" && opponentScore !== null
+                              ? opponentScore
+                              : "-"}
+                          </p>
                         </div>
                       </div>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
-                  No games have been added yet.
-                </div>
-              )}
-            </section>
-          </div>
-        )}
-      </div>
+
+                      {videoUrl ? (
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">
+                            Game Video Link
+                          </p>
+
+                          <a
+                            href={videoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 block truncate text-sm font-bold text-blue-300 hover:text-blue-200"
+                          >
+                            {videoUrl}
+                          </a>
+                        </div>
+                      ) : null}
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(game)}
+                          className="rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteGame(game.id)}
+                          disabled={deletingId === game.id}
+                          className="rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingId === game.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
     </main>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-zinc-500">
+        {label}
+      </span>
+
+      {children}
+    </label>
   );
 }
