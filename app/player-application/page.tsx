@@ -2,10 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-<<<<<<< HEAD
-=======
 import { supabase } from "@/lib/supabase";
->>>>>>> 3e77a30 (add player application review and approval flow)
 
 const FACKTS_PHONE_DISPLAY = "+254 711 468 303";
 const FACKTS_PHONE_TEL = "+254711468303";
@@ -13,7 +10,6 @@ const FACKTS_WHATSAPP = "254711468303";
 
 type PlayerApplicationForm = {
   fullName: string;
-<<<<<<< HEAD
   age: string;
   position: string;
   currentTeam: string;
@@ -23,7 +19,6 @@ type PlayerApplicationForm = {
   socialLink: string;
   highlightLink: string;
   playerGoal: string;
-=======
   nickname: string;
   email: string;
   phone: string;
@@ -48,12 +43,10 @@ type PlayerApplicationForm = {
 
   marketingConsent: boolean;
   guardianAwareness: boolean;
->>>>>>> 3e77a30 (add player application review and approval flow)
 };
 
 const emptyForm: PlayerApplicationForm = {
   fullName: "",
-<<<<<<< HEAD
   age: "",
   position: "",
   currentTeam: "",
@@ -63,7 +56,6 @@ const emptyForm: PlayerApplicationForm = {
   socialLink: "",
   highlightLink: "",
   playerGoal: "",
-=======
   nickname: "",
   email: "",
   phone: "",
@@ -88,7 +80,6 @@ const emptyForm: PlayerApplicationForm = {
 
   marketingConsent: false,
   guardianAwareness: false,
->>>>>>> 3e77a30 (add player application review and approval flow)
 };
 
 const positions = [
@@ -103,8 +94,6 @@ const positions = [
   "Not Sure",
 ];
 
-<<<<<<< HEAD
-=======
 const dominantHands = ["Right", "Left", "Both", "Not Sure"];
 
 const levels = [
@@ -120,20 +109,17 @@ const levels = [
   "Not Sure",
 ];
 
->>>>>>> 3e77a30 (add player application review and approval flow)
 function buildWhatsAppMessage(form: PlayerApplicationForm) {
   return [
     "Hello FACKTS Hoops, I need guidance on player application.",
     "",
     `Full Name: ${form.fullName || "Not provided"}`,
-<<<<<<< HEAD
     `Age / Year of Birth: ${form.age || "Not provided"}`,
     `Position: ${form.position || "Not provided"}`,
     `Current Team / School: ${form.currentTeam || "Not provided"}`,
     `Location: ${form.location || "Not provided"}`,
     `Phone: ${form.phone || "Not provided"}`,
     `Email: ${form.email || "Not provided"}`,
-=======
     `Nickname: ${form.nickname || "Not provided"}`,
     `Email: ${form.email || "Not provided"}`,
     `Phone: ${form.phone || "Not provided"}`,
@@ -146,7 +132,6 @@ function buildWhatsAppMessage(form: PlayerApplicationForm) {
     `Previous Teams: ${form.previousTeams || "Not provided"}`,
     `Highest Level Played: ${form.highestLevelPlayed || "Not provided"}`,
     `Years Played: ${form.yearsPlayed || "Not provided"}`,
->>>>>>> 3e77a30 (add player application review and approval flow)
     `Social Link: ${form.socialLink || "Not provided"}`,
     `Highlight Link: ${form.highlightLink || "Not provided"}`,
     "",
@@ -196,11 +181,8 @@ export default function PlayerApplicationPage() {
 
     if (!form.position.trim()) {
       setMessageType("error");
-<<<<<<< HEAD
       setMessage("Please select or enter your position.");
-=======
       setMessage("Please select your position.");
->>>>>>> 3e77a30 (add player application review and approval flow)
       return;
     }
 
@@ -208,7 +190,6 @@ export default function PlayerApplicationPage() {
     setMessageType("info");
     setMessage("Submitting your player application...");
 
-<<<<<<< HEAD
     try {
       const response = await fetch("/api/player-application", {
         method: "POST",
@@ -239,7 +220,6 @@ export default function PlayerApplicationPage() {
     } finally {
       setSubmitting(false);
     }
-=======
     const payload = {
       full_name: form.fullName.trim(),
       nickname: form.nickname.trim() || null,
@@ -288,7 +268,6 @@ export default function PlayerApplicationPage() {
 
     setForm(emptyForm);
     setSubmitting(false);
->>>>>>> 3e77a30 (add player application review and approval flow)
   }
 
   function getMessageClass() {
@@ -378,20 +357,16 @@ export default function PlayerApplicationPage() {
           <h2 className="mt-2 text-2xl font-black">Fill and submit</h2>
 
           <p className="mt-3 text-sm leading-6 text-zinc-400">
-<<<<<<< HEAD
             Submit your details here. Your application will be saved for FACKTS
             Hoops to review and follow up.
-=======
             Your application will be saved as pending. FACKTS Hoops will review
             before any player profile is made public.
->>>>>>> 3e77a30 (add player application review and approval flow)
           </p>
 
           {message ? <div className={getMessageClass()}>{message}</div> : null}
 
           <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
             <div className="grid gap-4 md:grid-cols-2">
-<<<<<<< HEAD
               <label className="block">
                 <div className="mb-2 text-sm font-bold text-zinc-300">
                   Full Name
@@ -550,7 +525,6 @@ export default function PlayerApplicationPage() {
                 className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400"
               />
             </label>
-=======
               <TextInput
                 label="Full Name"
                 value={form.fullName}
@@ -740,7 +714,6 @@ export default function PlayerApplicationPage() {
                 </span>
               </label>
             </div>
->>>>>>> 3e77a30 (add player application review and approval flow)
 
             <div className="flex flex-wrap gap-3">
               <button
