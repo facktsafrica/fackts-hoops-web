@@ -462,8 +462,14 @@ export default async function OneOnOnePage() {
   );
 
   return (
-    <main className="min-h-screen bg-black text-white">
-      <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.25),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(37,99,235,0.2),_transparent_30%),linear-gradient(135deg,_#020617,_#050505_45%,_#020202)]">
+    <main
+      className="min-h-screen bg-black bg-cover bg-fixed bg-center text-white"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0.92)), url('/images/one-on-one-bg.png')",
+      }}
+    >
+      <section className="border-b border-white/10 bg-black/40 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -576,7 +582,7 @@ export default async function OneOnOnePage() {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+    <div className="rounded-2xl border border-white/10 bg-black/50 p-4 backdrop-blur-sm">
       <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
         {label}
       </p>
@@ -600,7 +606,7 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 function EmptyBox({ text }: { text: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-950 p-5 text-sm text-zinc-400">
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/90 p-5 text-sm text-zinc-400 backdrop-blur-sm">
       {text}
     </div>
   );
@@ -647,7 +653,7 @@ function LeaderboardCard({
   items: LeaderboardItem[];
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-950 p-4">
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/90 p-4 backdrop-blur-sm">
       <div className="mb-4">
         <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
           {eyebrow}
@@ -661,7 +667,7 @@ function LeaderboardCard({
           items.map((item, index) => (
             <div
               key={item.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/40 p-3"
+              className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/50 p-3"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500 text-sm font-black text-black">
@@ -727,7 +733,7 @@ function BattleCard({
   return (
     <Link
       href={`/one-on-one/${row.id}`}
-      className="block overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 transition hover:-translate-y-1 hover:border-orange-400/50"
+      className="block overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/90 backdrop-blur-sm transition hover:-translate-y-1 hover:border-orange-400/50"
     >
       {row.poster_url ? (
         <div className="h-56 w-full overflow-hidden bg-zinc-900">
