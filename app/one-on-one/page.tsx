@@ -22,9 +22,15 @@ type GuestHooper = {
 type OneOnOneRow = {
   id: string;
 
+  match_number?: string | null;
+  match_title?: string | null;
+  match_type?: string | null;
+  court?: string | null;
+
   participant_type?: string | null;
   fackts_player_id?: string | null;
   guest_hooper_id?: string | null;
+  participant_name?: string | null;
 
   opponent_type?: string | null;
   opponent_player_id?: string | null;
@@ -39,6 +45,7 @@ type OneOnOneRow = {
   points_allowed?: number | string | null;
   result?: string | null;
   status?: string | null;
+
   notes?: string | null;
   poster_url?: string | null;
   video_url?: string | null;
@@ -94,12 +101,25 @@ function numberValue(value: unknown): number | null {
   return null;
 }
 
-function getRowDate(row: OneOnOneRow) {
-  return row.match_date || row.created_at || "Date not added";
+function formatDate(value?: string | null) {
+  if (!value) return "Date not added";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Date not added";
+
+  return date.toLocaleString("en-KE", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function getRowLocation(row: OneOnOneRow) {
-  return row.venue || row.location || "Location not added";
+  const parts = [row.venue, row.location, row.court].filter(Boolean);
+  return parts.length > 0 ? parts.join(" • ") : "Location not added";
 }
 
 function findPlayerByName(name: string | null | undefined, players: Player[]) {
@@ -132,7 +152,7 @@ function findGuestByName(name: string | null | undefined, guests: GuestHooper[])
   );
 }
 
-function getParticipantIdentity(
+function getPlayer1Identity(
   row: OneOnOneRow,
   playerMap: Map<string, Player>,
   guestMap: Map<string, GuestHooper>
@@ -162,13 +182,13 @@ function getParticipantIdentity(
   }
 
   return {
-    id: `external-participant-${row.id}`,
-    name: "Unknown Hooper",
+    id: `external-player-1-${cleanName(row.participant_name) || row.id}`,
+    name: row.participant_name || "Player 1",
     type: "external" as const,
   };
 }
 
-function getOpponentIdentity(
+function getPlayer2Identity(
   row: OneOnOneRow,
   playerMap: Map<string, Player>,
   guestMap: Map<string, GuestHooper>,
@@ -218,49 +238,76 @@ function getOpponentIdentity(
   }
 
   return {
-    id: `external-${cleanName(row.opponent_name) || row.id}`,
-    name: row.opponent_name || "Opponent",
+    id: `external-player-2-${cleanName(row.opponent_name) || row.id}`,
+    name: row.opponent_name || "Player 2",
     type: "external" as const,
   };
 }
 
-function getParticipantScore(row: OneOnOneRow) {
+function getPlayer1Score(row: OneOnOneRow) {
   return numberValue(row.points_scored);
 }
 
-function getOpponentScore(row: OneOnOneRow) {
+function getPlayer2Score(row: OneOnOneRow) {
   return numberValue(row.points_allowed);
 }
 
-function getResult(row: OneOnOneRow) {
-  const result = (row.result || "").toLowerCase().trim();
+function getMatchStatus(row: OneOnOneRow) {
+  const status = (row.status || "").toLowerCase().trim();
 
-  if (result === "win") return "Win";
-  if (result === "loss") return "Loss";
-  if (result === "draw") return "Draw";
-  if (result === "pending") return "Upcoming";
-
-  const participantScore = getParticipantScore(row);
-  const opponentScore = getOpponentScore(row);
-
-  if (participantScore !== null && opponentScore !== null) {
-    if (participantScore > opponentScore) return "Win";
-    if (participantScore < opponentScore) return "Loss";
-    return "Draw";
-  }
-
+  if (status === "completed") return "Completed";
+  if (status === "cancelled") return "Cancelled";
   return "Upcoming";
 }
 
-function getMatchStatus(row: OneOnOneRow) {
-  return getResult(row) === "Upcoming" ? "Upcoming" : "Completed";
+function getWinnerSide(row: OneOnOneRow) {
+  const score1 = getPlayer1Score(row);
+  const score2 = getPlayer2Score(row);
+
+  if (score1 === null || score2 === null) return null;
+  if (score1 > score2) return "player1";
+  if (score2 > score1) return "player2";
+  return "draw";
 }
 
-function getStatusClass(status: string, result: string) {
+function getResultLabel(row: OneOnOneRow) {
+  const status = getMatchStatus(row);
+
+  if (status === "Upcoming") return "Upcoming";
+  if (status === "Cancelled") return "Cancelled";
+
+  const winnerSide = getWinnerSide(row);
+
+  if (winnerSide === "player1") return "Player 1 Win";
+  if (winnerSide === "player2") return "Player 2 Win";
+  if (winnerSide === "draw") return "Draw";
+
+  return "Completed";
+}
+
+function getWinnerName(
+  row: OneOnOneRow,
+  player1Name: string,
+  player2Name: string
+) {
+  const status = getMatchStatus(row);
+
+  if (status !== "Completed") return "Not decided";
+
+  const winnerSide = getWinnerSide(row);
+
+  if (winnerSide === "player1") return player1Name;
+  if (winnerSide === "player2") return player2Name;
+  if (winnerSide === "draw") return "Draw";
+
+  return "Not decided";
+}
+
+function getStatusClass(row: OneOnOneRow) {
+  const status = getMatchStatus(row);
+
   if (status === "Upcoming") return "bg-orange-500/15 text-orange-300";
-  if (result === "Win") return "bg-emerald-500/15 text-emerald-300";
-  if (result === "Loss") return "bg-red-500/15 text-red-300";
-  if (result === "Draw") return "bg-zinc-500/15 text-zinc-300";
+  if (status === "Cancelled") return "bg-red-500/15 text-red-300";
 
   return "bg-emerald-500/15 text-emerald-300";
 }
@@ -269,6 +316,16 @@ function parseDateForSort(row: OneOnOneRow) {
   const value = row.match_date || row.created_at || "";
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function parseMatchNumber(value?: string | null) {
+  if (!value) return 9999;
+
+  const numberOnly = Number(String(value).replace(/[^0-9]/g, ""));
+
+  if (Number.isNaN(numberOnly) || numberOnly === 0) return 9999;
+
+  return numberOnly;
 }
 
 async function getData() {
@@ -285,9 +342,15 @@ async function getData() {
 
   const players = (playersResult.data || []) as Player[];
   const guests = (guestsResult.data || []) as GuestHooper[];
-  const rows = ((rowsResult.data || []) as OneOnOneRow[]).sort(
-    (a, b) => parseDateForSort(b) - parseDateForSort(a)
-  );
+
+  const rows = ((rowsResult.data || []) as OneOnOneRow[]).sort((a, b) => {
+    const numberDiff =
+      parseMatchNumber(a.match_number) - parseMatchNumber(b.match_number);
+
+    if (numberDiff !== 0) return numberDiff;
+
+    return parseDateForSort(b) - parseDateForSort(a);
+  });
 
   const playerMap = new Map<string, Player>();
   players.forEach((player) => playerMap.set(String(player.id), player));
@@ -336,43 +399,36 @@ function buildLeaderboard(
   }
 
   rows.forEach((row) => {
-    const result = getResult(row);
-    if (result === "Upcoming") return;
+    if (getMatchStatus(row) !== "Completed") return;
 
-    const participantScore = getParticipantScore(row);
-    const opponentScore = getOpponentScore(row);
+    const player1Score = getPlayer1Score(row);
+    const player2Score = getPlayer2Score(row);
 
-    if (participantScore === null || opponentScore === null) return;
+    if (player1Score === null || player2Score === null) return;
 
-    const participant = getParticipantIdentity(row, playerMap, guestMap);
-    const opponent = getOpponentIdentity(
-      row,
-      playerMap,
-      guestMap,
-      players,
-      guests
-    );
+    const player1 = getPlayer1Identity(row, playerMap, guestMap);
+    const player2 = getPlayer2Identity(row, playerMap, guestMap, players, guests);
 
-    const participantItem = ensureItem(participant);
-    const opponentItem = ensureItem(opponent);
+    const player1Item = ensureItem(player1);
+    const player2Item = ensureItem(player2);
 
-    participantItem.matches += 1;
-    participantItem.points += participantScore;
-    participantItem.pointsAllowed += opponentScore;
+    player1Item.matches += 1;
+    player1Item.points += player1Score;
+    player1Item.pointsAllowed += player2Score;
 
-    opponentItem.matches += 1;
-    opponentItem.points += opponentScore;
-    opponentItem.pointsAllowed += participantScore;
+    player2Item.matches += 1;
+    player2Item.points += player2Score;
+    player2Item.pointsAllowed += player1Score;
 
-    if (participantScore > opponentScore) {
-      participantItem.wins += 1;
-      opponentItem.losses += 1;
-    } else if (opponentScore > participantScore) {
-      opponentItem.wins += 1;
-      participantItem.losses += 1;
+    if (player1Score > player2Score) {
+      player1Item.wins += 1;
+      player2Item.losses += 1;
+    } else if (player2Score > player1Score) {
+      player2Item.wins += 1;
+      player1Item.losses += 1;
     } else {
-      participantItem.draws += 1;
-      opponentItem.draws += 1;
+      player1Item.draws += 1;
+      player2Item.draws += 1;
     }
   });
 
@@ -404,7 +460,7 @@ export default async function OneOnOnePage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.2),_transparent_35%),linear-gradient(135deg,_#050505,_#111111_45%,_#020202)]">
+      <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.25),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(37,99,235,0.2),_transparent_30%),linear-gradient(135deg,_#020617,_#050505_45%,_#020202)]">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -417,7 +473,8 @@ export default async function OneOnOnePage() {
               </h1>
 
               <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
-                1-on-1 games, results, points, wins, videos, and matchup history.
+                Court battles, fixtures, results, scores, posters, videos, and
+                matchup history.
               </p>
             </div>
 
@@ -446,9 +503,9 @@ export default async function OneOnOnePage() {
           </div>
 
           <div className="mt-7 grid gap-3 sm:grid-cols-4">
-            <StatCard label="Total 1-on-1 Games" value={rows.length} />
-            <StatCard label="Completed Results" value={completedRows.length} />
-            <StatCard label="Upcoming Games" value={upcomingRows.length} />
+            <StatCard label="Total Battles" value={rows.length} />
+            <StatCard label="Completed" value={completedRows.length} />
+            <StatCard label="Upcoming" value={upcomingRows.length} />
             <StatCard label="Ranked Hoopers" value={leaderboard.length} />
           </div>
         </div>
@@ -464,7 +521,7 @@ export default async function OneOnOnePage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Fixtures" title="Upcoming 1-on-1 Games" />
+        <SectionHeader eyebrow="Fight Card" title="Upcoming 1-on-1 Battles" />
 
         {upcomingRows.length > 0 ? (
           <CardGrid
@@ -475,7 +532,7 @@ export default async function OneOnOnePage() {
             guestMap={guestMap}
           />
         ) : (
-          <EmptyBox text="No upcoming 1-on-1 games added yet." />
+          <EmptyBox text="No upcoming 1-on-1 battles added yet." />
         )}
       </section>
 
@@ -496,7 +553,7 @@ export default async function OneOnOnePage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Full Log" title="All 1-on-1 Games" />
+        <SectionHeader eyebrow="Full Log" title="All 1-on-1 Battles" />
 
         {rows.length > 0 ? (
           <CardGrid
@@ -507,7 +564,7 @@ export default async function OneOnOnePage() {
             guestMap={guestMap}
           />
         ) : (
-          <EmptyBox text="No 1-on-1 games found yet." />
+          <EmptyBox text="No 1-on-1 battles found yet." />
         )}
       </section>
     </main>
@@ -614,7 +671,7 @@ function LeaderboardCard({
                   </p>
 
                   <p className="text-xs text-zinc-500">
-                    {item.matches} games • {item.points} pts •{" "}
+                    {item.matches} battles • {item.points} pts •{" "}
                     {item.pointsAllowed} allowed
                   </p>
                 </div>
@@ -652,14 +709,17 @@ function BattleCard({
   playerMap: Map<string, Player>;
   guestMap: Map<string, GuestHooper>;
 }) {
-  const participant = getParticipantIdentity(row, playerMap, guestMap);
-  const opponent = getOpponentIdentity(row, playerMap, guestMap, players, guests);
+  const player1 = getPlayer1Identity(row, playerMap, guestMap);
+  const player2 = getPlayer2Identity(row, playerMap, guestMap, players, guests);
 
-  const participantScore = getParticipantScore(row);
-  const opponentScore = getOpponentScore(row);
+  const player1Score = getPlayer1Score(row);
+  const player2Score = getPlayer2Score(row);
 
-  const result = getResult(row);
   const status = getMatchStatus(row);
+  const resultLabel = getResultLabel(row);
+  const winnerName = getWinnerName(row, player1.name, player2.name);
+
+  const winnerSide = getWinnerSide(row);
 
   return (
     <Link
@@ -667,45 +727,56 @@ function BattleCard({
       className="block overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 transition hover:-translate-y-1 hover:border-orange-400/50"
     >
       {row.poster_url ? (
-        <div className="h-44 w-full overflow-hidden bg-zinc-900">
+        <div className="h-56 w-full overflow-hidden bg-zinc-900">
           <img
             src={row.poster_url}
-            alt={`${participant.name} vs ${opponent.name}`}
+            alt={`${player1.name} vs ${player2.name}`}
             className="h-full w-full object-cover"
           />
         </div>
       ) : null}
 
       <div className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <span
-            className={`rounded-full px-3 py-1 text-[11px] font-black uppercase ${getStatusClass(
-              status,
-              result
-            )}`}
-          >
-            {status === "Completed" ? result : status}
-          </span>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[11px] font-black uppercase text-orange-300">
+              {row.match_number ? `#${row.match_number}` : "Battle"}
+            </span>
+
+            <span
+              className={`rounded-full px-3 py-1 text-[11px] font-black uppercase ${getStatusClass(
+                row
+              )}`}
+            >
+              {status}
+            </span>
+          </div>
 
           <span className="text-xs font-bold text-zinc-500">
-            {getRowDate(row)}
+            {formatDate(row.match_date || row.created_at)}
           </span>
         </div>
+
+        {row.match_title ? (
+          <p className="mb-3 text-sm font-black uppercase tracking-[0.15em] text-orange-200">
+            {row.match_title}
+          </p>
+        ) : null}
 
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-black text-white">
-              {participant.name}
+              {player1.name}
             </p>
 
             <p
               className={
-                result === "Win"
+                winnerSide === "player1"
                   ? "text-3xl font-black text-orange-300"
                   : "text-3xl font-black text-white"
               }
             >
-              {participantScore ?? "-"}
+              {player1Score ?? "-"}
             </p>
           </div>
 
@@ -715,19 +786,35 @@ function BattleCard({
 
           <div className="min-w-0 text-right">
             <p className="truncate text-sm font-black text-white">
-              {opponent.name}
+              {player2.name}
             </p>
 
             <p
               className={
-                result === "Loss"
+                winnerSide === "player2"
                   ? "text-3xl font-black text-orange-300"
                   : "text-3xl font-black text-white"
               }
             >
-              {opponentScore ?? "-"}
+              {player2Score ?? "-"}
             </p>
           </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2 text-xs font-black">
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-zinc-300">
+            {row.match_type || "1v1"}
+          </span>
+
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-zinc-300">
+            {resultLabel}
+          </span>
+
+          {status === "Completed" ? (
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+              Winner: {winnerName}
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
@@ -739,6 +826,22 @@ function BattleCard({
             Open Match
           </span>
         </div>
+
+        {(row.video_url || row.highlight_url) && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {row.video_url ? (
+              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-200">
+                Video Added
+              </span>
+            ) : null}
+
+            {row.highlight_url ? (
+              <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-200">
+                Highlight Added
+              </span>
+            ) : null}
+          </div>
+        )}
       </div>
     </Link>
   );
