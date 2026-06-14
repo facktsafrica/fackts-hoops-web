@@ -322,8 +322,14 @@ export default async function GamesPage() {
   const nextGame = upcomingGames[0] || null;
 
   return (
-    <main className="min-h-screen bg-black text-white">
-      <section className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.28),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(37,99,235,0.18),_transparent_35%),linear-gradient(135deg,_#020617,_#050505_45%,_#020202)]">
+    <main
+      className="min-h-screen bg-black bg-cover bg-scroll bg-[position:left_top] text-white md:bg-fixed md:bg-[position:center_top]"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(2, 6, 23, 0.76), rgba(2, 6, 23, 0.93)), url('/images/one-on-one-bg.png')",
+      }}
+    >
+      <section className="relative overflow-hidden border-b border-white/10 bg-black/35 backdrop-blur-sm">
         <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:42px_42px]" />
 
         <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -374,7 +380,9 @@ export default async function GamesPage() {
             <StatCard label="Postponed" value={postponedGames.length} />
             <StatCard
               label="Record"
-              value={draws > 0 ? `${wins}-${losses}-${draws}` : `${wins}-${losses}`}
+              value={
+                draws > 0 ? `${wins}-${losses}-${draws}` : `${wins}-${losses}`
+              }
             />
           </div>
         </div>
@@ -456,7 +464,7 @@ function FeaturedGameCard({
   return (
     <Link
       href={`/games/${game.id}`}
-      className="group block overflow-hidden rounded-3xl border border-orange-500/30 bg-zinc-950 shadow-2xl shadow-orange-950/20 transition hover:-translate-y-1 hover:border-orange-400/70 lg:grid lg:grid-cols-[1fr_1.1fr]"
+      className="group block overflow-hidden rounded-3xl border border-orange-500/30 bg-zinc-950/90 shadow-2xl shadow-orange-950/20 backdrop-blur-sm transition hover:-translate-y-1 hover:border-orange-400/70 lg:grid lg:grid-cols-[1fr_1.1fr]"
     >
       {getPosterUrl(game) ? (
         <div className="h-80 overflow-hidden bg-zinc-900 lg:h-full">
@@ -564,7 +572,7 @@ function GameCard({
   return (
     <Link
       href={`/games/${game.id}`}
-      className="group block overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 transition hover:-translate-y-1 hover:border-orange-400/50"
+      className="group block overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/90 backdrop-blur-sm transition hover:-translate-y-1 hover:border-orange-400/50"
     >
       {posterUrl ? (
         <div className="h-56 overflow-hidden bg-zinc-900">
@@ -753,7 +761,7 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 function EmptyBox({ text }: { text: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-950 p-5 text-sm text-zinc-400">
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/90 p-5 text-sm text-zinc-400 backdrop-blur-sm">
       {text}
     </div>
   );
