@@ -1,160 +1,343 @@
 import Link from "next/link";
 
-const adminSections = [
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type AdminCard = {
+  title: string;
+  description: string;
+  href: string;
+  badge: string;
+  featured?: boolean;
+};
+
+const coreCards: AdminCard[] = [
   {
     title: "Ticker / Site Notice",
-    description:
-      "Edit the scrolling ticker, announcements, homepage notices, and live updates.",
+    description: "Control the notice bar and important site-wide announcements.",
     href: "/admin/ticker",
-    tag: "Ticker",
+    badge: "Site",
   },
   {
     title: "Players",
-    description: "Add, edit, activate, feature, and manage FACKTS players.",
+    description: "Add, edit, update, and manage active FACKTS player profiles.",
     href: "/admin/players",
-    tag: "Team",
+    badge: "Roster",
+    featured: true,
   },
   {
     title: "Player Applications",
-    description:
-      "Review public applications, upload player photos, approve or reject players.",
+    description: "Review incoming applications and approve hoopers correctly.",
     href: "/admin/player-applications",
-    tag: "Applications",
+    badge: "Applications",
+    featured: true,
   },
   {
     title: "Games",
-    description: "Create games, manage fixtures, scores, posters, and videos.",
+    description: "Add fixtures, results, posters, scores, videos, and game notes.",
     href: "/admin/games",
-    tag: "Matches",
+    badge: "Games",
+    featured: true,
   },
   {
     title: "Player Stats",
-    description:
-      "Feed and update official FACKTS player statistics after games.",
+    description: "Record player box scores, game stats, and performance numbers.",
     href: "/admin/stats",
-    tag: "Stats",
+    badge: "Stats",
+  },
+];
+
+const eventCards: AdminCard[] = [
+  {
+    title: "Calendar / Events Admin",
+    description:
+      "Add event cards, dates, venues, formats, posters, and featured events.",
+    href: "/admin/calendar",
+    badge: "Events",
+    featured: true,
   },
   {
+    title: "Events Landing Page",
+    description:
+      "Preview the public events hub with fixtures, face-offs, highlights, and hype.",
+    href: "/events",
+    badge: "Public",
+  },
+  {
+    title: "1-on-1 Battles",
+    description:
+      "Manage face-offs, matchup cards, scores, videos, and battle results.",
+    href: "/admin/one-on-one",
+    badge: "1v1",
+    featured: true,
+  },
+  {
+    title: "Match Previews",
+    description:
+      "Build matchup stories, preview notes, and pre-game narratives.",
+    href: "/admin/match-previews",
+    badge: "Preview",
+  },
+  {
+    title: "Highlights",
+    description:
+      "Manage highlight links, media items, video references, and featured clips.",
+    href: "/admin/highlights",
+    badge: "Media",
+  },
+  {
+    title: "Media Stories",
+    description:
+      "Add FACKTS stories, content pieces, and media-driven coverage moments.",
+    href: "/admin/media-stories",
+    badge: "Stories",
+  },
+];
+
+const guestCards: AdminCard[] = [
+  {
     title: "Guest Hoopers",
-    description: "Manage guest players for games and events.",
+    description:
+      "Manage guest hoopers, external players, visiting players, and profiles.",
     href: "/admin/guest-hoopers",
-    tag: "Guests",
+    badge: "Guests",
+    featured: true,
   },
   {
     title: "Game Guests",
     description:
-      "Attach guest hoopers to specific games before feeding guest stats.",
+      "Add guest players linked to specific games and events.",
     href: "/admin/game-guests",
-    tag: "Guests",
+    badge: "Guests",
   },
   {
     title: "Guest Game Stats",
-    description: "Add stats for guest players after games.",
+    description:
+      "Record stats for guest hoopers who participate in FACKTS games.",
     href: "/admin/guest-game-stats",
-    tag: "Stats",
+    badge: "Stats",
   },
   {
-    title: "One-on-One",
-    description: "Manage 1v1 matchups, results, videos, and leaderboards.",
-    href: "/admin/one-on-one",
-    tag: "1v1",
-  },
-  {
-    title: "Guest One-on-One Stats",
-    description: "Manage 1v1 stats for guest hoopers.",
+    title: "Guest 1-on-1 Stats",
+    description:
+      "Manage guest and external hooper 1v1 results, scores, and matchup data.",
     href: "/admin/guest-one-on-one-stats",
-    tag: "1v1",
+    badge: "1v1",
   },
+];
+
+const rosterCards: AdminCard[] = [
   {
     title: "Rosters",
-    description: "Manage team rosters and player groupings.",
+    description:
+      "Create and manage game rosters, player selections, and lineups.",
     href: "/admin/rosters",
-    tag: "Roster",
+    badge: "Roster",
   },
   {
     title: "Roster Announcements",
-    description: "Create and manage roster announcement content.",
+    description:
+      "Prepare roster announcements and public lineup messaging.",
     href: "/admin/roster-announcements",
-    tag: "Media",
+    badge: "Announcements",
+  },
+];
+
+const businessCards: AdminCard[] = [
+  {
+    title: "Partners Page",
+    description:
+      "Preview the public partners page showing Madebykelzz, KIPROD, Wisma, and others.",
+    href: "/partners",
+    badge: "Partners",
+    featured: true,
   },
   {
-    title: "Match Previews",
-    description: "Create and manage match previews before games.",
-    href: "/admin/match-previews",
-    tag: "Media",
+    title: "Partner With Us Page",
+    description:
+      "Preview the public partnership inquiry page for brands and collaborators.",
+    href: "/partner",
+    badge: "Business",
   },
   {
-    title: "Media Stories",
-    description: "Create and manage media stories and editorial posts.",
-    href: "/admin/media-stories",
-    tag: "Media",
+    title: "Book Coverage Page",
+    description:
+      "Preview the public booking page for coverage, media, and event support.",
+    href: "/book-coverage",
+    badge: "Sales",
   },
   {
-    title: "Highlights",
-    description: "Manage highlights, clips, and featured game moments.",
-    href: "/admin/highlights",
-    tag: "Media",
+    title: "Contact Page",
+    description:
+      "Preview the public contact page and communication entry point.",
+    href: "/contact",
+    badge: "Contact",
   },
 ];
 
 export default function AdminPage() {
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-orange-300">
-              FACKTS Hoops Admin
-            </p>
-
-            <h1 className="mt-2 text-4xl font-black tracking-tight">
-              Admin Dashboard
-            </h1>
-
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Manage players, applications, games, stats, guests, rosters,
-              ticker, media, and one-on-one battles from one place.
-            </p>
-          </div>
-
-          <Link
-            href="/"
-            className="rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-black text-white transition hover:border-orange-400/70 hover:text-orange-300"
-          >
-            View Public Site
-          </Link>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {adminSections.map((section) => (
-            <Link
-              key={section.href}
-              href={section.href}
-              className="group rounded-3xl border border-white/10 bg-slate-900 p-5 transition hover:-translate-y-1 hover:border-orange-400/70 hover:bg-slate-900/80"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-orange-300">
-                    {section.tag}
-                  </span>
-
-                  <h2 className="mt-4 text-2xl font-black text-white">
-                    {section.title}
-                  </h2>
-                </div>
-
-                <span className="rounded-full border border-white/10 bg-black/30 px-3 py-2 text-sm font-black text-slate-300 transition group-hover:border-orange-400/60 group-hover:text-orange-300">
-                  Open
-                </span>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <section className="border-b border-slate-800 bg-black/30">
+        <div className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="mb-3 inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-orange-300">
+                FACKTS Admin
               </div>
 
-              <p className="mt-4 text-sm leading-6 text-slate-400">
-                {section.description}
+              <h1 className="text-4xl font-black uppercase tracking-tight sm:text-6xl">
+                Control Room
+              </h1>
+
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
+                Manage players, games, events, face-offs, guests, rosters,
+                highlights, partners, and the public FACKTS platform from one
+                dashboard.
               </p>
-            </Link>
-          ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/"
+                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
+              >
+                View Site
+              </Link>
+
+              <Link
+                href="/events"
+                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
+              >
+                Events
+              </Link>
+
+              <Link
+                href="/partners"
+                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
+              >
+                Partners
+              </Link>
+
+              <Link
+                href="/api/admin/logout"
+                className="rounded-full bg-orange-500 px-4 py-2 text-sm font-black text-black transition hover:bg-orange-400"
+              >
+                Logout
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <AdminStat label="Core Tools" value={coreCards.length} />
+            <AdminStat label="Events & Media" value={eventCards.length} />
+            <AdminStat label="Guests" value={guestCards.length} />
+            <AdminStat label="Business Pages" value={businessCards.length} />
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Priority" title="Main Admin Tools" />
+        <AdminGrid cards={coreCards} />
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Events" title="Events, Matchups & Media" />
+        <AdminGrid cards={eventCards} />
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Guests" title="Guest Hoopers & External Players" />
+        <AdminGrid cards={guestCards} />
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Rosters" title="Rosters & Announcements" />
+        <AdminGrid cards={rosterCards} />
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Business" title="Partners, Sales & Public Pages" />
+        <AdminGrid cards={businessCards} />
+      </section>
     </main>
+  );
+}
+
+function AdminGrid({ cards }: { cards: AdminCard[] }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {cards.map((card) => (
+        <AdminCardItem key={card.href} card={card} />
+      ))}
+    </div>
+  );
+}
+
+function AdminCardItem({ card }: { card: AdminCard }) {
+  return (
+    <Link
+      href={card.href}
+      className={
+        card.featured
+          ? "group block rounded-[1.75rem] border border-orange-500/30 bg-orange-500/10 p-5 shadow-xl shadow-orange-950/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/70"
+          : "group block rounded-[1.75rem] border border-slate-800 bg-slate-900 p-5 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-orange-400/60"
+      }
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <span
+          className={
+            card.featured
+              ? "rounded-full bg-orange-500 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-black"
+              : "rounded-full border border-slate-700 bg-black/30 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-slate-300"
+          }
+        >
+          {card.badge}
+        </span>
+
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-orange-300">
+          Open
+        </span>
+      </div>
+
+      <h2 className="text-2xl font-black text-white group-hover:text-orange-200">
+        {card.title}
+      </h2>
+
+      <p className="mt-3 text-sm leading-7 text-slate-400">
+        {card.description}
+      </p>
+    </Link>
+  );
+}
+
+function AdminStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+        {label}
+      </p>
+
+      <p className="mt-2 text-3xl font-black text-white">{value}</p>
+    </div>
+  );
+}
+
+function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <div className="mb-5">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
+        {eyebrow}
+      </p>
+
+      <h2 className="mt-1 text-3xl font-black text-white">{title}</h2>
+    </div>
   );
 }
