@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { supabase } from "@/lib/supabase";
 
 type PartnerRow = {
@@ -10,9 +17,19 @@ type PartnerRow = {
   category?: string | null;
   role?: string | null;
   description?: string | null;
+  about?: string | null;
+  how_we_work?: string | null;
+  support_areas?: string | null;
+  products_services?: string | null;
+  impact_note?: string | null;
+  call_to_action?: string | null;
   website_url?: string | null;
   instagram_url?: string | null;
   logo_url?: string | null;
+  cover_image_url?: string | null;
+  gallery_image_1?: string | null;
+  gallery_image_2?: string | null;
+  gallery_image_3?: string | null;
   initials?: string | null;
   badge?: string | null;
   is_featured?: boolean | null;
@@ -27,9 +44,19 @@ type PartnerForm = {
   category: string;
   role: string;
   description: string;
+  about: string;
+  how_we_work: string;
+  support_areas: string;
+  products_services: string;
+  impact_note: string;
+  call_to_action: string;
   website_url: string;
   instagram_url: string;
   logo_url: string;
+  cover_image_url: string;
+  gallery_image_1: string;
+  gallery_image_2: string;
+  gallery_image_3: string;
   initials: string;
   badge: string;
   is_featured: boolean;
@@ -42,9 +69,19 @@ const emptyForm: PartnerForm = {
   category: "Partner",
   role: "",
   description: "",
+  about: "",
+  how_we_work: "",
+  support_areas: "",
+  products_services: "",
+  impact_note: "",
+  call_to_action: "",
   website_url: "",
   instagram_url: "",
   logo_url: "",
+  cover_image_url: "",
+  gallery_image_1: "",
+  gallery_image_2: "",
+  gallery_image_3: "",
   initials: "",
   badge: "",
   is_featured: false,
@@ -64,6 +101,14 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+}
+
+function safeFileName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 export default function AdminPartnersPage() {
@@ -126,6 +171,43 @@ export default function AdminPartnersPage() {
     }));
   }
 
+  async function uploadImage(
+    event: ChangeEvent<HTMLInputElement>,
+    field:
+      | "logo_url"
+      | "cover_image_url"
+      | "gallery_image_1"
+      | "gallery_image_2"
+      | "gallery_image_3"
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    const filePath = `partners/${field}/${Date.now()}-${safeFileName(file.name)}`;
+
+    const { error } = await supabase.storage
+      .from("partner-images")
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: true,
+      });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from("partner-images")
+      .getPublicUrl(filePath);
+
+    setForm((current) => ({
+      ...current,
+      [field]: data.publicUrl,
+    }));
+  }
+
   function resetForm() {
     setForm(emptyForm);
     setEditingId(null);
@@ -139,9 +221,19 @@ export default function AdminPartnersPage() {
       category: partner.category || "Partner",
       role: partner.role || "",
       description: partner.description || "",
+      about: partner.about || "",
+      how_we_work: partner.how_we_work || "",
+      support_areas: partner.support_areas || "",
+      products_services: partner.products_services || "",
+      impact_note: partner.impact_note || "",
+      call_to_action: partner.call_to_action || "",
       website_url: partner.website_url || "",
       instagram_url: partner.instagram_url || "",
       logo_url: partner.logo_url || "",
+      cover_image_url: partner.cover_image_url || "",
+      gallery_image_1: partner.gallery_image_1 || "",
+      gallery_image_2: partner.gallery_image_2 || "",
+      gallery_image_3: partner.gallery_image_3 || "",
       initials: partner.initials || "",
       badge: partner.badge || "",
       is_featured: partner.is_featured === true,
@@ -170,9 +262,19 @@ export default function AdminPartnersPage() {
       category: clean(form.category) || "Partner",
       role: clean(form.role),
       description: clean(form.description),
+      about: clean(form.about),
+      how_we_work: clean(form.how_we_work),
+      support_areas: clean(form.support_areas),
+      products_services: clean(form.products_services),
+      impact_note: clean(form.impact_note),
+      call_to_action: clean(form.call_to_action),
       website_url: clean(form.website_url),
       instagram_url: clean(form.instagram_url),
       logo_url: clean(form.logo_url),
+      cover_image_url: clean(form.cover_image_url),
+      gallery_image_1: clean(form.gallery_image_1),
+      gallery_image_2: clean(form.gallery_image_2),
+      gallery_image_3: clean(form.gallery_image_3),
       initials: clean(form.initials) || getInitials(form.name),
       badge: clean(form.badge),
       is_featured: form.is_featured,
@@ -256,9 +358,8 @@ export default function AdminPartnersPage() {
               </h1>
 
               <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
-                Add and manage partners that appear on the public partners page.
-                This is where sponsors, collaborators, institutions, creatives,
-                and business partners should be edited.
+                Add partner logos, cover images, gallery images, full profile
+                details, and how each partner works with FACKTS.
               </p>
             </div>
 
@@ -287,7 +388,7 @@ export default function AdminPartnersPage() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-6 px-5 py-8 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+      <section className="mx-auto grid max-w-7xl gap-6 px-5 py-8 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:px-8">
         <form
           onSubmit={savePartner}
           className="rounded-[2rem] border border-slate-800 bg-slate-900 p-5 shadow-xl shadow-black/20"
@@ -354,7 +455,7 @@ export default function AdminPartnersPage() {
               </Field>
             </div>
 
-            <Field label="Role">
+            <Field label="Short Role">
               <input
                 name="role"
                 value={form.role}
@@ -364,16 +465,86 @@ export default function AdminPartnersPage() {
               />
             </Field>
 
-            <Field label="Description">
+            <Field label="Short Card Description">
               <textarea
                 name="description"
                 value={form.description}
                 onChange={handleTextChange}
-                rows={5}
+                rows={4}
                 className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-orange-400"
-                placeholder="Short public description of the partner."
+                placeholder="This appears on the partners listing page."
               />
             </Field>
+
+            <Field label="About Partner">
+              <textarea
+                name="about"
+                value={form.about}
+                onChange={handleTextChange}
+                rows={5}
+                className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-orange-400"
+                placeholder="Who are they? What do they represent?"
+              />
+            </Field>
+
+            <Field label="How They Work With FACKTS">
+              <textarea
+                name="how_we_work"
+                value={form.how_we_work}
+                onChange={handleTextChange}
+                rows={5}
+                className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-orange-400"
+                placeholder="Explain the relationship with FACKTS."
+              />
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Support Areas">
+                <textarea
+                  name="support_areas"
+                  value={form.support_areas}
+                  onChange={handleTextChange}
+                  rows={4}
+                  className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-orange-400"
+                  placeholder="Events, merch, media, insurance..."
+                />
+              </Field>
+
+              <Field label="Products / Services">
+                <textarea
+                  name="products_services"
+                  value={form.products_services}
+                  onChange={handleTextChange}
+                  rows={4}
+                  className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-orange-400"
+                  placeholder="Bags, consulting, insurance, creative..."
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Impact Note">
+                <textarea
+                  name="impact_note"
+                  value={form.impact_note}
+                  onChange={handleTextChange}
+                  rows={4}
+                  className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-orange-400"
+                  placeholder="What value do they bring?"
+                />
+              </Field>
+
+              <Field label="Call To Action">
+                <textarea
+                  name="call_to_action"
+                  value={form.call_to_action}
+                  onChange={handleTextChange}
+                  rows={4}
+                  className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-orange-400"
+                  placeholder="Shop with them, request a quote..."
+                />
+              </Field>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Website URL">
@@ -397,15 +568,52 @@ export default function AdminPartnersPage() {
               </Field>
             </div>
 
-            <Field label="Logo URL">
-              <input
-                name="logo_url"
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ImageUploadField
+                label="Partner Logo"
                 value={form.logo_url}
-                onChange={handleTextChange}
-                className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm text-white outline-none transition focus:border-orange-400"
-                placeholder="Paste logo image URL if available"
+                onFileChange={(event) => uploadImage(event, "logo_url")}
+                onClear={() => setForm((current) => ({ ...current, logo_url: "" }))}
               />
-            </Field>
+
+              <ImageUploadField
+                label="Cover Picture"
+                value={form.cover_image_url}
+                onFileChange={(event) => uploadImage(event, "cover_image_url")}
+                onClear={() =>
+                  setForm((current) => ({ ...current, cover_image_url: "" }))
+                }
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <ImageUploadField
+                label="Gallery 1"
+                value={form.gallery_image_1}
+                onFileChange={(event) => uploadImage(event, "gallery_image_1")}
+                onClear={() =>
+                  setForm((current) => ({ ...current, gallery_image_1: "" }))
+                }
+              />
+
+              <ImageUploadField
+                label="Gallery 2"
+                value={form.gallery_image_2}
+                onFileChange={(event) => uploadImage(event, "gallery_image_2")}
+                onClear={() =>
+                  setForm((current) => ({ ...current, gallery_image_2: "" }))
+                }
+              />
+
+              <ImageUploadField
+                label="Gallery 3"
+                value={form.gallery_image_3}
+                onFileChange={(event) => uploadImage(event, "gallery_image_3")}
+                onClear={() =>
+                  setForm((current) => ({ ...current, gallery_image_3: "" }))
+                }
+              />
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Initials">
@@ -471,7 +679,9 @@ export default function AdminPartnersPage() {
               Partner List
             </p>
 
-            <h2 className="mt-1 text-2xl font-black">Manage Existing Partners</h2>
+            <h2 className="mt-1 text-2xl font-black">
+              Manage Existing Partners
+            </h2>
           </div>
 
           {loading ? (
@@ -492,7 +702,7 @@ export default function AdminPartnersPage() {
                           <img
                             src={partner.logo_url}
                             alt={partner.name}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-contain p-2"
                           />
                         ) : (
                           <span className="text-xl font-black text-orange-300">
@@ -543,6 +753,14 @@ export default function AdminPartnersPage() {
                     </div>
 
                     <div className="flex shrink-0 flex-wrap gap-2">
+                      <Link
+                        href={`/partners/${partner.id}`}
+                        target="_blank"
+                        className="rounded-full border border-slate-700 px-4 py-2 text-xs font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300"
+                      >
+                        View
+                      </Link>
+
                       <button
                         type="button"
                         onClick={() => startEdit(partner)}
@@ -583,7 +801,7 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label className="block">
@@ -592,6 +810,49 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+function ImageUploadField({
+  label,
+  value,
+  onFileChange,
+  onClear,
+}: {
+  label: string;
+  value: string;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-black/30 p-4">
+      <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+        {label}
+      </p>
+
+      {value ? (
+        <div className="mb-3 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
+          <img src={value} alt={label} className="h-32 w-full object-cover" />
+        </div>
+      ) : null}
+
+      <input
+        type="file"
+        accept="image/*"
+        onChange={onFileChange}
+        className="w-full rounded-2xl border border-slate-700 bg-black/40 px-4 py-3 text-sm text-white outline-none transition file:mr-4 file:rounded-full file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-xs file:font-black file:text-black hover:file:bg-orange-400 focus:border-orange-400"
+      />
+
+      {value ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-3 rounded-full border border-red-500/40 px-4 py-2 text-xs font-black text-red-200 transition hover:bg-red-500/10"
+        >
+          Remove Image
+        </button>
+      ) : null}
+    </div>
   );
 }
 

@@ -2,49 +2,34 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 type Partner = {
+  id: string;
   name: string;
-  category: string;
-  role: string;
-  description: string;
-  website?: string;
-  instagram?: string;
-  badge?: string;
-  initials: string;
+  category?: string | null;
+  role?: string | null;
+  description?: string | null;
+  about?: string | null;
+  how_we_work?: string | null;
+  support_areas?: string | null;
+  products_services?: string | null;
+  impact_note?: string | null;
+  call_to_action?: string | null;
+  website_url?: string | null;
+  instagram_url?: string | null;
+  logo_url?: string | null;
+  cover_image_url?: string | null;
+  gallery_image_1?: string | null;
+  gallery_image_2?: string | null;
+  gallery_image_3?: string | null;
+  initials?: string | null;
+  badge?: string | null;
+  is_featured?: boolean | null;
+  is_active?: boolean | null;
+  sort_order?: number | string | null;
+  created_at?: string | null;
 };
-
-const partners: Partner[] = [
-  {
-    name: "Madebykelzz",
-    category: "Creative Partner",
-    role: "Visual identity, creative design, and brand expression.",
-    description:
-      "A creative partner helping shape the visual energy around FACKTS through design, style, and youth-facing creative direction.",
-    instagram: "https://www.instagram.com/madebykelzz",
-    badge: "Creative",
-    initials: "MK",
-  },
-  {
-    name: "KIPROD Risk Management Services",
-    category: "Institutional Partner",
-    role: "Governance, risk thinking, structure, and institutional support.",
-    description:
-      "KIPROD brings structure, discipline, governance thinking, and institutional credibility into the FACKTS ecosystem.",
-    website: "https://kiprodrisk.co.ke",
-    badge: "Institutional",
-    initials: "KR",
-  },
-  {
-    name: "Wisma Insurance Agency",
-    category: "Insurance Partner",
-    role: "Insurance awareness, protection conversations, and risk support.",
-    description:
-      "Wisma Insurance Agency supports the wider ecosystem by bringing insurance awareness, protection thinking, and practical risk conversations.",
-    badge: "Insurance",
-    initials: "WI",
-  },
-];
 
 const partnerTypes = [
   {
@@ -65,7 +50,40 @@ const partnerTypes = [
   },
 ];
 
-export default function PartnersPage() {
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+function hasValue(value?: string | null) {
+  return Boolean(value && value.trim() !== "");
+}
+
+async function getPartners() {
+  const { data, error } = await supabase
+    .from("partners")
+    .select("*")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return [];
+  }
+
+  return (data || []) as Partner[];
+}
+
+export default async function PartnersPage() {
+  const partners = await getPartners();
+
+  const featuredPartners = partners.filter((partner) => partner.is_featured);
+  const otherPartners = partners.filter((partner) => !partner.is_featured);
+
   return (
     <main
       className="min-h-screen bg-black bg-cover bg-scroll bg-[position:left_top] text-white md:bg-fixed md:bg-[position:center_top]"
@@ -99,7 +117,7 @@ export default function PartnersPage() {
 
               <div className="mt-6 flex flex-wrap gap-2">
                 <Link
-                  href="/contact"
+                  href="/partner"
                   className="rounded-full bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
                 >
                   Become A Partner
@@ -123,8 +141,8 @@ export default function PartnersPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <HeroStat label="Current Partners" value={partners.length} />
+              <HeroStat label="Featured" value={featuredPartners.length} />
               <HeroStat label="Partner Types" value={partnerTypes.length} />
-              <HeroStat label="Event Support" value="Active" />
               <HeroStat label="Growth Focus" value="Youth" />
             </div>
           </div>
@@ -134,11 +152,15 @@ export default function PartnersPage() {
       <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
         <SectionHeader eyebrow="Featured Partners" title="Current Partner Network" />
 
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {partners.map((partner) => (
-            <PartnerCard key={partner.name} partner={partner} />
-          ))}
-        </div>
+        {partners.length === 0 ? (
+          <EmptyBox text="No active partners have been added yet." />
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {[...featuredPartners, ...otherPartners].map((partner) => (
+              <PartnerCard key={partner.id} partner={partner} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
@@ -151,7 +173,7 @@ export default function PartnersPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
         <div className="overflow-hidden rounded-[2rem] border border-orange-500/30 bg-zinc-950/90 shadow-2xl shadow-orange-950/20 backdrop-blur-sm lg:grid lg:grid-cols-[0.9fr_1.1fr]">
           <div className="flex min-h-[320px] items-center justify-center bg-[radial-gradient(circle,_rgba(249,115,22,0.25),_transparent_55%),#050505] p-8">
             <div className="text-center">
@@ -172,23 +194,14 @@ export default function PartnersPage() {
             </h2>
 
             <p className="mt-5 text-sm leading-7 text-zinc-400 sm:text-base">
-              FACKTS is not just a basketball page. It is a growing youth sports
-              and media ecosystem with player profiles, match data, event
-              coverage, highlight content, community activations, and a strong
-              grassroots audience. Partners get visibility, storytelling,
-              execution, and a direct connection to Nairobi basketball culture.
+              FACKTS is a growing youth sports and media ecosystem with player
+              profiles, match data, event coverage, highlight content, community
+              activations, and a strong grassroots audience.
             </p>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <MiniPoint title="Brand Visibility" text="Your brand appears inside real events, real stories, and real community activity." />
-              <MiniPoint title="Youth Access" text="Reach young players, creators, fans, and community builders in an authentic way." />
-              <MiniPoint title="Media Value" text="Events can produce posters, reels, highlights, interviews, photos, and recap content." />
-              <MiniPoint title="Structured Delivery" text="FACKTS is building systems, reports, stats, partner tracking, and event documentation." />
-            </div>
 
             <div className="mt-7">
               <Link
-                href="/contact"
+                href="/partner"
                 className="inline-flex rounded-full bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
               >
                 Start Partnership Talk
@@ -197,97 +210,90 @@ export default function PartnersPage() {
           </div>
         </div>
       </section>
-
-      <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Partner Pathway" title="How We Work With Partners" />
-
-        <div className="grid gap-4 md:grid-cols-4">
-          <StepCard
-            number="01"
-            title="Align"
-            text="We agree on the partner goal, whether it is visibility, community impact, content, sales, or event presence."
-          />
-
-          <StepCard
-            number="02"
-            title="Activate"
-            text="We connect the partner to a FACKTS page, event, campaign, player story, or coverage package."
-          />
-
-          <StepCard
-            number="03"
-            title="Capture"
-            text="We document the activation through posters, photos, videos, highlights, numbers, and audience proof."
-          />
-
-          <StepCard
-            number="04"
-            title="Report"
-            text="We summarize what happened, what value was created, and how the relationship can grow."
-          />
-        </div>
-      </section>
     </main>
   );
 }
 
 function PartnerCard({ partner }: { partner: Partner }) {
+  const initials = partner.initials || getInitials(partner.name);
+  const image = partner.cover_image_url || partner.logo_url || "";
+  const hasExtraDetails =
+    hasValue(partner.about) ||
+    hasValue(partner.how_we_work) ||
+    hasValue(partner.support_areas) ||
+    hasValue(partner.products_services);
+
   return (
-    <article className="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-zinc-950/90 shadow-xl shadow-black/20 backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-orange-400/60 hover:shadow-orange-950/20">
-      <div className="relative flex h-56 items-center justify-center overflow-hidden bg-[radial-gradient(circle,_rgba(249,115,22,0.2),_transparent_58%),#050505]">
+    <Link
+      href={`/partners/${partner.id}`}
+      className="group block overflow-hidden rounded-[1.75rem] border border-white/10 bg-zinc-950/90 shadow-xl shadow-black/20 backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-orange-400/60 hover:shadow-orange-950/20"
+    >
+      <div className="relative flex h-64 items-center justify-center overflow-hidden bg-[radial-gradient(circle,_rgba(249,115,22,0.2),_transparent_58%),#050505]">
+        {image ? (
+          <img
+            src={image}
+            alt={partner.name}
+            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-28 w-28 items-center justify-center rounded-[2rem] border border-white/10 bg-black/70 text-4xl font-black text-orange-400 shadow-2xl shadow-black/30">
+            {initials}
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-black/20" />
+
         <div className="absolute left-4 top-4">
           <span className="rounded-full border border-orange-500/30 bg-black/70 px-3 py-1 text-[11px] font-black uppercase text-orange-300 backdrop-blur">
-            {partner.badge || partner.category}
+            {partner.badge || partner.category || "Partner"}
           </span>
         </div>
 
-        <div className="flex h-28 w-28 items-center justify-center rounded-[2rem] border border-white/10 bg-black/70 text-4xl font-black text-orange-400 shadow-2xl shadow-black/30">
-          {partner.initials}
-        </div>
+        {partner.logo_url ? (
+          <div className="absolute bottom-4 left-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-black/75 backdrop-blur">
+            <img
+              src={partner.logo_url}
+              alt={`${partner.name} logo`}
+              className="h-full w-full object-contain p-2"
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="p-5">
         <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
-          {partner.category}
+          {partner.category || "Partner"}
         </p>
 
         <h2 className="mt-2 text-2xl font-black text-white group-hover:text-orange-200">
           {partner.name}
         </h2>
 
-        <p className="mt-2 text-sm font-bold leading-6 text-zinc-300">
-          {partner.role}
-        </p>
+        {partner.role ? (
+          <p className="mt-2 text-sm font-bold leading-6 text-zinc-300">
+            {partner.role}
+          </p>
+        ) : null}
 
-        <p className="mt-4 text-sm leading-7 text-zinc-500">
-          {partner.description}
-        </p>
+        {partner.description ? (
+          <p className="mt-4 text-sm leading-7 text-zinc-500">
+            {partner.description}
+          </p>
+        ) : null}
 
         <div className="mt-5 flex flex-wrap gap-2">
-          {partner.website ? (
-            <a
-              href={partner.website}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
-            >
-              Website
-            </a>
-          ) : null}
+          <span className="rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-black transition group-hover:bg-orange-400">
+            View Partner
+          </span>
 
-          {partner.instagram ? (
-            <a
-              href={partner.instagram}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:border-orange-400/60"
-            >
-              Instagram
-            </a>
+          {hasExtraDetails ? (
+            <span className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white">
+              Full Profile
+            </span>
           ) : null}
         </div>
       </div>
-    </article>
+    </Link>
   );
 }
 
@@ -299,35 +305,6 @@ function PartnerTypeCard({ title, text }: { title: string; text: string }) {
       </p>
 
       <h3 className="mt-2 text-xl font-black text-white">{title}</h3>
-
-      <p className="mt-3 text-sm leading-7 text-zinc-500">{text}</p>
-    </div>
-  );
-}
-
-function MiniPoint({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
-      <p className="text-sm font-black text-white">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-zinc-500">{text}</p>
-    </div>
-  );
-}
-
-function StepCard({
-  number,
-  title,
-  text,
-}: {
-  number: string;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/20 backdrop-blur-sm">
-      <p className="text-4xl font-black text-orange-500">{number}</p>
-
-      <h3 className="mt-4 text-xl font-black text-white">{title}</h3>
 
       <p className="mt-3 text-sm leading-7 text-zinc-500">{text}</p>
     </div>
@@ -360,6 +337,14 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
       </p>
 
       <h2 className="mt-1 text-3xl font-black">{title}</h2>
+    </div>
+  );
+}
+
+function EmptyBox({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/90 p-5 text-sm text-zinc-400 backdrop-blur-sm">
+      {text}
     </div>
   );
 }
