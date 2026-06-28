@@ -10,12 +10,14 @@ const mainNavItems = [
   { label: "Home", href: "/" },
   { label: "Players", href: "/players" },
   { label: "Games", href: "/games" },
+  { label: "Events", href: "/events" },
   { label: "Leaders", href: "/leaderboards" },
   { label: "1-on-1", href: "/one-on-one" },
   { label: "Media", href: "/media" },
 ];
 
 const communityNavItems = [
+  { label: "Partners", href: "/partners" },
   { label: "Guests", href: "/guest-hoopers" },
   { label: "Guest Leaders", href: "/guest-leaderboards" },
   { label: "Partner With Us", href: "/partner" },
