@@ -22,6 +22,7 @@ const communityNavItems = [
   { label: "Guest Leaders", href: "/guest-leaderboards" },
   { label: "Partner With Us", href: "/partner" },
   { label: "Player Application", href: "/player-application" },
+  { label: "Merch", href: "/merch" },
   { label: "Book Coverage", href: "/book-coverage" },
   { label: "Contact", href: "/contact" },
 ];
