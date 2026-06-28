@@ -27,7 +27,8 @@ const coreCards: AdminCard[] = [
   },
   {
     title: "Player Applications",
-    description: "Review incoming applications and approve hoopers correctly.",
+    description:
+      "Review incoming applications and approve hoopers into the correct category.",
     href: "/admin/player-applications",
     badge: "Applications",
     featured: true,
@@ -49,19 +50,12 @@ const coreCards: AdminCard[] = [
 
 const eventCards: AdminCard[] = [
   {
-    title: "Calendar / Events Admin",
+    title: "Calendar / Events",
     description:
-      "Add event cards, dates, venues, formats, posters, and featured events.",
+      "Add and edit event cards, dates, venues, formats, posters, and featured events.",
     href: "/admin/calendar",
     badge: "Events",
     featured: true,
-  },
-  {
-    title: "Events Landing Page",
-    description:
-      "Preview the public events hub with fixtures, face-offs, highlights, and hype.",
-    href: "/events",
-    badge: "Public",
   },
   {
     title: "1-on-1 Battles",
@@ -73,8 +67,7 @@ const eventCards: AdminCard[] = [
   },
   {
     title: "Match Previews",
-    description:
-      "Build matchup stories, preview notes, and pre-game narratives.",
+    description: "Build matchup stories, preview notes, and pre-game narratives.",
     href: "/admin/match-previews",
     badge: "Preview",
   },
@@ -105,15 +98,13 @@ const guestCards: AdminCard[] = [
   },
   {
     title: "Game Guests",
-    description:
-      "Add guest players linked to specific games and events.",
+    description: "Add guest players linked to specific games and events.",
     href: "/admin/game-guests",
     badge: "Guests",
   },
   {
     title: "Guest Game Stats",
-    description:
-      "Record stats for guest hoopers who participate in FACKTS games.",
+    description: "Record stats for guest hoopers who participate in FACKTS games.",
     href: "/admin/guest-game-stats",
     badge: "Stats",
   },
@@ -129,15 +120,13 @@ const guestCards: AdminCard[] = [
 const rosterCards: AdminCard[] = [
   {
     title: "Rosters",
-    description:
-      "Create and manage game rosters, player selections, and lineups.",
+    description: "Create and manage game rosters, player selections, and lineups.",
     href: "/admin/rosters",
     badge: "Roster",
   },
   {
     title: "Roster Announcements",
-    description:
-      "Prepare roster announcements and public lineup messaging.",
+    description: "Prepare roster announcements and public lineup messaging.",
     href: "/admin/roster-announcements",
     badge: "Announcements",
   },
@@ -145,33 +134,12 @@ const rosterCards: AdminCard[] = [
 
 const businessCards: AdminCard[] = [
   {
-    title: "Partners Page",
+    title: "Partners",
     description:
-      "Preview the public partners page showing Madebykelzz, KIPROD, Wisma, and others.",
-    href: "/partners",
+      "Add and edit FACKTS partners, sponsors, collaborators, institutions, and business partners.",
+    href: "/admin/partners",
     badge: "Partners",
     featured: true,
-  },
-  {
-    title: "Partner With Us Page",
-    description:
-      "Preview the public partnership inquiry page for brands and collaborators.",
-    href: "/partner",
-    badge: "Business",
-  },
-  {
-    title: "Book Coverage Page",
-    description:
-      "Preview the public booking page for coverage, media, and event support.",
-    href: "/book-coverage",
-    badge: "Sales",
-  },
-  {
-    title: "Contact Page",
-    description:
-      "Preview the public contact page and communication entry point.",
-    href: "/contact",
-    badge: "Contact",
   },
 ];
 
@@ -209,14 +177,14 @@ export default function AdminPage() {
                 href="/events"
                 className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
               >
-                Events
+                Public Events
               </Link>
 
               <Link
                 href="/partners"
                 className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
               >
-                Partners
+                Public Partners
               </Link>
 
               <Link
@@ -232,7 +200,7 @@ export default function AdminPage() {
             <AdminStat label="Core Tools" value={coreCards.length} />
             <AdminStat label="Events & Media" value={eventCards.length} />
             <AdminStat label="Guests" value={guestCards.length} />
-            <AdminStat label="Business Pages" value={businessCards.length} />
+            <AdminStat label="Business Tools" value={businessCards.length} />
           </div>
         </div>
       </section>
@@ -258,7 +226,7 @@ export default function AdminPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Business" title="Partners, Sales & Public Pages" />
+        <SectionHeader eyebrow="Business" title="Partners & Business Tools" />
         <AdminGrid cards={businessCards} />
       </section>
     </main>
