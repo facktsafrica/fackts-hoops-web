@@ -1,38 +1,26 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "./fackts-motion.css";
 import PublicHeader from "./components/PublicHeader";
-import MobileNav from "./components/MobileNav";
+import PublicMobileNav from "./components/PublicMobileNav";
 import FacktsTicker from "./components/FacktsTicker";
-import PublicRosterCta from "./components/PublicRosterCta";
-import PublicGameMatchPreview from "./components/PublicGameMatchPreview";
-import PageSpecificMobileTuning from "./components/PageSpecificMobileTuning";
-import HomeMediaRedirectFix from "./components/HomeMediaRedirectFix";
-import AdminGuestStatsLauncher from "./components/AdminGuestStatsLauncher";
 
 export const metadata: Metadata = {
   title: "FACKTS Hoops",
-  description:
-    "FACKTS Hoops is a basketball agency and digital platform helping Kenyan basketball talent become visible, documented, marketable, and commercially valued.",
+  description: "Basketball. Culture. Data.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
       <body>
-        <PageSpecificMobileTuning />
-        <HomeMediaRedirectFix />
         <PublicHeader />
-        <MobileNav />
         <FacktsTicker />
-        <PublicRosterCta />
-        <PublicGameMatchPreview />
-        <AdminGuestStatsLauncher />
         {children}
+        <PublicMobileNav />
       </body>
     </html>
   );

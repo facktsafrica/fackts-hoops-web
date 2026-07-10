@@ -18,10 +18,12 @@ type GameRow = {
   venue?: string | null;
   location?: string | null;
   status?: string | null;
+  team_score?: number | string | null;
   fackts_score?: number | string | null;
   opponent_score?: number | string | null;
   home_score?: number | string | null;
   away_score?: number | string | null;
+  is_upcoming?: boolean | null;
   poster_url?: string | null;
   game_poster_url?: string | null;
   image_url?: string | null;
@@ -84,7 +86,7 @@ function getVideoUrl(game: GameRow) {
 }
 
 function getFacktsScore(game: GameRow) {
-  return game.fackts_score ?? game.home_score ?? "";
+  return game.team_score ?? game.fackts_score ?? game.home_score ?? "";
 }
 
 function getOpponentScore(game: GameRow) {
@@ -131,7 +133,7 @@ function numberOrNull(value: string) {
   return parsed;
 }
 
-function normalizeStatus(value?: string | null): GameStatus {
+function normalizeStatus(value?: string | null, game?: GameRow): GameStatus {
   const status = (value || "").toLowerCase().trim();
 
   if (status === "completed" || status === "played" || status === "final") {
@@ -140,6 +142,22 @@ function normalizeStatus(value?: string | null): GameStatus {
 
   if (status === "postponed") return "postponed";
   if (status === "cancelled") return "cancelled";
+  if (status === "upcoming") return "upcoming";
+
+  if (game?.is_upcoming === true) return "upcoming";
+  if (game?.is_upcoming === false) return "completed";
+
+  const facktsScore = getFacktsScore(game || ({} as GameRow));
+  const opponentScore = getOpponentScore(game || ({} as GameRow));
+
+  if (
+    facktsScore !== "" &&
+    facktsScore !== null &&
+    opponentScore !== "" &&
+    opponentScore !== null
+  ) {
+    return "completed";
+  }
 
   return "upcoming";
 }
@@ -227,7 +245,7 @@ export default function AdminGamesPage() {
       game_date: toDateTimeLocal(getGameDate(game)),
       venue: game.venue || "",
       location: game.location || "",
-      status: normalizeStatus(game.status),
+      status: normalizeStatus(game.status, game),
       fackts_score: String(getFacktsScore(game) ?? ""),
       opponent_score: String(getOpponentScore(game) ?? ""),
       poster_url: getPosterUrl(game),
@@ -261,7 +279,9 @@ export default function AdminGamesPage() {
       throw new Error(error.message);
     }
 
-    const { data } = supabase.storage.from("game-posters").getPublicUrl(fileName);
+    const { data } = supabase.storage
+      .from("game-posters")
+      .getPublicUrl(fileName);
 
     return data.publicUrl;
   }
@@ -276,18 +296,42 @@ export default function AdminGamesPage() {
     try {
       const posterUrl = await uploadPoster();
 
+      const facktsScoreValue = numberOrNull(form.fackts_score);
+      const opponentScoreValue = numberOrNull(form.opponent_score);
+      const isUpcoming = form.status === "upcoming";
+
       const payload = {
+        title: form.title.trim() || null,
         game_title: form.title.trim() || null,
+
         opponent: form.opponent.trim() || null,
+        opponent_name: form.opponent.trim() || null,
+        team_name: form.opponent.trim() || null,
+
         game_date: form.game_date ? new Date(form.game_date).toISOString() : null,
+        date: form.game_date ? new Date(form.game_date).toISOString() : null,
+
         venue: form.venue.trim() || null,
         location: form.location.trim() || null,
+
         status: form.status,
-        fackts_score: numberOrNull(form.fackts_score),
-        opponent_score: numberOrNull(form.opponent_score),
+        is_upcoming: isUpcoming,
+
+        team_score: facktsScoreValue,
+        fackts_score: facktsScoreValue,
+        home_score: facktsScoreValue,
+
+        opponent_score: opponentScoreValue,
+        away_score: opponentScoreValue,
+
         poster_url: posterUrl || null,
+        game_poster_url: posterUrl || null,
+        image_url: posterUrl || null,
+
         video_url: form.video_url.trim() || null,
+        game_video_url: form.video_url.trim() || null,
         highlight_url: form.highlight_url.trim() || null,
+
         notes: form.notes.trim() || null,
         updated_at: new Date().toISOString(),
       };
@@ -658,7 +702,7 @@ export default function AdminGamesPage() {
                         <div className="min-w-0">
                           <div className="mb-2 flex flex-wrap gap-2">
                             <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[11px] font-black uppercase text-orange-300">
-                              {normalizeStatus(game.status)}
+                              {normalizeStatus(game.status, game)}
                             </span>
 
                             {videoUrl ? (
