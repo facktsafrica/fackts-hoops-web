@@ -6,34 +6,74 @@ import { useState } from "react";
 
 const LOGO_SRC = "/fackts-hoops-logo.png";
 
-const mainNavItems = [
+type NavItem = {
+  label: string;
+  href: string;
+  activePaths?: string[];
+  highlight?: boolean;
+};
+
+const mainItems: NavItem[] = [
   { label: "Home", href: "/" },
-  { label: "Players", href: "/players" },
-  { label: "Games", href: "/games" },
+  { label: "Official Players", href: "/players" },
   { label: "Events", href: "/events" },
-  { label: "Leaders", href: "/leaderboards" },
-  { label: "1-on-1", href: "/one-on-one" },
+  { label: "Merch", href: "/merch" },
   { label: "Media", href: "/media" },
 ];
 
-const communityNavItems = [
-  { label: "Partners", href: "/partners" },
-  { label: "Guests", href: "/guest-hoopers" },
+const courtTakeoverItems: NavItem[] = [
+  {
+    label: "Court Takeover Home",
+    href: "/court-takeover",
+    activePaths: ["/court-takeover"],
+    highlight: true,
+  },
+  { label: "Games", href: "/games" },
+  { label: "1-on-1 Battles", href: "/one-on-one" },
+  { label: "Leaderboards", href: "/leaderboards" },
+  { label: "Guest Hoopers", href: "/guest-hoopers" },
   { label: "Guest Leaders", href: "/guest-leaderboards" },
+  { label: "Rosters", href: "/rosters" },
+];
+
+const workWithUsItems: NavItem[] = [
+  { label: "Book Coverage", href: "/book-coverage", highlight: true },
+  { label: "Player Application", href: "/player-application", highlight: true },
+  { label: "Partners", href: "/partners" },
   { label: "Partner With Us", href: "/partner" },
-  { label: "Player Application", href: "/player-application" },
-  { label: "Merch", href: "/merch" },
-  { label: "Book Coverage", href: "/book-coverage" },
-  { label: "Contact", href: "/contact" },
+  { label: "Contact Us", href: "/contact" },
 ];
 
 export default function PublicHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  function isActive(href: string) {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
+  function isActive(item: NavItem) {
+    if (item.href === "/") return pathname === "/";
+
+    const pathsToCheck = item.activePaths ?? [item.href];
+
+    return pathsToCheck.some(
+      (path) => pathname === path || pathname.startsWith(`${path}/`)
+    );
+  }
+
+  function linkClass(item: NavItem) {
+    const active = isActive(item);
+
+    if (item.highlight && active) {
+      return "rounded-2xl bg-orange-500 px-4 py-3 text-center text-sm font-black text-black shadow-lg shadow-orange-950/30";
+    }
+
+    if (item.highlight) {
+      return "rounded-2xl bg-orange-500 px-4 py-3 text-center text-sm font-black text-black transition hover:bg-orange-400";
+    }
+
+    if (active) {
+      return "rounded-2xl bg-orange-500/15 px-4 py-3 text-center text-sm font-black text-orange-300 ring-1 ring-orange-500/40";
+    }
+
+    return "rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-center text-sm font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300";
   }
 
   return (
@@ -61,17 +101,17 @@ export default function PublicHeader() {
 
           <div className="flex shrink-0 items-center gap-2">
             <Link
-              href="/book-coverage"
-              className="hidden rounded-full bg-orange-500 px-5 py-2 text-sm font-black text-black transition hover:bg-orange-400 sm:inline-flex"
+              href="/court-takeover"
+              className="hidden rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-black md:inline-flex"
             >
-              Book Coverage
+              Court Takeover
             </Link>
 
             <Link
               href="/book-coverage"
-              className="rounded-full bg-orange-500 px-4 py-2 text-xs font-black text-black transition hover:bg-orange-400 sm:hidden"
+              className="hidden rounded-full bg-orange-500 px-5 py-2 text-sm font-black text-black transition hover:bg-orange-400 sm:inline-flex"
             >
-              Book
+              Book Coverage
             </Link>
 
             <button
@@ -131,70 +171,62 @@ export default function PublicHeader() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
-              <div>
+              <section>
                 <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
                   Main
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {mainNavItems.map((item) => (
+                <div className="mt-3 grid gap-2">
+                  {mainItems.map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}
                       onClick={() => setOpen(false)}
-                      className={
-                        isActive(item.href)
-                          ? "rounded-2xl bg-orange-500 px-4 py-3 text-center text-sm font-black text-black"
-                          : "rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-center text-sm font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300"
-                      }
+                      className={linkClass(item)}
                     >
                       {item.label}
                     </Link>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              <div className="mt-6">
+              <section className="mt-6">
                 <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                  Community & Business
+                  Court Takeover Portal
                 </div>
 
                 <div className="mt-3 grid gap-2">
-                  {communityNavItems.map((item) => (
+                  {courtTakeoverItems.map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}
                       onClick={() => setOpen(false)}
-                      className={
-                        item.href === "/book-coverage"
-                          ? "rounded-2xl bg-orange-500 px-4 py-3 text-center text-sm font-black text-black transition hover:bg-orange-400"
-                          : isActive(item.href)
-                          ? "rounded-2xl bg-orange-500/15 px-4 py-3 text-center text-sm font-black text-orange-300 ring-1 ring-orange-500/40"
-                          : "rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-center text-sm font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300"
-                      }
+                      className={linkClass(item)}
                     >
                       {item.label}
                     </Link>
                   ))}
                 </div>
-              </div>
-            </div>
+              </section>
 
-            <div className="border-t border-slate-800 p-5">
-              <div className="rounded-3xl border border-orange-500/30 bg-orange-500/10 p-4">
+              <section className="mt-6">
                 <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                  FACKTS Hoops
+                  Work With Us
                 </div>
 
-                <div className="mt-2 text-xl font-black text-white">
-                  Visibility. Data. Media.
+                <div className="mt-3 grid gap-2">
+                  {workWithUsItems.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setOpen(false)}
+                      className={linkClass(item)}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
                 </div>
-
-                <p className="mt-2 text-sm leading-6 text-slate-400">
-                  Player profiles, game records, coverage, partnerships, and
-                  basketball culture in one platform.
-                </p>
-              </div>
+              </section>
             </div>
           </aside>
         </div>
