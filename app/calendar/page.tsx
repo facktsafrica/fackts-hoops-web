@@ -351,18 +351,22 @@ export default function CalendarPage() {
     if (availabilityResult.error) messages.push(availabilityResult.error.message);
     if (matchupsResult.error) messages.push(matchupsResult.error.message);
 
-    const playerPeople: Person[] = (playersResult.data ?? [])
-      .filter((player: any) => !isProspectRole(player))
-      .map((player: any) => ({
-        id: player.id,
-        source: "players",
-        full_name: displayPersonName(player),
-        nickname: player.nickname,
-        role: isGuestRole(player) ? "Guest Hooper" : player.role || "Player",
-        photo_url: player.photo_url,
-        photo_position: player.photo_position,
-        label: isGuestRole(player) ? "Converted Guest" : "FACKTS Player",
-      }));
+   const playerPeople: Person[] = (playersResult.data ?? [])
+  .filter((player: any) => !isProspectRole(player))
+  .map((player: any) => {
+    const guestRole = isGuestRole(player);
+
+    return {
+      id: player.id,
+      source: "players",
+      full_name: displayPersonName(player),
+      nickname: player.nickname,
+      role: guestRole ? "Guest Hooper" : player.role || "Player",
+      photo_url: player.photo_url,
+      photo_position: player.photo_position,
+      label: guestRole ? "Guest Hooper" : "FACKTS Player",
+    };
+  });
 
     const guestPeople: Person[] = (guestsResult.data ?? []).map((guest: any) => ({
       id: guest.id,
