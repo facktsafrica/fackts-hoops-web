@@ -27,6 +27,8 @@ type GuestHooper = {
 type OneOnOneRow = {
   id: string;
 
+  calendar_matchup_id?: string | null;
+
   match_number?: string | null;
   match_title?: string | null;
   match_type?: string | null;
@@ -36,11 +38,17 @@ type OneOnOneRow = {
   fackts_player_id?: string | null;
   guest_hooper_id?: string | null;
   participant_name?: string | null;
+  participant_cutout_url?: string | null;
+  participant_photo_url?: string | null;
+  player_one_cutout_url?: string | null;
 
   opponent_type?: string | null;
   opponent_player_id?: string | null;
   opponent_guest_hooper_id?: string | null;
   opponent_name?: string | null;
+  opponent_cutout_url?: string | null;
+  opponent_photo_url?: string | null;
+  player_two_cutout_url?: string | null;
 
   match_date?: string | null;
   venue?: string | null;
@@ -118,8 +126,8 @@ function percent(value: number) {
 }
 
 function getPersonName(person?: Player | GuestHooper | null) {
-  if (!person) return "Unknown Hooper";
-  return person.full_name || person.name || person.nickname || "Unknown Hooper";
+  if (!person) return "";
+  return person.full_name || person.name || person.nickname || "";
 }
 
 function getPersonPhoto(person?: Player | GuestHooper | null) {
@@ -179,17 +187,25 @@ function getPlayer1Identity(
   playerMap: Map<string, Player>,
   guestMap: Map<string, GuestHooper>
 ): Identity {
+  const rowImage =
+    row.player_one_cutout_url ||
+    row.participant_cutout_url ||
+    row.participant_photo_url ||
+    "";
+
   if (row.participant_type === "fackts_player" || row.fackts_player_id) {
     const player = row.fackts_player_id
       ? playerMap.get(String(row.fackts_player_id))
       : null;
 
+    const fallbackName = row.participant_name || "Player 1";
+
     return {
       id: `player-${row.fackts_player_id || row.id}`,
-      name: getPersonName(player),
+      name: getPersonName(player) || fallbackName,
       type: "fackts_player",
-      position: getPersonPosition(player),
-      photo_url: getPersonPhoto(player),
+      position: getPersonPosition(player) || "FACKTS Player",
+      photo_url: rowImage || getPersonPhoto(player),
     };
   }
 
@@ -198,12 +214,14 @@ function getPlayer1Identity(
       ? guestMap.get(String(row.guest_hooper_id))
       : null;
 
+    const fallbackName = row.participant_name || "Guest Hooper";
+
     return {
       id: `guest-${row.guest_hooper_id || row.id}`,
-      name: getPersonName(guest),
+      name: getPersonName(guest) || fallbackName,
       type: "guest_hooper",
-      position: getPersonPosition(guest),
-      photo_url: getPersonPhoto(guest),
+      position: getPersonPosition(guest) || "Guest Hooper",
+      photo_url: rowImage || getPersonPhoto(guest),
     };
   }
 
@@ -212,7 +230,7 @@ function getPlayer1Identity(
     name: row.participant_name || "Player 1",
     type: "external",
     position: "External",
-    photo_url: "",
+    photo_url: rowImage,
   };
 }
 
@@ -223,17 +241,25 @@ function getPlayer2Identity(
   players: Player[],
   guests: GuestHooper[]
 ): Identity {
+  const rowImage =
+    row.player_two_cutout_url ||
+    row.opponent_cutout_url ||
+    row.opponent_photo_url ||
+    "";
+
   if (row.opponent_type === "fackts_player" || row.opponent_player_id) {
     const player = row.opponent_player_id
       ? playerMap.get(String(row.opponent_player_id))
       : null;
 
+    const fallbackName = row.opponent_name || "Player 2";
+
     return {
       id: `player-${row.opponent_player_id || row.id}`,
-      name: getPersonName(player),
+      name: getPersonName(player) || fallbackName,
       type: "fackts_player",
-      position: getPersonPosition(player),
-      photo_url: getPersonPhoto(player),
+      position: getPersonPosition(player) || "FACKTS Player",
+      photo_url: rowImage || getPersonPhoto(player),
     };
   }
 
@@ -242,12 +268,14 @@ function getPlayer2Identity(
       ? guestMap.get(String(row.opponent_guest_hooper_id))
       : null;
 
+    const fallbackName = row.opponent_name || "Guest Hooper";
+
     return {
       id: `guest-${row.opponent_guest_hooper_id || row.id}`,
-      name: getPersonName(guest),
+      name: getPersonName(guest) || fallbackName,
       type: "guest_hooper",
-      position: getPersonPosition(guest),
-      photo_url: getPersonPhoto(guest),
+      position: getPersonPosition(guest) || "Guest Hooper",
+      photo_url: rowImage || getPersonPhoto(guest),
     };
   }
 
@@ -256,10 +284,10 @@ function getPlayer2Identity(
   if (matchedPlayer) {
     return {
       id: `player-${matchedPlayer.id}`,
-      name: getPersonName(matchedPlayer),
+      name: getPersonName(matchedPlayer) || row.opponent_name || "Player 2",
       type: "fackts_player",
-      position: getPersonPosition(matchedPlayer),
-      photo_url: getPersonPhoto(matchedPlayer),
+      position: getPersonPosition(matchedPlayer) || "FACKTS Player",
+      photo_url: rowImage || getPersonPhoto(matchedPlayer),
     };
   }
 
@@ -268,10 +296,10 @@ function getPlayer2Identity(
   if (matchedGuest) {
     return {
       id: `guest-${matchedGuest.id}`,
-      name: getPersonName(matchedGuest),
+      name: getPersonName(matchedGuest) || row.opponent_name || "Player 2",
       type: "guest_hooper",
-      position: getPersonPosition(matchedGuest),
-      photo_url: getPersonPhoto(matchedGuest),
+      position: getPersonPosition(matchedGuest) || "Guest Hooper",
+      photo_url: rowImage || getPersonPhoto(matchedGuest),
     };
   }
 
@@ -280,7 +308,7 @@ function getPlayer2Identity(
     name: row.opponent_name || "Player 2",
     type: "external",
     position: "External",
-    photo_url: "",
+    photo_url: rowImage,
   };
 }
 
@@ -300,11 +328,20 @@ function getMatchStatus(row: OneOnOneRow) {
   const status = (row.status || "").toLowerCase().trim();
 
   if (status === "cancelled") return "Cancelled";
-  if (hasScores(row)) return "Completed";
+
+  if (
+    status === "upcoming" ||
+    status === "pending" ||
+    status === "scheduled"
+  ) {
+    return "Upcoming";
+  }
 
   if (status === "completed" || status === "played" || status === "final") {
     return "Completed";
   }
+
+  if (hasScores(row)) return "Completed";
 
   return "Upcoming";
 }
@@ -346,20 +383,6 @@ function getResultLabel(row: OneOnOneRow) {
   return "Completed";
 }
 
-function getStatusClass(row: OneOnOneRow) {
-  const status = getMatchStatus(row);
-
-  if (status === "Upcoming") {
-    return "border-orange-500/30 bg-orange-500/10 text-orange-200";
-  }
-
-  if (status === "Cancelled") {
-    return "border-red-500/30 bg-red-500/10 text-red-200";
-  }
-
-  return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-}
-
 function getMargin(row: OneOnOneRow) {
   const score1 = getPlayer1Score(row);
   const score2 = getPlayer2Score(row);
@@ -397,10 +420,12 @@ function getPlayer2Share(row: OneOnOneRow) {
 }
 
 function getIntensity(row: OneOnOneRow) {
+  const status = getMatchStatus(row);
   const margin = getMargin(row);
   const totalPoints = getTotalPoints(row);
 
-  if (margin === null || totalPoints === null) return "Awaiting Tip-Off";
+  if (status === "Upcoming") return "Awaiting Tip-Off";
+  if (margin === null || totalPoints === null) return "Awaiting Data";
   if (margin <= 2) return "Clutch Battle";
   if (margin <= 5) return "Competitive";
   if (margin >= 10) return "Statement Win";
@@ -409,27 +434,52 @@ function getIntensity(row: OneOnOneRow) {
 }
 
 function getRowLocation(row: OneOnOneRow) {
-  return (
-    [row.venue, row.location, row.court].filter(Boolean).join(" • ") ||
-    "Court TBA"
-  );
+  return [row.venue, row.location, row.court].filter(Boolean).join(" • ") || "Court TBA";
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "Date TBA";
+function getDateForDisplay(row: OneOnOneRow) {
+  if (row.match_date) return row.match_date;
+
+  if (getMatchStatus(row) === "Completed") {
+    return row.created_at || null;
+  }
+
+  return null;
+}
+
+function formatFixtureDate(value?: string | null) {
+  if (!value) return "DATE TBA";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "Date TBA";
+  if (Number.isNaN(date.getTime())) return "DATE TBA";
 
-  return date.toLocaleString("en-KE", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return date
+    .toLocaleDateString("en-KE", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+    .replace(",", "")
+    .toUpperCase();
+}
+
+function formatFixtureTime(value?: string | null) {
+  if (!value) return "TIME TBA";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "TIME TBA";
+
+  return date
+    .toLocaleTimeString("en-KE", {
+      hour: "numeric",
+      minute: "2-digit",
+    })
+    .replace(":", ".")
+    .replace(" ", "")
+    .toUpperCase();
 }
 
 function parseDateForSort(row: OneOnOneRow) {
@@ -475,6 +525,10 @@ async function getData() {
       parseMatchNumber(a.match_number) - parseMatchNumber(b.match_number);
 
     if (numberDiff !== 0) return numberDiff;
+
+    if (statusA === "Upcoming" && statusB === "Upcoming") {
+      return parseDateForSort(a) - parseDateForSort(b);
+    }
 
     return parseDateForSort(b) - parseDateForSort(a);
   });
@@ -622,8 +676,8 @@ export default async function OneOnOnePage() {
 
   const upcomingRows = rows.filter((row) => getMatchStatus(row) === "Upcoming");
   const completedRows = rows.filter((row) => getMatchStatus(row) === "Completed");
+  const cancelledRows = rows.filter((row) => getMatchStatus(row) === "Cancelled");
 
-  const mainEvent = upcomingRows[0] || completedRows[0] || rows[0] || null;
   const highestScoringMatch = getHighestScoringMatch(rows);
   const closestMatch = getClosestMatch(rows);
   const biggestWin = getBiggestWin(rows);
@@ -631,14 +685,13 @@ export default async function OneOnOnePage() {
 
   return (
     <main
-      className="min-h-screen bg-black bg-contain bg-scroll bg-top bg-no-repeat px-0 text-white md:bg-fixed md:bg-contain md:bg-top"
+      className="min-h-screen bg-black bg-contain bg-scroll bg-top bg-no-repeat px-0 text-white md:bg-fixed"
       style={{
         backgroundImage:
-          "linear-gradient(rgba(2, 6, 23, 0.70), rgba(2, 6, 23, 0.93)), url('/images/one-on-one-bg.png')",
+          "linear-gradient(rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0.96)), url('/images/one-on-one-bg.png')",
       }}
     >
-      <section className="relative overflow-hidden border-b border-white/10 bg-black/35 backdrop-blur-sm">
-        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:42px_42px]" />
+      <section className="relative overflow-hidden border-b border-white/10 bg-black/55 backdrop-blur-sm">
         <div className="absolute -left-24 top-12 h-72 w-72 rounded-full bg-orange-500/20 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
 
@@ -654,25 +707,24 @@ export default async function OneOnOnePage() {
               </h1>
 
               <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 sm:text-base">
-                Court battles built for proof. Every matchup tracks pride,
-                ranking, scoring pressure, win margin, point share, video proof,
-                and the story behind who really owns the court.
+                Compact fight cards for every FACKTS 1v1 battle. Approved calendar
+                matchups appear here as pending upcoming battles.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Link
-                href="/"
-                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
+                href="/calendar"
+                className="rounded-full border border-orange-400/40 bg-orange-500 px-4 py-2 text-sm font-black text-black transition hover:bg-orange-400"
               >
-                Home
+                Calendar
               </Link>
 
               <Link
-                href="/games"
+                href="/court-takeover"
                 className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
               >
-                Games
+                Court Takeover
               </Link>
 
               <Link
@@ -693,21 +745,23 @@ export default async function OneOnOnePage() {
         </div>
       </section>
 
-      {mainEvent ? (
-        <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
-          <SectionHeader eyebrow="Main Event" title="Featured Matchup" />
+      <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow="Fight Card" title="Upcoming Battles" />
 
-          <MainEventCard
-            row={mainEvent}
+        {upcomingRows.length > 0 ? (
+          <FixtureList
+            rows={upcomingRows}
             players={players}
             guests={guests}
             playerMap={playerMap}
             guestMap={guestMap}
           />
-        </section>
-      ) : null}
+        ) : (
+          <EmptyBox text="No upcoming 1-on-1 battles added yet." />
+        )}
+      </section>
 
-      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
         <SectionHeader eyebrow="Data Lab" title="Battle Intelligence" />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -745,7 +799,7 @@ export default async function OneOnOnePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
         <LeaderboardCard
           eyebrow="1-on-1 Wins"
           title="Leaderboard"
@@ -754,27 +808,11 @@ export default async function OneOnOnePage() {
         />
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Fight Card" title="Upcoming Battles" />
-
-        {upcomingRows.length > 0 ? (
-          <CardGrid
-            rows={upcomingRows}
-            players={players}
-            guests={guests}
-            playerMap={playerMap}
-            guestMap={guestMap}
-          />
-        ) : (
-          <EmptyBox text="No upcoming 1-on-1 battles added yet." />
-        )}
-      </section>
-
-      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
         <SectionHeader eyebrow="Results" title="Previous Battles" />
 
         {completedRows.length > 0 ? (
-          <CardGrid
+          <FixtureList
             rows={completedRows}
             players={players}
             guests={guests}
@@ -786,139 +824,24 @@ export default async function OneOnOnePage() {
         )}
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Full Log" title="All 1-on-1 Battles" />
+      {cancelledRows.length > 0 ? (
+        <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:px-8">
+          <SectionHeader eyebrow="Cancelled" title="Cancelled Battles" />
 
-        {rows.length > 0 ? (
-          <CardGrid
-            rows={rows}
+          <FixtureList
+            rows={cancelledRows}
             players={players}
             guests={guests}
             playerMap={playerMap}
             guestMap={guestMap}
           />
-        ) : (
-          <EmptyBox text="No 1-on-1 battles found yet." />
-        )}
-      </section>
+        </section>
+      ) : null}
     </main>
   );
 }
 
-function MainEventCard({
-  row,
-  players,
-  guests,
-  playerMap,
-  guestMap,
-}: {
-  row: OneOnOneRow;
-  players: Player[];
-  guests: GuestHooper[];
-  playerMap: Map<string, Player>;
-  guestMap: Map<string, GuestHooper>;
-}) {
-  const player1 = getPlayer1Identity(row, playerMap, guestMap);
-  const player2 = getPlayer2Identity(row, playerMap, guestMap, players, guests);
-  const player1Score = getPlayer1Score(row);
-  const player2Score = getPlayer2Score(row);
-  const winnerName = getWinnerName(row, player1.name, player2.name);
-
-  return (
-    <Link
-      href={`/one-on-one/${row.id}`}
-      className="group block overflow-hidden rounded-[2rem] border border-orange-500/30 bg-zinc-950/90 shadow-2xl shadow-orange-950/20 backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-orange-400/70 lg:grid lg:grid-cols-[0.95fr_1.05fr]"
-    >
-      <div className="relative min-h-[360px] overflow-hidden bg-black">
-        {row.poster_url ? (
-          <img
-            src={row.poster_url}
-            alt={`${player1.name} vs ${player2.name}`}
-            className="h-full min-h-[360px] w-full object-cover transition duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full min-h-[360px] w-full items-center justify-center bg-[radial-gradient(circle,_rgba(249,115,22,0.28),_transparent_55%),#050505]">
-            <div className="text-center">
-              <p className="text-7xl font-black text-orange-500">1V1</p>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500">
-                Battle Arena
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-          <StatusBadge row={row} />
-          {row.video_url ? <MediaBadge label="Video" /> : null}
-          {row.highlight_url ? <MediaBadge label="Highlights" /> : null}
-        </div>
-      </div>
-
-      <div className="p-5 sm:p-7">
-        <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-          {row.match_number ? `Battle #${row.match_number}` : "1-on-1 Battle"}
-        </p>
-
-        <h2 className="mt-3 text-3xl font-black uppercase tracking-tight sm:text-5xl">
-          {row.match_title || `${player1.name} vs ${player2.name}`}
-        </h2>
-
-        <div className="mt-6 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <FighterBlock identity={player1} score={player1Score} align="left" />
-          <div className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-black uppercase text-zinc-500">
-            VS
-          </div>
-          <FighterBlock identity={player2} score={player2Score} align="right" />
-        </div>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-4">
-          <MiniInfo label="Date" value={formatDate(row.match_date || row.created_at)} />
-          <MiniInfo label="Court" value={row.court || "Court TBA"} />
-          <MiniInfo label="Type" value={row.match_type || "1v1"} />
-          <MiniInfo label="Intensity" value={getIntensity(row)} />
-        </div>
-
-        {getMatchStatus(row) === "Completed" ? (
-          <div className="mt-5 rounded-3xl border border-orange-500/30 bg-orange-500/10 p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
-              Winner
-            </p>
-
-            <p className="mt-1 text-2xl font-black text-white">{winnerName}</p>
-
-            <p className="mt-1 text-sm font-bold text-zinc-400">
-              Margin: {getMargin(row) ?? "-"} • Total Points:{" "}
-              {getTotalPoints(row) ?? "-"} • P1 Share:{" "}
-              {getPlayer1Share(row) === null ? "-" : percent(getPlayer1Share(row)!)}{" "}
-              • P2 Share:{" "}
-              {getPlayer2Share(row) === null ? "-" : percent(getPlayer2Share(row)!)}
-            </p>
-          </div>
-        ) : null}
-
-        {row.notes ? (
-          <p className="mt-5 line-clamp-3 rounded-3xl border border-white/10 bg-black/50 p-4 text-sm leading-7 text-zinc-400">
-            {row.notes}
-          </p>
-        ) : null}
-
-        <div className="mt-6 flex flex-wrap gap-2">
-          <span className="rounded-full bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-black transition group-hover:bg-orange-400">
-            Open Full Matchup
-          </span>
-
-          {row.video_url ? (
-            <span className="rounded-full border border-blue-500/40 bg-blue-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-blue-200">
-              Full Video
-            </span>
-          ) : null}
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function CardGrid({
+function FixtureList({
   rows,
   players,
   guests,
@@ -932,9 +855,9 @@ function CardGrid({
   guestMap: Map<string, GuestHooper>;
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="space-y-3">
       {rows.map((row) => (
-        <BattleCard
+        <FixtureBattleCard
           key={row.id}
           row={row}
           players={players}
@@ -947,7 +870,7 @@ function CardGrid({
   );
 }
 
-function BattleCard({
+function FixtureBattleCard({
   row,
   players,
   guests,
@@ -963,180 +886,160 @@ function BattleCard({
   const player1 = getPlayer1Identity(row, playerMap, guestMap);
   const player2 = getPlayer2Identity(row, playerMap, guestMap, players, guests);
 
+  const status = getMatchStatus(row);
   const player1Score = getPlayer1Score(row);
   const player2Score = getPlayer2Score(row);
-  const status = getMatchStatus(row);
-  const resultLabel = getResultLabel(row);
-  const winnerName = getWinnerName(row, player1.name, player2.name);
   const winnerSide = getWinnerSide(row);
+  const winnerName = getWinnerName(row, player1.name, player2.name);
+  const displayDate = getDateForDisplay(row);
 
   return (
     <Link
       href={`/one-on-one/${row.id}`}
-      className="group block overflow-hidden rounded-[1.75rem] border border-white/10 bg-zinc-950/90 shadow-xl shadow-black/20 backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-orange-400/60 hover:shadow-orange-950/20"
+      className="group mx-auto block overflow-hidden rounded-[1.35rem] border border-white/10 bg-white shadow-[0_10px_24px_rgba(0,0,0,0.32)] transition duration-300 hover:-translate-y-0.5 hover:border-blue-400/60 hover:shadow-[0_16px_30px_rgba(37,99,235,0.18)]"
     >
-      <div className="relative h-56 overflow-hidden bg-black">
-        {row.poster_url ? (
-          <img
-            src={row.poster_url}
-            alt={`${player1.name} vs ${player2.name}`}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+      <div className="grid min-h-[88px] grid-cols-[1fr_150px] sm:min-h-[96px] sm:grid-cols-[1fr_240px]">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 bg-white px-3 py-2 text-black sm:gap-4 sm:px-4">
+          <FixtureFighter
+            identity={player1}
+            score={player1Score}
+            status={status}
+            winner={winnerSide === "player1"}
+            align="left"
           />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle,_rgba(249,115,22,0.2),_transparent_58%),#050505]">
-            <div className="text-center">
-              <p className="text-5xl font-black text-orange-500">1V1</p>
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-600">
-                Fight Card
-              </p>
+
+          <div className="flex flex-col items-center justify-center">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-black uppercase text-slate-500 shadow-inner sm:h-10 sm:w-10">
+              VS
+            </div>
+
+            <div className="mt-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-blue-800">
+              {row.match_type || "1v1"}
             </div>
           </div>
-        )}
 
-        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
-          <span className="rounded-full border border-orange-500/30 bg-black/70 px-3 py-1 text-[11px] font-black uppercase text-orange-300 backdrop-blur">
-            {row.match_number ? `#${row.match_number}` : "Battle"}
-          </span>
-
-          <StatusBadge row={row} />
-        </div>
-      </div>
-
-      <div className="p-4 sm:p-5">
-        {row.match_title ? (
-          <p className="mb-4 line-clamp-2 text-sm font-black uppercase tracking-[0.14em] text-orange-200">
-            {row.match_title}
-          </p>
-        ) : null}
-
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-black text-white">{player1.name}</p>
-
-            <p
-              className={
-                winnerSide === "player1"
-                  ? "text-4xl font-black text-orange-300"
-                  : "text-4xl font-black text-white"
-              }
-            >
-              {player1Score ?? "-"}
-            </p>
-
-            {player1.position ? (
-              <p className="truncate text-xs text-zinc-500">{player1.position}</p>
-            ) : null}
-          </div>
-
-          <div className="rounded-full bg-white/5 px-2 py-1 text-[10px] font-black uppercase text-zinc-500">
-            vs
-          </div>
-
-          <div className="min-w-0 text-right">
-            <p className="truncate text-sm font-black text-white">{player2.name}</p>
-
-            <p
-              className={
-                winnerSide === "player2"
-                  ? "text-4xl font-black text-orange-300"
-                  : "text-4xl font-black text-white"
-              }
-            >
-              {player2Score ?? "-"}
-            </p>
-
-            {player2.position ? (
-              <p className="truncate text-xs text-zinc-500">{player2.position}</p>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <MiniInfo label="Type" value={row.match_type || "1v1"} />
-          <MiniInfo label="Margin" value={getMargin(row)?.toString() || "-"} />
-          <MiniInfo label="Total" value={getTotalPoints(row)?.toString() || "-"} />
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <MiniInfo label="Intensity" value={getIntensity(row)} />
-          <MiniInfo
-            label="Point Share"
-            value={
-              getPlayer1Share(row) === null
-                ? "-"
-                : `${percent(getPlayer1Share(row)!)} / ${percent(getPlayer2Share(row)!)}`
-            }
+          <FixtureFighter
+            identity={player2}
+            score={player2Score}
+            status={status}
+            winner={winnerSide === "player2"}
+            align="right"
           />
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2 text-xs font-black">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-zinc-300">
-            {resultLabel}
-          </span>
-
-          {status === "Completed" ? (
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
-              Winner: {winnerName}
-            </span>
+        <div className="relative flex flex-col justify-center overflow-hidden bg-[#0b2a66] px-3 py-2 text-white sm:px-4">
+          {row.poster_url ? (
+            <img
+              src={row.poster_url}
+              alt={row.match_title || `${player1.name} vs ${player2.name}`}
+              className="absolute inset-0 h-full w-full object-cover opacity-12 transition duration-500 group-hover:scale-105"
+            />
           ) : null}
 
-          {row.video_url ? <MediaBadge label="Video" /> : null}
-          {row.highlight_url ? <MediaBadge label="Highlights" /> : null}
-        </div>
+          <div className="absolute inset-y-0 -left-7 w-12 skew-x-[-14deg] bg-white sm:-left-8 sm:w-14" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#2563eb]/95 via-[#0f2f73]/96 to-[#081a3d]/98" />
 
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
-          <p className="min-w-0 truncate text-xs text-zinc-500">
-            {getRowLocation(row)}
-          </p>
+          <div className="relative pl-2 sm:pl-3">
+            <div className="mb-1.5 flex flex-wrap gap-1">
+              <StatusBadge row={row} />
 
-          <span className="shrink-0 text-xs font-black text-orange-300">
-            Open Match
-          </span>
+              {row.match_number ? (
+                <span className="rounded-full bg-black/25 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white">
+                  #{row.match_number}
+                </span>
+              ) : null}
+            </div>
+
+            <p className="line-clamp-2 text-[10px] font-black uppercase leading-4 tracking-[0.01em] text-white sm:text-[11px]">
+              {row.match_title || `${player1.name} vs ${player2.name}`}
+            </p>
+
+            <div className="mt-1.5 flex items-end gap-2">
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-[0.08em] text-blue-100 sm:text-[9px]">
+                  {formatFixtureDate(displayDate)}
+                </p>
+
+                <p className="mt-0.5 text-lg font-black leading-none tracking-tight text-white sm:text-2xl">
+                  {formatFixtureTime(displayDate)}
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-1.5 line-clamp-1 text-[8px] font-bold uppercase tracking-[0.08em] text-blue-100 sm:text-[9px]">
+              {getRowLocation(row)}
+            </p>
+
+            {status === "Completed" ? (
+              <p className="mt-1.5 line-clamp-1 rounded-full bg-emerald-500/20 px-2 py-1 text-[8px] font-black uppercase text-emerald-100">
+                Winner: {winnerName}
+              </p>
+            ) : row.calendar_matchup_id ? (
+              <p className="mt-1.5 line-clamp-1 rounded-full bg-blue-400/20 px-2 py-1 text-[8px] font-black uppercase text-blue-100">
+                Calendar Approved
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
     </Link>
   );
 }
 
-function FighterBlock({
+function FixtureFighter({
   identity,
   score,
+  status,
+  winner,
   align,
 }: {
   identity: Identity;
   score: number | null;
+  status: string;
+  winner: boolean;
   align: "left" | "right";
 }) {
+  const visibleScore = score === null && status === "Upcoming" ? 0 : score;
+
   return (
-    <div className={align === "right" ? "text-right" : ""}>
+    <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
       <div
-        className={`mb-3 flex items-center gap-3 ${
+        className={`mb-1 flex items-center gap-2 ${
           align === "right" ? "flex-row-reverse" : ""
         }`}
       >
-        <div className="h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-black">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 shadow-inner sm:h-11 sm:w-11">
           {identity.photo_url ? (
             <img
               src={identity.photo_url}
               alt={identity.name}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain p-0.5"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-sm font-black text-orange-300">
+            <div className="text-xs font-black text-blue-800">
               {getInitials(identity.name) || "FH"}
             </div>
           )}
         </div>
-
-        <div className="min-w-0">
-          <p className="truncate text-sm font-black text-white">{identity.name}</p>
-          <p className="truncate text-xs text-zinc-500">
-            {identity.position || identity.type.replace("_", " ")}
-          </p>
-        </div>
       </div>
 
-      <p className="text-6xl font-black text-white">{score ?? "-"}</p>
+      <p className="truncate text-[10px] font-black uppercase tracking-[0.03em] text-blue-900 sm:text-xs">
+        {identity.name}
+      </p>
+
+      <p className="truncate text-[8px] font-bold uppercase tracking-[0.04em] text-slate-500 sm:text-[9px]">
+        {identity.position || identity.type.replace("_", " ")}
+      </p>
+
+      <p
+        className={
+          winner
+            ? "mt-1 text-2xl font-black leading-none text-blue-600 sm:text-4xl"
+            : "mt-1 text-2xl font-black leading-none text-slate-950 sm:text-4xl"
+        }
+      >
+        {visibleScore ?? "-"}
+      </p>
     </div>
   );
 }
@@ -1269,34 +1172,21 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   );
 }
 
-function MiniInfo({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/50 px-3 py-3">
-      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-zinc-600">
-        {label}
-      </p>
-
-      <p className="mt-1 truncate text-xs font-black text-white">{value}</p>
-    </div>
-  );
-}
-
 function StatusBadge({ row }: { row: OneOnOneRow }) {
+  const status = getMatchStatus(row);
+
+  const className =
+    status === "Upcoming"
+      ? "bg-blue-400/20 text-blue-100"
+      : status === "Cancelled"
+        ? "bg-red-500/20 text-red-100"
+        : "bg-emerald-500/20 text-emerald-100";
+
   return (
     <span
-      className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase backdrop-blur ${getStatusClass(
-        row
-      )}`}
+      className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${className}`}
     >
-      {getMatchStatus(row)}
-    </span>
-  );
-}
-
-function MediaBadge({ label }: { label: string }) {
-  return (
-    <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] font-black uppercase text-blue-200">
-      {label}
+      {status}
     </span>
   );
 }
