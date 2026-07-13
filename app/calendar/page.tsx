@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+
+const FACKTS_LOGO = "/fackts-hoops-logo.png";
 
 type Person = {
   id: string;
@@ -32,6 +34,8 @@ type Game = {
   poster_url?: string | null;
   game_poster_url?: string | null;
   image_url?: string | null;
+  opponent_logo_url?: string | null;
+  calendar_card_image_url?: string | null;
 };
 
 type CalendarEvent = {
@@ -67,7 +71,7 @@ type Availability = {
 type Matchup = {
   id: string;
   matchup_status: "suggested" | "approved" | "rejected" | "deleted";
-  matchup_source: "availability" | "manual";
+  matchup_source: "availability" | "manual" | "player_request";
   event_id: string;
   weekday: string;
   player_one_source: string;
@@ -129,43 +133,53 @@ function getGameLocation(game: Game) {
 }
 
 function getGamePoster(game: Game) {
-  return game.poster_url || game.game_poster_url || game.image_url || "";
+  return (
+    game.calendar_card_image_url ||
+    game.opponent_logo_url ||
+    game.poster_url ||
+    game.game_poster_url ||
+    game.image_url ||
+    ""
+  );
 }
 
 function getEventLocation(event: CalendarEvent) {
   return [event.venue, event.location].filter(Boolean).join(" • ") || "Venue TBA";
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "Date TBA";
+function formatShortDate(value?: string | null) {
+  if (!value) return "DATE TBA";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "Date TBA";
+  if (Number.isNaN(date.getTime())) return value.toUpperCase();
 
-  return date.toLocaleString("en-KE", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return date
+    .toLocaleDateString("en-KE", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+    .replace(",", "")
+    .toUpperCase();
 }
 
-function formatDeadline(value?: string | null) {
-  if (!value) return "No deadline set";
+function formatShortTime(value?: string | null) {
+  if (!value) return "TIME TBA";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "No deadline set";
+  if (Number.isNaN(date.getTime())) return value.toUpperCase();
 
-  return date.toLocaleString("en-KE", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return date
+    .toLocaleTimeString("en-KE", {
+      hour: "numeric",
+      minute: "2-digit",
+    })
+    .replace(":", ".")
+    .replace(" ", "")
+    .toUpperCase();
 }
 
 function isUpcomingGame(game: Game) {
@@ -248,6 +262,29 @@ function makePairings(rows: Availability[]) {
   return pairings;
 }
 
+function sameMatchupPeople(
+  matchup: Matchup,
+  playerOne: Person,
+  playerTwo: Person,
+  day?: string
+) {
+  if (day && matchup.weekday && matchup.weekday !== day) return false;
+
+  const direct =
+    matchup.player_one_source === playerOne.source &&
+    matchup.player_one_id === playerOne.id &&
+    matchup.player_two_source === playerTwo.source &&
+    matchup.player_two_id === playerTwo.id;
+
+  const reverse =
+    matchup.player_one_source === playerTwo.source &&
+    matchup.player_one_id === playerTwo.id &&
+    matchup.player_two_source === playerOne.source &&
+    matchup.player_two_id === playerOne.id;
+
+  return direct || reverse;
+}
+
 function dedupePeople(people: Person[]) {
   const map = new Map<string, Person>();
 
@@ -277,10 +314,17 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [availability, setAvailability] = useState<Availability[]>([]);
   const [matchups, setMatchups] = useState<Matchup[]>([]);
+
   const [selectedPersonKey, setSelectedPersonKey] = useState("");
   const [selectedWeekday, setSelectedWeekday] = useState("Tuesday");
   const [preferredTime, setPreferredTime] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [challengeOpponentKey, setChallengeOpponentKey] = useState("");
+  const [challengeDay, setChallengeDay] = useState("Tuesday");
+  const [challengeTime, setChallengeTime] = useState("");
+  const [challengeNotes, setChallengeNotes] = useState("");
+
   const [message, setMessage] = useState("");
   const [loadingPage, setLoadingPage] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -288,6 +332,14 @@ export default function CalendarPage() {
   const selectedPerson = useMemo(() => {
     return people.find((person) => getPersonKey(person) === selectedPersonKey);
   }, [people, selectedPersonKey]);
+
+  const challengeOpponent = useMemo(() => {
+    return people.find((person) => getPersonKey(person) === challengeOpponentKey);
+  }, [people, challengeOpponentKey]);
+
+  const opponentOptions = people.filter(
+    (person) => getPersonKey(person) !== selectedPersonKey
+  );
 
   const weeklyAvailability = availability.filter(
     (row) => row.availability_type === "weekly" && row.status === "available"
@@ -311,6 +363,22 @@ export default function CalendarPage() {
   const approvedMatchups = matchups.filter(
     (matchup) => matchup.matchup_status === "approved"
   );
+
+  const pendingPlayerRequests = matchups.filter(
+    (matchup) =>
+      matchup.matchup_source === "player_request" &&
+      matchup.matchup_status === "suggested"
+  );
+
+  function getPersonImage(source: string, id: string) {
+    return (
+      people.find(
+        (person) =>
+          person.source === source &&
+          String(person.id) === String(id)
+      )?.photo_url || ""
+    );
+  }
 
   async function loadPageData() {
     setLoadingPage(true);
@@ -351,22 +419,22 @@ export default function CalendarPage() {
     if (availabilityResult.error) messages.push(availabilityResult.error.message);
     if (matchupsResult.error) messages.push(matchupsResult.error.message);
 
-   const playerPeople: Person[] = (playersResult.data ?? [])
-  .filter((player: any) => !isProspectRole(player))
-  .map((player: any) => {
-    const guestRole = isGuestRole(player);
+    const playerPeople: Person[] = (playersResult.data ?? [])
+      .filter((player: any) => !isProspectRole(player))
+      .map((player: any) => {
+        const guestRole = isGuestRole(player);
 
-    return {
-      id: player.id,
-      source: "players",
-      full_name: displayPersonName(player),
-      nickname: player.nickname,
-      role: guestRole ? "Guest Hooper" : player.role || "Player",
-      photo_url: player.photo_url,
-      photo_position: player.photo_position,
-      label: guestRole ? "Guest Hooper" : "FACKTS Player",
-    };
-  });
+        return {
+          id: player.id,
+          source: "players",
+          full_name: displayPersonName(player),
+          nickname: player.nickname,
+          role: guestRole ? "Guest Hooper" : player.role || "Player",
+          photo_url: player.photo_url,
+          photo_position: player.photo_position,
+          label: guestRole ? "Guest Hooper" : "FACKTS Player",
+        };
+      });
 
     const guestPeople: Person[] = (guestsResult.data ?? []).map((guest: any) => ({
       id: guest.id,
@@ -376,7 +444,7 @@ export default function CalendarPage() {
       role: "Guest Hooper",
       photo_url: guest.photo_url,
       photo_position: guest.photo_position,
-      label: "Registered Guest",
+      label: "Guest Hooper",
     }));
 
     setPeople(dedupePeople([...playerPeople, ...guestPeople]));
@@ -437,6 +505,74 @@ export default function CalendarPage() {
     setMessage(`Availability saved for ${selectedWeekday}.`);
     setPreferredTime("");
     setNotes("");
+    await loadPageData();
+    setSaving(false);
+  }
+
+  async function submitChallengeRequest() {
+    if (!selectedPerson) {
+      setMessage("Pick your name first.");
+      return;
+    }
+
+    if (!challengeOpponent) {
+      setMessage("Pick who you want to play.");
+      return;
+    }
+
+    if (selectedPerson.id === challengeOpponent.id) {
+      setMessage("You cannot challenge yourself.");
+      return;
+    }
+
+    const existing = matchups.find(
+      (matchup) =>
+        matchup.matchup_status !== "deleted" &&
+        matchup.matchup_status !== "rejected" &&
+        sameMatchupPeople(matchup, selectedPerson, challengeOpponent, challengeDay)
+    );
+
+    if (existing) {
+      setMessage("This matchup request already exists for that day.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase.from("fackts_matchups").insert({
+      matchup_status: "suggested",
+      matchup_source: "player_request",
+      event_id: "",
+      weekday: challengeDay,
+      player_one_source: selectedPerson.source,
+      player_one_id: selectedPerson.id,
+      player_one_name: selectedPerson.full_name,
+      player_two_source: challengeOpponent.source,
+      player_two_id: challengeOpponent.id,
+      player_two_name: challengeOpponent.full_name,
+      scheduled_date: null,
+      scheduled_time: challengeTime.trim() || null,
+      venue: "",
+      notes:
+        challengeNotes.trim() ||
+        `${selectedPerson.full_name} requested to play ${challengeOpponent.full_name}.`,
+      created_at: now,
+      updated_at: now,
+    });
+
+    if (error) {
+      setMessage(`Could not submit challenge: ${error.message}`);
+      setSaving(false);
+      return;
+    }
+
+    setMessage("Challenge request sent. Admin will approve before it becomes official.");
+    setChallengeOpponentKey("");
+    setChallengeTime("");
+    setChallengeNotes("");
     await loadPageData();
     setSaving(false);
   }
@@ -548,7 +684,7 @@ export default function CalendarPage() {
       }}
     >
       <div className="mx-auto max-w-7xl">
-        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950/95 via-black/90 to-orange-950/35 p-5 shadow-2xl shadow-black/40 backdrop-blur md:p-8">
+        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950/95 via-black/90 to-blue-950/35 p-5 shadow-2xl shadow-black/40 backdrop-blur md:p-8">
           <div className="absolute -left-20 top-10 h-64 w-64 rounded-full bg-orange-500/15 blur-3xl" />
           <div className="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
 
@@ -559,44 +695,20 @@ export default function CalendarPage() {
               </div>
 
               <h1 className="mt-5 text-4xl font-black uppercase tracking-tight md:text-6xl">
-                Availability. Matchups. Game Calls.
+                Availability. Challenges. Game Calls.
               </h1>
 
               <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">
-                Mark when you are free, respond to upcoming games and FACKTS
-                events, and help us form 1v1 matchups without chasing people on
-                WhatsApp.
+                Pick your name, mark availability, or call out who you want to
+                play. Admin approves before anything becomes official.
               </p>
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href="/court-takeover"
-                  className="rounded-full bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
-                >
-                  Court Takeover
-                </Link>
-
-                <Link
-                  href="/one-on-one"
-                  className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-zinc-100 transition hover:border-orange-400 hover:text-orange-300"
-                >
-                  1v1 Battles
-                </Link>
-
-                <Link
-                  href="/events"
-                  className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-zinc-100 transition hover:border-orange-400 hover:text-orange-300"
-                >
-                  Event Stories
-                </Link>
-              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <HeroStat label="Hoopers" value={String(people.length)} />
               <HeroStat label="Games" value={String(games.length)} />
               <HeroStat label="Events" value={String(events.length)} />
-              <HeroStat label="1v1 Ideas" value={String(suggestedPairingCount)} />
+              <HeroStat label="Requests" value={String(pendingPlayerRequests.length)} />
             </div>
           </div>
         </section>
@@ -613,43 +725,19 @@ export default function CalendarPage() {
           </div>
         ) : (
           <>
-            <section className="mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-              <div className="rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
-                <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                  Player Check-In
-                </div>
-
-                <h2 className="mt-2 text-2xl font-black">Pick Your Availability</h2>
-
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
-                  Choose your name, pick a day, and submit. Same-day hoopers
-                  form the 1v1 matchup pool.
+            <section className="mt-6 grid gap-6 lg:grid-cols-2">
+              <ActionCard eyebrow="Player Check-In" title="Pick Your Availability">
+                <p className="text-sm leading-6 text-zinc-400">
+                  Choose your name, pick a day, and submit. Admin will approve
+                  official 1v1 pairings.
                 </p>
 
                 <div className="mt-5 space-y-4">
-                  <label className="block">
-                    <div className="mb-2 text-sm font-bold text-zinc-300">
-                      Your Name
-                    </div>
-
-                    <select
-                      value={selectedPersonKey}
-                      onChange={(event) => setSelectedPersonKey(event.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
-                    >
-                      <option value="">Select player or guest hooper</option>
-                      {people.map((person) => (
-                        <option
-                          key={getPersonKey(person)}
-                          value={getPersonKey(person)}
-                        >
-                          {person.full_name}
-                          {person.nickname ? ` "${person.nickname}"` : ""} —{" "}
-                          {person.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <NameSelect
+                    people={people}
+                    value={selectedPersonKey}
+                    onChange={setSelectedPersonKey}
+                  />
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="block">
@@ -684,19 +772,13 @@ export default function CalendarPage() {
                     </label>
                   </div>
 
-                  <label className="block">
-                    <div className="mb-2 text-sm font-bold text-zinc-300">
-                      Notes
-                    </div>
-
-                    <textarea
-                      rows={3}
-                      value={notes}
-                      onChange={(event) => setNotes(event.target.value)}
-                      placeholder="Example: I can do 1v1 after class."
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
-                    />
-                  </label>
+                  <textarea
+                    rows={3}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder="Example: I can do 1v1 after class."
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                  />
 
                   <button
                     type="button"
@@ -704,402 +786,337 @@ export default function CalendarPage() {
                     disabled={saving}
                     className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {saving ? "Saving..." : "Submit Weekly Availability"}
+                    {saving ? "Saving..." : "Submit Availability"}
                   </button>
                 </div>
-              </div>
+              </ActionCard>
 
-              <div className="rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
-                <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                  1v1 Pool
-                </div>
-
-                <h2 className="mt-2 text-2xl font-black">Same-Day Hoopers</h2>
-
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
-                  These are not official battles yet. Admin must approve before
-                  they show on Court Takeover or 1v1.
+              <ActionCard eyebrow="Call Out" title="Request A 1v1 Matchup">
+                <p className="text-sm leading-6 text-zinc-400">
+                  Example: Hardy can request JAO. Admin sees the request and
+                  approves it before it appears on 1v1 battles.
                 </p>
 
-                <div className="mt-5 space-y-3">
-                  {weeklyGroups.map((group) => (
-                    <div
-                      key={group.day}
-                      className="rounded-3xl border border-white/10 bg-black/70 p-4"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-lg font-black">{group.day}</div>
+                <div className="mt-5 space-y-4">
+                  <NameSelect
+                    people={people}
+                    value={selectedPersonKey}
+                    onChange={setSelectedPersonKey}
+                  />
 
-                        <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-300">
-                          {group.rows.length} available
-                        </div>
+                  <label className="block">
+                    <div className="mb-2 text-sm font-bold text-zinc-300">
+                      Who do you want to play?
+                    </div>
+
+                    <select
+                      value={challengeOpponentKey}
+                      onChange={(event) => setChallengeOpponentKey(event.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                    >
+                      <option value="">Select opponent</option>
+                      {opponentOptions.map((person) => (
+                        <option
+                          key={getPersonKey(person)}
+                          value={getPersonKey(person)}
+                        >
+                          {person.full_name}
+                          {person.nickname ? ` "${person.nickname}"` : ""} —{" "}
+                          {person.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <div className="mb-2 text-sm font-bold text-zinc-300">
+                        Preferred Day
                       </div>
 
-                      {group.rows.length === 0 ? (
-                        <div className="mt-3 text-sm text-zinc-600">
-                          No one has picked this day yet.
-                        </div>
-                      ) : (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {group.rows.map((row) => (
-                            <span
-                              key={row.id}
-                              className="rounded-full border border-white/10 bg-zinc-900 px-3 py-1 text-xs font-bold text-zinc-200"
-                            >
-                              {row.participant_name}
-                              {row.preferred_time ? ` • ${row.preferred_time}` : ""}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <select
+                        value={challengeDay}
+                        onChange={(event) => setChallengeDay(event.target.value)}
+                        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                      >
+                        {weekdays.map((day) => (
+                          <option key={day} value={day}>
+                            {day}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                      {group.pairings.length > 0 ? (
-                        <div className="mt-4 space-y-2">
-                          {group.pairings.map((pair, index) => (
-                            <div
-                              key={`${group.day}-${index}`}
-                              className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-3 text-sm font-black text-white"
-                            >
-                              {pair[0].participant_name}{" "}
-                              <span className="text-orange-300">vs</span>{" "}
-                              {pair[1].participant_name}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
+                    <label className="block">
+                      <div className="mb-2 text-sm font-bold text-zinc-300">
+                        Preferred Time
+                      </div>
+
+                      <input
+                        value={challengeTime}
+                        onChange={(event) => setChallengeTime(event.target.value)}
+                        placeholder="Example: 5pm"
+                        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                      />
+                    </label>
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    value={challengeNotes}
+                    onChange={(event) => setChallengeNotes(event.target.value)}
+                    placeholder="Example: I want JAO this Monday."
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={submitChallengeRequest}
+                    disabled={saving}
+                    className="w-full rounded-2xl bg-blue-500 px-5 py-3 font-black text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {saving ? "Sending..." : "Send Challenge Request"}
+                  </button>
                 </div>
+              </ActionCard>
+            </section>
+
+            <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
+              <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+                1v1 Pool
+              </div>
+
+              <h2 className="mt-2 text-2xl font-black">Same-Day Hoopers</h2>
+
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                Availability pool only. Admin chooses the official matchups.
+              </p>
+
+              <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                {weeklyGroups.map((group) => (
+                  <div
+                    key={group.day}
+                    className="rounded-3xl border border-white/10 bg-black/70 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-lg font-black">{group.day}</div>
+
+                      <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-300">
+                        {group.rows.length} available
+                      </div>
+                    </div>
+
+                    {group.rows.length === 0 ? (
+                      <div className="mt-3 text-sm text-zinc-600">
+                        No one has picked this day yet.
+                      </div>
+                    ) : (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {group.rows.map((row) => (
+                          <span
+                            key={row.id}
+                            className="rounded-full border border-white/10 bg-zinc-900 px-3 py-1 text-xs font-bold text-zinc-200"
+                          >
+                            {row.participant_name}
+                            {row.preferred_time ? ` • ${row.preferred_time}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </section>
 
             <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
-              <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                    Upcoming Events
-                  </div>
-
-                  <h2 className="mt-1 text-2xl font-black">
-                    Event Availability
-                  </h2>
-
-                  <p className="mt-2 text-sm text-zinc-400">
-                    Events appear here for availability only. Full stories,
-                    posters, photos, and recaps stay on the Events page.
-                  </p>
-                </div>
-
-                <Link
-                  href="/events"
-                  className="rounded-2xl border border-white/10 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/5"
-                >
-                  View Event Stories
-                </Link>
+              <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+                Player Requests
               </div>
 
+              <h2 className="mt-1 text-2xl font-black">Pending Challenge Requests</h2>
+
+              {pendingPlayerRequests.length === 0 ? (
+                <EmptyBox text="No player challenge requests yet." />
+              ) : (
+                <div className="mt-5 space-y-3">
+                  {pendingPlayerRequests.map((matchup) => (
+                    <BasketballShowcaseCard
+                      key={matchup.id}
+                      leftName={matchup.player_one_name}
+                      rightName={matchup.player_two_name}
+                      leftImage={getPersonImage(matchup.player_one_source, matchup.player_one_id)}
+                      rightImage={getPersonImage(matchup.player_two_source, matchup.player_two_id)}
+                      eyebrow="1V1"
+                      badge="REQUESTED BATTLE"
+                      date={matchup.weekday || "DAY TBA"}
+                      time={matchup.scheduled_time || "TIME TBA"}
+                      venue="Awaiting admin approval"
+                      status="Pending"
+                      statusTone="closed"
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <CalendarFixtureSection
+              title="Event Availability"
+              eyebrow="Upcoming Events"
+            >
               {events.length === 0 ? (
                 <EmptyBox text="No upcoming FACKTS events are open right now." />
               ) : (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {events.map((event) => {
-                    const closed = eventDeadlineClosed(event);
+                events.map((event) => {
+                  const closed = eventDeadlineClosed(event);
 
-                    const responses = availability.filter(
-                      (row) =>
-                        row.availability_type === "event" &&
-                        row.event_id === event.id
-                    );
+                  const responses = availability.filter(
+                    (row) =>
+                      row.availability_type === "event" &&
+                      row.event_id === event.id
+                  );
 
-                    const available = responses.filter(
-                      (row) => row.status === "available"
-                    );
+                  const available = responses.filter(
+                    (row) => row.status === "available"
+                  );
 
-                    const notAvailable = responses.filter(
-                      (row) => row.status === "not_available"
-                    );
+                  const notAvailable = responses.filter(
+                    (row) => row.status === "not_available"
+                  );
 
-                    return (
-                      <div
-                        key={event.id}
-                        className="overflow-hidden rounded-3xl border border-white/10 bg-black/70"
-                      >
-                        {event.poster_url ? (
-                          <img
-                            src={event.poster_url}
-                            alt={event.title}
-                            className="h-48 w-full object-cover"
-                          />
-                        ) : null}
+                  return (
+                    <BasketballShowcaseCard
+                      key={event.id}
+                      leftName="FACKTS"
+                      rightName={event.title}
+                      leftImage={FACKTS_LOGO}
+                      rightImage={event.poster_url || ""}
+                      eyebrow="EVENT"
+                      badge={event.event_type.replaceAll("_", " ").toUpperCase()}
+                      date={formatShortDate(event.event_date)}
+                      time={formatShortTime(event.event_date)}
+                      venue={getEventLocation(event)}
+                      status={closed ? "Closed" : "Open"}
+                      statusTone={closed ? "closed" : "open"}
+                    >
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={closed || saving}
+                          onClick={() => submitEventAvailability(event, "available")}
+                          className="rounded-full bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-black transition hover:bg-emerald-400 disabled:opacity-40"
+                        >
+                          Yes {available.length}
+                        </button>
 
-                        <div className="p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-300">
-                                {event.event_type.replace("_", " ")}
-                              </div>
-
-                              <h3 className="mt-1 text-2xl font-black">
-                                {event.title}
-                              </h3>
-
-                              <p className="mt-2 text-sm text-zinc-400">
-                                {formatDate(event.event_date)}
-                              </p>
-
-                              <p className="mt-1 text-sm text-zinc-500">
-                                {getEventLocation(event)}
-                              </p>
-
-                              <p className="mt-2 text-xs font-bold text-zinc-500">
-                                Deadline: {formatDeadline(event.registration_deadline)}
-                              </p>
-                            </div>
-
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-black ${
-                                closed
-                                  ? "bg-rose-500/15 text-rose-300"
-                                  : "bg-emerald-500/15 text-emerald-300"
-                              }`}
-                            >
-                              {closed ? "Closed" : "Open"}
-                            </span>
-                          </div>
-
-                          {event.notes ? (
-                            <p className="mt-3 line-clamp-3 text-sm leading-6 text-zinc-400">
-                              {event.notes}
-                            </p>
-                          ) : null}
-
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              disabled={closed || saving}
-                              onClick={() =>
-                                submitEventAvailability(event, "available")
-                              }
-                              className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Available
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={closed || saving}
-                              onClick={() =>
-                                submitEventAvailability(event, "not_available")
-                              }
-                              className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm font-black text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Not Available
-                            </button>
-                          </div>
-
-                          <div className="mt-4 grid grid-cols-2 gap-3">
-                            <MiniPanel
-                              label="Available"
-                              value={String(available.length)}
-                              names={available.map((row) => row.participant_name)}
-                            />
-
-                            <MiniPanel
-                              label="Not Available"
-                              value={String(notAvailable.length)}
-                              names={notAvailable.map(
-                                (row) => row.participant_name
-                              )}
-                            />
-                          </div>
-                        </div>
+                        <button
+                          type="button"
+                          disabled={closed || saving}
+                          onClick={() =>
+                            submitEventAvailability(event, "not_available")
+                          }
+                          className="rounded-full bg-rose-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-40"
+                        >
+                          No {notAvailable.length}
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
+                    </BasketballShowcaseCard>
+                  );
+                })
               )}
-            </section>
+            </CalendarFixtureSection>
 
-            <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
-              <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                    Upcoming Games
-                  </div>
-
-                  <h2 className="mt-1 text-2xl font-black">Game Availability</h2>
-
-                  <p className="mt-2 text-sm text-zinc-400">
-                    Pick your name above, then confirm if you are available for
-                    each FACKTS game.
-                  </p>
-                </div>
-
-                <Link
-                  href="/games"
-                  className="rounded-2xl border border-white/10 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/5"
-                >
-                  View Games
-                </Link>
-              </div>
-
+            <CalendarFixtureSection
+              title="Game Availability"
+              eyebrow="Upcoming Games"
+            >
               {games.length === 0 ? (
                 <EmptyBox text="No upcoming games are open right now." />
               ) : (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {games.map((game) => {
-                    const closed = gameDeadlineClosed(game);
-                    const responses = availability.filter(
-                      (row) =>
-                        row.availability_type === "game" && row.game_id === game.id
-                    );
+                games.map((game) => {
+                  const closed = gameDeadlineClosed(game);
 
-                    const available = responses.filter(
-                      (row) => row.status === "available"
-                    );
+                  const responses = availability.filter(
+                    (row) =>
+                      row.availability_type === "game" &&
+                      row.game_id === game.id
+                  );
 
-                    const notAvailable = responses.filter(
-                      (row) => row.status === "not_available"
-                    );
+                  const available = responses.filter(
+                    (row) => row.status === "available"
+                  );
 
-                    return (
-                      <div
-                        key={game.id}
-                        className="overflow-hidden rounded-3xl border border-white/10 bg-black/70"
-                      >
-                        {getGamePoster(game) ? (
-                          <img
-                            src={getGamePoster(game)}
-                            alt={getGameTitle(game)}
-                            className="h-48 w-full object-cover"
-                          />
-                        ) : null}
+                  const notAvailable = responses.filter(
+                    (row) => row.status === "not_available"
+                  );
 
-                        <div className="p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-300">
-                                FACKTS Game
-                              </div>
+                  return (
+                    <BasketballShowcaseCard
+                      key={game.id}
+                      leftName="FACKTS"
+                      rightName={getOpponent(game)}
+                      leftImage={FACKTS_LOGO}
+                      rightImage={getGamePoster(game)}
+                      eyebrow="GAME"
+                      badge="GAME CALL"
+                      date={formatShortDate(getGameDate(game))}
+                      time={formatShortTime(getGameDate(game))}
+                      venue={getGameLocation(game)}
+                      status={closed ? "Closed" : "Open"}
+                      statusTone={closed ? "closed" : "open"}
+                    >
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={closed || saving}
+                          onClick={() => submitGameAvailability(game, "available")}
+                          className="rounded-full bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-black transition hover:bg-emerald-400 disabled:opacity-40"
+                        >
+                          Yes {available.length}
+                        </button>
 
-                              <h3 className="mt-1 text-xl font-black">
-                                FACKTS vs {getOpponent(game)}
-                              </h3>
-
-                              <p className="mt-1 text-sm text-zinc-400">
-                                {getGameTitle(game)}
-                              </p>
-
-                              <p className="mt-2 text-sm text-zinc-500">
-                                {formatDate(getGameDate(game))}
-                              </p>
-
-                              <p className="mt-1 text-sm text-zinc-500">
-                                {getGameLocation(game)}
-                              </p>
-                            </div>
-
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-black ${
-                                closed
-                                  ? "bg-rose-500/15 text-rose-300"
-                                  : "bg-emerald-500/15 text-emerald-300"
-                              }`}
-                            >
-                              {closed ? "Closed" : "Open"}
-                            </span>
-                          </div>
-
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              disabled={closed || saving}
-                              onClick={() =>
-                                submitGameAvailability(game, "available")
-                              }
-                              className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Available
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={closed || saving}
-                              onClick={() =>
-                                submitGameAvailability(game, "not_available")
-                              }
-                              className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm font-black text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Not Available
-                            </button>
-                          </div>
-
-                          <div className="mt-4 grid grid-cols-2 gap-3">
-                            <MiniPanel
-                              label="Available"
-                              value={String(available.length)}
-                              names={available.map((row) => row.participant_name)}
-                            />
-
-                            <MiniPanel
-                              label="Not Available"
-                              value={String(notAvailable.length)}
-                              names={notAvailable.map(
-                                (row) => row.participant_name
-                              )}
-                            />
-                          </div>
-                        </div>
+                        <button
+                          type="button"
+                          disabled={closed || saving}
+                          onClick={() =>
+                            submitGameAvailability(game, "not_available")
+                          }
+                          className="rounded-full bg-rose-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-40"
+                        >
+                          No {notAvailable.length}
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
+                    </BasketballShowcaseCard>
+                  );
+                })
               )}
-            </section>
+            </CalendarFixtureSection>
 
             <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
               <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
                 Approved Battles
               </div>
 
-              <h2 className="mt-1 text-2xl font-black">
-                Official 1v1 Matchups
-              </h2>
-
-              <p className="mt-2 text-sm text-zinc-400">
-                These are approved matchups. Suggested pairings only become
-                official after admin approval.
-              </p>
+              <h2 className="mt-1 text-2xl font-black">Official 1v1 Matchups</h2>
 
               {approvedMatchups.length === 0 ? (
                 <EmptyBox text="No approved matchups yet." />
               ) : (
-                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-5 space-y-3">
                   {approvedMatchups.map((matchup) => (
-                    <div
+                    <BasketballShowcaseCard
                       key={matchup.id}
-                      className="rounded-3xl border border-orange-500/20 bg-orange-500/10 p-4"
-                    >
-                      <div className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
-                        Approved Battle
-                      </div>
-
-                      <div className="mt-3 text-xl font-black">
-                        {matchup.player_one_name}{" "}
-                        <span className="text-orange-300">vs</span>{" "}
-                        {matchup.player_two_name}
-                      </div>
-
-                      <div className="mt-3 text-sm text-zinc-400">
-                        {matchup.scheduled_date
-                          ? formatDate(matchup.scheduled_date)
-                          : matchup.weekday || "Date TBA"}
-                      </div>
-
-                      <div className="mt-1 text-sm text-zinc-500">
-                        {matchup.venue || "Venue TBA"}
-                      </div>
-                    </div>
+                      leftName={matchup.player_one_name}
+                      rightName={matchup.player_two_name}
+                      leftImage={getPersonImage(matchup.player_one_source, matchup.player_one_id)}
+                      rightImage={getPersonImage(matchup.player_two_source, matchup.player_two_id)}
+                      eyebrow="1V1"
+                      badge="APPROVED BATTLE"
+                      date={formatShortDate(matchup.scheduled_date)}
+                      time={matchup.scheduled_time || "TIME TBA"}
+                      venue={matchup.venue || matchup.weekday || "Venue TBA"}
+                      status="Approved"
+                      statusTone="open"
+                    />
                   ))}
                 </div>
               )}
@@ -1123,52 +1140,93 @@ function HeroStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MiniPanel({
-  label,
-  value,
-  names,
+function ActionCard({
+  eyebrow,
+  title,
+  children,
 }: {
-  label: string;
-  value: string;
-  names: string[];
+  eyebrow: string;
+  title: string;
+  children: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-950 p-3">
-      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
-        {label}
+    <div className="rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
+      <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+        {eyebrow}
       </div>
 
-      <div className="mt-1 text-2xl font-black text-orange-300">{value}</div>
+      <h2 className="mt-2 text-2xl font-black">{title}</h2>
 
-      {names.length > 0 ? (
-        <div className="mt-2 space-y-1">
-          {names.slice(0, 4).map((name) => (
-            <div key={name} className="truncate text-xs text-zinc-400">
-              {name}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-2 text-xs text-zinc-600">No responses yet</div>
-      )}
+      <div className="mt-2">{children}</div>
     </div>
   );
 }
 
-function EmptyBox({ text }: { text: string }) {
+function NameSelect({
+  people,
+  value,
+  onChange,
+}: {
+  people: Person[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
   return (
-    <div className="mt-4 rounded-2xl border border-white/10 bg-black/60 p-4 text-sm text-zinc-400">
-      {text}
-    </div>
+    <label className="block">
+      <div className="mb-2 text-sm font-bold text-zinc-300">Your Name</div>
+
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+      >
+        <option value="">Select player or guest hooper</option>
+        {people.map((person) => (
+          <option key={getPersonKey(person)} value={getPersonKey(person)}>
+            {person.full_name}
+            {person.nickname ? ` "${person.nickname}"` : ""} — {person.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
-function FixtureStrip({
+
+function CalendarFixtureSection({
+  eyebrow,
+  title,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+            {eyebrow}
+          </div>
+
+          <h2 className="mt-1 text-2xl font-black">{title}</h2>
+        </div>
+      </div>
+
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
+function BasketballShowcaseCard({
   leftName,
   rightName,
   leftImage,
   rightImage,
-  label,
+  eyebrow,
+  badge,
   date,
+  time,
   venue,
   status,
   statusTone,
@@ -1178,98 +1236,142 @@ function FixtureStrip({
   rightName: string;
   leftImage?: string;
   rightImage?: string;
-  label: string;
+  eyebrow: string;
+  badge: string;
   date: string;
+  time: string;
   venue: string;
   status: string;
   statusTone: "open" | "closed";
-  children?: React.ReactNode;
+  children?: ReactNode;
 }) {
+  const artImage = rightImage || leftImage || "";
+
   return (
-    <div className="group overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-xl shadow-black/30 transition hover:-translate-y-0.5 hover:border-orange-400/50">
-      <div className="grid min-h-[112px] grid-cols-[1fr_120px] sm:grid-cols-[1fr_190px]">
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 bg-white px-3 py-3 text-black sm:gap-5 sm:px-5">
-          <FixtureSide name={leftName} image={leftImage} align="left" />
+    <div className="group relative mx-auto w-full max-w-5xl overflow-hidden rounded-[30px] border border-orange-500/25 bg-[#05070d] shadow-[0_24px_60px_rgba(0,0,0,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_rgba(0,0,0,0.7)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.18),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_30%)]" />
 
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-xl font-black uppercase text-zinc-400 shadow-inner">
-            VS
-          </div>
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.03)_0%,transparent_22%,transparent_78%,rgba(255,255,255,0.03)_100%)]" />
 
-          <FixtureSide name={rightName} image={rightImage} align="right" />
-        </div>
+      {artImage ? (
+        <div
+          className="absolute inset-0 opacity-[0.10] blur-[1.5px]"
+          style={{
+            backgroundImage: `url(${artImage})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+      ) : null}
 
-        <div className="relative flex flex-col justify-center overflow-hidden bg-orange-950 px-3 py-3 text-white sm:px-5">
-          <div className="absolute inset-y-0 -left-8 w-16 skew-x-[-14deg] bg-white" />
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-800 via-orange-950 to-black" />
+      <div className="absolute inset-y-0 right-0 w-full bg-[linear-gradient(160deg,rgba(14,36,73,0.72),rgba(8,18,36,0.92))] sm:w-[34%]" />
+      <div className="absolute inset-y-0 right-[31%] hidden w-16 skew-x-[-18deg] bg-orange-500/12 sm:block" />
+      <div className="absolute inset-y-0 right-[30%] hidden w-[1px] bg-white/10 sm:block" />
 
-          <div className="relative">
-            <div className="mb-2 flex flex-wrap gap-1">
-              <span className="rounded-full bg-black/40 px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-orange-200">
-                {label}
-              </span>
+      <div className="absolute left-0 right-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-orange-400/70 to-transparent" />
+      <div className="absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-blue-400/50 to-transparent" />
 
-              <span
-                className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${
-                  statusTone === "open"
-                    ? "bg-emerald-500/20 text-emerald-200"
-                    : "bg-rose-500/20 text-rose-200"
-                }`}
-              >
-                {status}
-              </span>
+      <div className="relative grid min-h-[168px] grid-cols-1 sm:grid-cols-[1fr_240px]">
+        <div className="flex items-center justify-center px-4 py-5 sm:px-6">
+          <div className="flex w-full max-w-[520px] items-center justify-center gap-3 sm:gap-5">
+            <CompetitorBadge name={leftName} image={leftImage} />
+
+            <div className="flex shrink-0 flex-col items-center justify-center">
+              <div className="rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-orange-300">
+                {eyebrow}
+              </div>
+
+              <div className="relative mt-2 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/10 text-base font-black text-white shadow-[inset_0_0_14px_rgba(255,255,255,0.06)]">
+                <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(249,115,22,0.16),transparent_65%)]" />
+                <span className="relative">VS</span>
+              </div>
+
+              <div className="mt-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[8px] font-black uppercase tracking-[0.18em] text-blue-200">
+                STREETBALL
+              </div>
             </div>
 
-            <p className="text-[11px] font-black uppercase leading-4 text-white sm:text-sm">
-              {date}
-            </p>
-
-            <p className="mt-1 line-clamp-1 text-[10px] font-bold uppercase tracking-[0.08em] text-orange-100 sm:text-xs">
-              {venue}
-            </p>
-
-            {children ? <div className="mt-2">{children}</div> : null}
+            <CompetitorBadge name={rightName} image={rightImage} />
           </div>
+        </div>
+
+        <div className="relative flex flex-col justify-center px-4 py-4 sm:px-5">
+          <div className="mb-2 flex flex-wrap gap-2">
+            <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-blue-100">
+              {badge}
+            </span>
+
+            <span
+              className={`rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${
+                statusTone === "open"
+                  ? "border border-emerald-400/20 bg-emerald-500/15 text-emerald-100"
+                  : "border border-rose-400/20 bg-rose-500/15 text-rose-100"
+              }`}
+            >
+              {status}
+            </span>
+          </div>
+
+          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-100">
+            {date}
+          </div>
+
+          <div className="mt-1 text-[2rem] font-black leading-none text-white sm:text-[2.3rem]">
+            {time}
+          </div>
+
+          <div className="mt-2 line-clamp-2 text-[10px] font-bold uppercase tracking-[0.08em] text-blue-100 sm:text-[11px]">
+            {venue}
+          </div>
+
+          {children ? <div className="mt-3">{children}</div> : null}
         </div>
       </div>
     </div>
   );
 }
 
-function FixtureSide({
+function CompetitorBadge({
   name,
   image,
-  align,
 }: {
   name: string;
   image?: string;
-  align: "left" | "right";
 }) {
   return (
-    <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
-      <div
-        className={`mb-2 flex items-center gap-2 ${
-          align === "right" ? "flex-row-reverse" : ""
-        }`}
-      >
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-zinc-100 sm:h-16 sm:w-16">
-          {image ? (
-            <img
-              src={image}
-              alt={name}
-              className="h-full w-full object-contain p-1"
-            />
-          ) : (
-            <div className="text-sm font-black text-orange-600">
-              {getInitialsFromName(name)}
-            </div>
-          )}
-        </div>
+    <div className="flex w-[98px] shrink-0 flex-col items-center text-center sm:w-[128px]">
+      <div className="relative flex h-[74px] w-[74px] items-center justify-center overflow-hidden rounded-[22px] border border-white/10 bg-[linear-gradient(160deg,#0f172a,#111827)] shadow-[0_12px_25px_rgba(0,0,0,0.35)] sm:h-[82px] sm:w-[82px]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.14),transparent_35%)]" />
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-orange-400/70 to-transparent" />
+
+        <SafeImage image={image} name={name} />
       </div>
 
-      <p className="truncate text-[11px] font-black uppercase tracking-[0.04em] text-orange-950 sm:text-sm">
+      <div className="mt-2 line-clamp-2 text-[10px] font-black uppercase leading-3 tracking-[0.06em] text-white sm:text-[11px]">
         {name}
-      </p>
+      </div>
     </div>
+  );
+}
+
+function SafeImage({ image, name }: { image?: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!image || failed) {
+    return (
+      <div className="relative text-lg font-black uppercase text-white">
+        {getInitialsFromName(name)}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={image}
+      alt={name}
+      onError={() => setFailed(true)}
+      className="relative h-full w-full object-contain p-2"
+    />
   );
 }
 
@@ -1280,4 +1382,12 @@ function getInitialsFromName(name: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+}
+
+function EmptyBox({ text }: { text: string }) {
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-black/60 p-4 text-sm text-zinc-400">
+      {text}
+    </div>
+  );
 }
