@@ -1,10 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 
 const FACKTS_LOGO = "/fackts-hoops-logo.png";
+
+const inputClass =
+  "w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400";
+
+const selectClass =
+  "w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400";
+
+const DEFAULT_COURTS = [
+  "JKUAT Basketball Court",
+  "MISC Kasarani",
+  "Kasarani Academy of Sports Court",
+  "St. Peter’s ACK Kahawa Sukari Court",
+  "Umoja 2 Court",
+];
 
 type Person = {
   id: string;
@@ -30,7 +43,6 @@ type Game = {
   location?: string | null;
   status?: string | null;
   is_upcoming?: boolean | null;
-  notes?: string | null;
   poster_url?: string | null;
   game_poster_url?: string | null;
   image_url?: string | null;
@@ -48,7 +60,6 @@ type CalendarEvent = {
   location?: string | null;
   poster_url?: string | null;
   registration_deadline?: string | null;
-  notes?: string | null;
   is_public?: boolean | null;
   is_active?: boolean | null;
 };
@@ -58,12 +69,17 @@ type Availability = {
   participant_source: string;
   participant_id: string;
   participant_name: string;
+  participant_email?: string | null;
+  participant_phone?: string | null;
   availability_type: "weekly" | "game" | "event";
+  availability_date?: string | null;
+  week_start_date?: string | null;
   weekday: string;
   game_id: string;
   event_id: string;
   status: "available" | "not_available";
   preferred_time?: string | null;
+  preferred_court?: string | null;
   notes?: string | null;
   created_at?: string | null;
 };
@@ -77,24 +93,41 @@ type Matchup = {
   player_one_source: string;
   player_one_id: string;
   player_one_name: string;
+  player_one_email?: string | null;
+  player_one_phone?: string | null;
   player_two_source: string;
   player_two_id: string;
   player_two_name: string;
+  player_two_email?: string | null;
+  player_two_phone?: string | null;
   scheduled_date?: string | null;
   scheduled_time?: string | null;
   venue?: string | null;
   notes?: string | null;
 };
 
-const weekdays = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+type NotificationRow = {
+  id: string;
+  recipient_role: "admin" | "player";
+  recipient_source: string;
+  recipient_id: string;
+  recipient_name: string;
+  recipient_email?: string | null;
+  recipient_phone?: string | null;
+  title: string;
+  body?: string | null;
+  notification_type: string;
+  link_url?: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
+type EmailResult = {
+  ok: boolean;
+  skipped?: boolean;
+  message?: string;
+  error?: string;
+};
 
 function normalize(value?: string | null) {
   return String(value ?? "").trim().toLowerCase();
@@ -116,16 +149,101 @@ function getPersonKey(person: Person) {
   return `${person.source}:${person.id}`;
 }
 
-function getGameTitle(game: Game) {
-  return game.game_title || game.title || "FACKTS Game";
+function kenyaDateString(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "2026";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return `${year}-${month}-${day}`;
 }
 
-function getOpponent(game: Game) {
-  return game.opponent || game.opponent_name || game.team_name || "Opponent TBA";
+function dateFromInput(value: string) {
+  return new Date(`${value}T12:00:00+03:00`);
+}
+
+function getWeekdayName(dateValue: string) {
+  const date = dateFromInput(dateValue);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleDateString("en-KE", {
+    weekday: "long",
+    timeZone: "Africa/Nairobi",
+  });
+}
+
+function getWeekStartDateString(dateValue: string) {
+  const date = dateFromInput(dateValue);
+
+  if (Number.isNaN(date.getTime())) return dateValue;
+
+  const day = date.getDay();
+  const diff = (day + 6) % 7;
+
+  date.setDate(date.getDate() - diff);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const dayNumber = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${dayNumber}`;
+}
+
+function getCurrentWeekStart() {
+  return getWeekStartDateString(kenyaDateString());
+}
+
+function formatDateLabel(value?: string | null) {
+  if (!value) return "DATE TBA";
+
+  const date = dateFromInput(value.slice(0, 10));
+
+  if (Number.isNaN(date.getTime())) return value.toUpperCase();
+
+  return date
+    .toLocaleDateString("en-KE", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+    .replace(",", "")
+    .toUpperCase();
+}
+
+function formatShortTime(value?: string | null) {
+  if (!value) return "TIME TBA";
+
+  if (/^\d{1,2}:\d{2}/.test(value)) return value.toUpperCase();
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return value.toUpperCase();
+
+  return date
+    .toLocaleTimeString("en-KE", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "Africa/Nairobi",
+    })
+    .replace(":", ".")
+    .replace(" ", "")
+    .toUpperCase();
 }
 
 function getGameDate(game: Game) {
   return game.game_date || game.date || null;
+}
+
+function getOpponent(game: Game) {
+  return game.opponent || game.opponent_name || game.team_name || "Opponent TBA";
 }
 
 function getGameLocation(game: Game) {
@@ -147,49 +265,10 @@ function getEventLocation(event: CalendarEvent) {
   return [event.venue, event.location].filter(Boolean).join(" • ") || "Venue TBA";
 }
 
-function formatShortDate(value?: string | null) {
-  if (!value) return "DATE TBA";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return value.toUpperCase();
-
-  return date
-    .toLocaleDateString("en-KE", {
-      weekday: "short",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    })
-    .replace(",", "")
-    .toUpperCase();
-}
-
-function formatShortTime(value?: string | null) {
-  if (!value) return "TIME TBA";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return value.toUpperCase();
-
-  return date
-    .toLocaleTimeString("en-KE", {
-      hour: "numeric",
-      minute: "2-digit",
-    })
-    .replace(":", ".")
-    .replace(" ", "")
-    .toUpperCase();
-}
-
 function isUpcomingGame(game: Game) {
   const status = normalize(game.status);
 
-  if (status === "completed" || status === "played" || status === "final") {
-    return false;
-  }
-
-  if (status === "cancelled" || status === "postponed") {
+  if (["completed", "played", "final", "cancelled", "postponed"].includes(status)) {
     return false;
   }
 
@@ -242,34 +321,16 @@ function eventDeadlineClosed(event: CalendarEvent) {
   return Date.now() > deadline.getTime();
 }
 
-function makePairings(rows: Availability[]) {
-  const unique = new Map<string, Availability>();
-
-  for (const row of rows) {
-    const key = `${row.participant_source}:${row.participant_id}`;
-    if (!unique.has(key)) unique.set(key, row);
-  }
-
-  const cleanRows = Array.from(unique.values());
-  const pairings: [Availability, Availability][] = [];
-
-  for (let i = 0; i < cleanRows.length; i += 2) {
-    if (cleanRows[i] && cleanRows[i + 1]) {
-      pairings.push([cleanRows[i], cleanRows[i + 1]]);
-    }
-  }
-
-  return pairings;
+function getAvailabilityDate(row: Availability) {
+  return row.availability_date || row.created_at?.slice(0, 10) || kenyaDateString();
 }
 
 function sameMatchupPeople(
   matchup: Matchup,
   playerOne: Person,
   playerTwo: Person,
-  day?: string
+  dateValue?: string
 ) {
-  if (day && matchup.weekday && matchup.weekday !== day) return false;
-
   const direct =
     matchup.player_one_source === playerOne.source &&
     matchup.player_one_id === playerOne.id &&
@@ -282,7 +343,13 @@ function sameMatchupPeople(
     matchup.player_two_source === playerOne.source &&
     matchup.player_two_id === playerOne.id;
 
-  return direct || reverse;
+  const samePeople = direct || reverse;
+
+  if (!samePeople) return false;
+
+  if (!dateValue) return true;
+
+  return matchup.scheduled_date?.slice(0, 10) === dateValue;
 }
 
 function dedupePeople(people: Person[]) {
@@ -308,21 +375,105 @@ function dedupePeople(people: Person[]) {
   );
 }
 
+function addCourtOption(map: Map<string, string>, value?: string | null) {
+  const clean = String(value ?? "").trim();
+
+  if (!clean) return;
+
+  const key = clean.toLowerCase();
+
+  if (!map.has(key)) {
+    map.set(key, clean);
+  }
+}
+
+function buildCourtOptions(games: Game[], events: CalendarEvent[]) {
+  const map = new Map<string, string>();
+
+  DEFAULT_COURTS.forEach((court) => addCourtOption(map, court));
+
+  games.forEach((game) => {
+    addCourtOption(map, game.venue);
+  });
+
+  events.forEach((event) => {
+    addCourtOption(map, event.venue);
+  });
+
+  return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+}
+
+function getLatestContactForPerson(
+  availability: Availability[],
+  source: string,
+  id: string
+) {
+  const rows = availability
+    .filter(
+      (row) =>
+        row.participant_source === source &&
+        String(row.participant_id) === String(id)
+    )
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+
+  return {
+    email: rows.find((row) => row.participant_email)?.participant_email || "",
+    phone: rows.find((row) => row.participant_phone)?.participant_phone || "",
+  };
+}
+
+async function sendEmailNotification(payload: {
+  to?: string | string[] | "admin";
+  subject: string;
+  text: string;
+  html?: string;
+}) {
+  try {
+    const response = await fetch("/api/notify-email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = (await response.json().catch(() => ({
+      ok: false,
+      error: "Could not read email API response.",
+    }))) as EmailResult;
+
+    return result;
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Email request failed.",
+    };
+  }
+}
+
 export default function CalendarPage() {
+  const today = kenyaDateString();
+
   const [people, setPeople] = useState<Person[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [availability, setAvailability] = useState<Availability[]>([]);
   const [matchups, setMatchups] = useState<Matchup[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
 
   const [selectedPersonKey, setSelectedPersonKey] = useState("");
-  const [selectedWeekday, setSelectedWeekday] = useState("Tuesday");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+
+  const [selectedDate, setSelectedDate] = useState(today);
   const [preferredTime, setPreferredTime] = useState("");
+  const [preferredCourt, setPreferredCourt] = useState("");
   const [notes, setNotes] = useState("");
 
   const [challengeOpponentKey, setChallengeOpponentKey] = useState("");
-  const [challengeDay, setChallengeDay] = useState("Tuesday");
+  const [challengeDate, setChallengeDate] = useState(today);
   const [challengeTime, setChallengeTime] = useState("");
+  const [challengeCourt, setChallengeCourt] = useState("");
   const [challengeNotes, setChallengeNotes] = useState("");
 
   const [message, setMessage] = useState("");
@@ -341,24 +492,34 @@ export default function CalendarPage() {
     (person) => getPersonKey(person) !== selectedPersonKey
   );
 
-  const weeklyAvailability = availability.filter(
-    (row) => row.availability_type === "weekly" && row.status === "available"
-  );
+  const courtOptions = useMemo(() => {
+    return buildCourtOptions(games, events);
+  }, [games, events]);
 
-  const weeklyGroups = weekdays.map((day) => {
-    const rows = weeklyAvailability.filter((row) => row.weekday === day);
+  const activeWeekStart = getCurrentWeekStart();
 
-    return {
-      day,
+  const activeAvailability = availability
+    .filter((row) => row.availability_type === "weekly")
+    .filter((row) => row.status === "available")
+    .filter((row) => getWeekStartDateString(getAvailabilityDate(row)) >= activeWeekStart)
+    .sort((a, b) => getAvailabilityDate(a).localeCompare(getAvailabilityDate(b)));
+
+  const availabilityGroups = useMemo(() => {
+    const map = new Map<string, Availability[]>();
+
+    for (const row of activeAvailability) {
+      const dateKey = getAvailabilityDate(row);
+      const existing = map.get(dateKey) ?? [];
+      existing.push(row);
+      map.set(dateKey, existing);
+    }
+
+    return Array.from(map.entries()).map(([date, rows]) => ({
+      date,
+      weekday: getWeekdayName(date),
       rows,
-      pairings: makePairings(rows),
-    };
-  });
-
-  const suggestedPairingCount = weeklyGroups.reduce(
-    (acc, group) => acc + group.pairings.length,
-    0
-  );
+    }));
+  }, [activeAvailability]);
 
   const approvedMatchups = matchups.filter(
     (matchup) => matchup.matchup_status === "approved"
@@ -370,6 +531,8 @@ export default function CalendarPage() {
       matchup.matchup_status === "suggested"
   );
 
+  const unreadNotifications = notifications.filter((note) => !note.is_read);
+
   function getPersonImage(source: string, id: string) {
     return (
       people.find(
@@ -378,6 +541,24 @@ export default function CalendarPage() {
           String(person.id) === String(id)
       )?.photo_url || ""
     );
+  }
+
+  async function loadPersonNotifications(person: Person | undefined) {
+    if (!person) {
+      setNotifications([]);
+      return;
+    }
+
+    const { data } = await supabase
+      .from("fackts_notifications")
+      .select("*")
+      .eq("recipient_role", "player")
+      .eq("recipient_source", person.source)
+      .eq("recipient_id", person.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    setNotifications((data ?? []) as NotificationRow[]);
   }
 
   async function loadPageData() {
@@ -402,22 +583,13 @@ export default function CalendarPage() {
       supabase
         .from("fackts_availability")
         .select("*")
-        .order("created_at", { ascending: false }),
+        .order("availability_date", { ascending: true }),
       supabase
         .from("fackts_matchups")
         .select("*")
         .neq("matchup_status", "deleted")
         .order("created_at", { ascending: false }),
     ]);
-
-    const messages: string[] = [];
-
-    if (playersResult.error) messages.push(playersResult.error.message);
-    if (guestsResult.error) messages.push(guestsResult.error.message);
-    if (gamesResult.error) messages.push(gamesResult.error.message);
-    if (eventsResult.error) messages.push(eventsResult.error.message);
-    if (availabilityResult.error) messages.push(availabilityResult.error.message);
-    if (matchupsResult.error) messages.push(matchupsResult.error.message);
 
     const playerPeople: Person[] = (playersResult.data ?? [])
       .filter((player: any) => !isProspectRole(player))
@@ -455,10 +627,6 @@ export default function CalendarPage() {
     setAvailability((availabilityResult.data ?? []) as Availability[]);
     setMatchups((matchupsResult.data ?? []) as Matchup[]);
 
-    if (messages.length > 0) {
-      setMessage(messages.join(" | "));
-    }
-
     setLoadingPage(false);
   }
 
@@ -466,25 +634,83 @@ export default function CalendarPage() {
     loadPageData();
   }, []);
 
-  async function submitWeeklyAvailability() {
+  useEffect(() => {
+    loadPersonNotifications(selectedPerson);
+
     if (!selectedPerson) {
-      setMessage("Pick your name first.");
+      setContactEmail("");
+      setContactPhone("");
       return;
     }
 
+    const latest = getLatestContactForPerson(
+      availability,
+      selectedPerson.source,
+      selectedPerson.id
+    );
+
+    setContactEmail(latest.email || "");
+    setContactPhone(latest.phone || "");
+  }, [selectedPersonKey, selectedPerson, availability]);
+
+  async function markNotificationRead(notificationId: string) {
+    await supabase
+      .from("fackts_notifications")
+      .update({ is_read: true })
+      .eq("id", notificationId);
+
+    await loadPersonNotifications(selectedPerson);
+  }
+
+  function validateIdentity() {
+    if (!selectedPerson) {
+      setMessage("Pick your name first.");
+      return false;
+    }
+
+    if (!contactEmail.trim() || !contactEmail.includes("@")) {
+      setMessage("Add a valid email so you can receive approval notification.");
+      return false;
+    }
+
+    if (!contactPhone.trim()) {
+      setMessage("Add your phone number for FACKTS follow-up.");
+      return false;
+    }
+
+    return true;
+  }
+
+  function emailStatusText(result: EmailResult) {
+    if (result.ok) return "Email sent.";
+    return `Email not sent: ${result.error || "unknown email issue"}`;
+  }
+
+  async function submitAvailability() {
+    if (!validateIdentity() || !selectedPerson) return;
+
     setSaving(true);
     setMessage("");
+
+    const dateValue = selectedDate || today;
+    const weekday = getWeekdayName(dateValue);
+    const weekStart = getWeekStartDateString(dateValue);
 
     const payload = {
       participant_source: selectedPerson.source,
       participant_id: selectedPerson.id,
       participant_name: selectedPerson.full_name,
+      participant_email: contactEmail.trim(),
+      participant_phone: contactPhone.trim(),
       availability_type: "weekly",
-      weekday: selectedWeekday,
+      availability_date: dateValue,
+      week_start_date: weekStart,
+      weekday,
       game_id: "",
       event_id: "",
       status: "available",
       preferred_time: preferredTime.trim() || null,
+      preferred_court: preferredCourt.trim() || null,
       notes: notes.trim() || null,
       updated_at: new Date().toISOString(),
     };
@@ -493,7 +719,7 @@ export default function CalendarPage() {
       .from("fackts_availability")
       .upsert(payload, {
         onConflict:
-          "participant_source,participant_id,availability_type,weekday,game_id,event_id",
+          "participant_source,participant_id,availability_type,availability_date,game_id,event_id",
       });
 
     if (error) {
@@ -502,18 +728,32 @@ export default function CalendarPage() {
       return;
     }
 
-    setMessage(`Availability saved for ${selectedWeekday}.`);
+    const emailResult = await sendEmailNotification({
+      to: "admin",
+      subject: `New FACKTS availability: ${selectedPerson.full_name}`,
+      text: `${selectedPerson.full_name} is available on ${formatDateLabel(dateValue)} at ${
+        preferredTime || "time TBA"
+      }. Court: ${preferredCourt || "Court TBA"}. Phone: ${contactPhone}. Email: ${contactEmail}.`,
+      html: `<p><strong>${selectedPerson.full_name}</strong> is available.</p>
+<p><strong>Date:</strong> ${formatDateLabel(dateValue)}</p>
+<p><strong>Time:</strong> ${preferredTime || "Time TBA"}</p>
+<p><strong>Court:</strong> ${preferredCourt || "Court TBA"}</p>
+<p><strong>Phone:</strong> ${contactPhone}</p>
+<p><strong>Email:</strong> ${contactEmail}</p>`,
+    });
+
+    setMessage(
+      `Availability saved for ${formatDateLabel(dateValue)}. ${emailStatusText(emailResult)}`
+    );
     setPreferredTime("");
+    setPreferredCourt("");
     setNotes("");
     await loadPageData();
     setSaving(false);
   }
 
   async function submitChallengeRequest() {
-    if (!selectedPerson) {
-      setMessage("Pick your name first.");
-      return;
-    }
+    if (!validateIdentity() || !selectedPerson) return;
 
     if (!challengeOpponent) {
       setMessage("Pick who you want to play.");
@@ -529,13 +769,19 @@ export default function CalendarPage() {
       (matchup) =>
         matchup.matchup_status !== "deleted" &&
         matchup.matchup_status !== "rejected" &&
-        sameMatchupPeople(matchup, selectedPerson, challengeOpponent, challengeDay)
+        sameMatchupPeople(matchup, selectedPerson, challengeOpponent, challengeDate)
     );
 
     if (existing) {
-      setMessage("This matchup request already exists for that day.");
+      setMessage("This matchup request already exists for that date.");
       return;
     }
+
+    const opponentContact = getLatestContactForPerson(
+      availability,
+      challengeOpponent.source,
+      challengeOpponent.id
+    );
 
     setSaving(true);
     setMessage("");
@@ -546,16 +792,20 @@ export default function CalendarPage() {
       matchup_status: "suggested",
       matchup_source: "player_request",
       event_id: "",
-      weekday: challengeDay,
+      weekday: getWeekdayName(challengeDate),
       player_one_source: selectedPerson.source,
       player_one_id: selectedPerson.id,
       player_one_name: selectedPerson.full_name,
+      player_one_email: contactEmail.trim(),
+      player_one_phone: contactPhone.trim(),
       player_two_source: challengeOpponent.source,
       player_two_id: challengeOpponent.id,
       player_two_name: challengeOpponent.full_name,
-      scheduled_date: null,
+      player_two_email: opponentContact.email || null,
+      player_two_phone: opponentContact.phone || null,
+      scheduled_date: `${challengeDate}T12:00:00+03:00`,
       scheduled_time: challengeTime.trim() || null,
-      venue: "",
+      venue: challengeCourt.trim() || "",
       notes:
         challengeNotes.trim() ||
         `${selectedPerson.full_name} requested to play ${challengeOpponent.full_name}.`,
@@ -569,9 +819,28 @@ export default function CalendarPage() {
       return;
     }
 
-    setMessage("Challenge request sent. Admin will approve before it becomes official.");
+    const emailResult = await sendEmailNotification({
+      to: "admin",
+      subject: `New 1v1 request: ${selectedPerson.full_name} vs ${challengeOpponent.full_name}`,
+      text: `${selectedPerson.full_name} requested ${challengeOpponent.full_name} on ${formatDateLabel(
+        challengeDate
+      )}. Time: ${challengeTime || "Time TBA"}. Court: ${
+        challengeCourt || "Court TBA"
+      }. Phone: ${contactPhone}. Email: ${contactEmail}.`,
+      html: `<p><strong>${selectedPerson.full_name}</strong> requested a 1v1 against <strong>${challengeOpponent.full_name}</strong>.</p>
+<p><strong>Date:</strong> ${formatDateLabel(challengeDate)}</p>
+<p><strong>Time:</strong> ${challengeTime || "Time TBA"}</p>
+<p><strong>Court:</strong> ${challengeCourt || "Court TBA"}</p>
+<p><strong>Phone:</strong> ${contactPhone}</p>
+<p><strong>Email:</strong> ${contactEmail}</p>`,
+    });
+
+    setMessage(
+      `Challenge request sent. Admin will approve before it becomes official. ${emailStatusText(emailResult)}`
+    );
     setChallengeOpponentKey("");
     setChallengeTime("");
+    setChallengeCourt("");
     setChallengeNotes("");
     await loadPageData();
     setSaving(false);
@@ -581,10 +850,7 @@ export default function CalendarPage() {
     game: Game,
     status: "available" | "not_available"
   ) {
-    if (!selectedPerson) {
-      setMessage("Pick your name first before responding to a game.");
-      return;
-    }
+    if (!validateIdentity() || !selectedPerson) return;
 
     if (gameDeadlineClosed(game)) {
       setMessage("This game availability window is closed.");
@@ -594,16 +860,23 @@ export default function CalendarPage() {
     setSaving(true);
     setMessage("");
 
+    const gameDate = getGameDate(game)?.slice(0, 10) || today;
+
     const payload = {
       participant_source: selectedPerson.source,
       participant_id: selectedPerson.id,
       participant_name: selectedPerson.full_name,
+      participant_email: contactEmail.trim(),
+      participant_phone: contactPhone.trim(),
       availability_type: "game",
-      weekday: "",
+      availability_date: gameDate,
+      week_start_date: getWeekStartDateString(gameDate),
+      weekday: getWeekdayName(gameDate),
       game_id: game.id,
       event_id: "",
       status,
       preferred_time: null,
+      preferred_court: null,
       notes: null,
       updated_at: new Date().toISOString(),
     };
@@ -612,7 +885,7 @@ export default function CalendarPage() {
       .from("fackts_availability")
       .upsert(payload, {
         onConflict:
-          "participant_source,participant_id,availability_type,weekday,game_id,event_id",
+          "participant_source,participant_id,availability_type,availability_date,game_id,event_id",
       });
 
     if (error) {
@@ -621,7 +894,19 @@ export default function CalendarPage() {
       return;
     }
 
-    setMessage(`${selectedPerson.full_name} marked ${status.replace("_", " ")}.`);
+    const emailResult = await sendEmailNotification({
+      to: "admin",
+      subject: `Game availability: ${selectedPerson.full_name}`,
+      text: `${selectedPerson.full_name} marked ${status.replace("_", " ")} for FACKTS vs ${getOpponent(
+        game
+      )}. Phone: ${contactPhone}. Email: ${contactEmail}.`,
+    });
+
+    setMessage(
+      `${selectedPerson.full_name} marked ${status.replace("_", " ")}. ${emailStatusText(
+        emailResult
+      )}`
+    );
     await loadPageData();
     setSaving(false);
   }
@@ -630,10 +915,7 @@ export default function CalendarPage() {
     event: CalendarEvent,
     status: "available" | "not_available"
   ) {
-    if (!selectedPerson) {
-      setMessage("Pick your name first before responding to an event.");
-      return;
-    }
+    if (!validateIdentity() || !selectedPerson) return;
 
     if (eventDeadlineClosed(event)) {
       setMessage("This event registration window is closed.");
@@ -643,16 +925,23 @@ export default function CalendarPage() {
     setSaving(true);
     setMessage("");
 
+    const eventDate = event.event_date?.slice(0, 10) || today;
+
     const payload = {
       participant_source: selectedPerson.source,
       participant_id: selectedPerson.id,
       participant_name: selectedPerson.full_name,
+      participant_email: contactEmail.trim(),
+      participant_phone: contactPhone.trim(),
       availability_type: "event",
-      weekday: "",
+      availability_date: eventDate,
+      week_start_date: getWeekStartDateString(eventDate),
+      weekday: getWeekdayName(eventDate),
       game_id: "",
       event_id: event.id,
       status,
       preferred_time: null,
+      preferred_court: event.venue || null,
       notes: null,
       updated_at: new Date().toISOString(),
     };
@@ -661,7 +950,7 @@ export default function CalendarPage() {
       .from("fackts_availability")
       .upsert(payload, {
         onConflict:
-          "participant_source,participant_id,availability_type,weekday,game_id,event_id",
+          "participant_source,participant_id,availability_type,availability_date,game_id,event_id",
       });
 
     if (error) {
@@ -670,7 +959,19 @@ export default function CalendarPage() {
       return;
     }
 
-    setMessage(`${selectedPerson.full_name} responded to ${event.title}.`);
+    const emailResult = await sendEmailNotification({
+      to: "admin",
+      subject: `Event availability: ${selectedPerson.full_name}`,
+      text: `${selectedPerson.full_name} marked ${status.replace("_", " ")} for ${
+        event.title
+      }. Phone: ${contactPhone}. Email: ${contactEmail}.`,
+    });
+
+    setMessage(
+      `${selectedPerson.full_name} responded to ${event.title}. ${emailStatusText(
+        emailResult
+      )}`
+    );
     await loadPageData();
     setSaving(false);
   }
@@ -699,8 +1000,7 @@ export default function CalendarPage() {
               </h1>
 
               <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">
-                Pick your name, mark availability, or call out who you want to
-                play. Admin approves before anything becomes official.
+                Pick your identity once, then use Check-In or Call Out separately.
               </p>
             </div>
 
@@ -708,7 +1008,7 @@ export default function CalendarPage() {
               <HeroStat label="Hoopers" value={String(people.length)} />
               <HeroStat label="Games" value={String(games.length)} />
               <HeroStat label="Events" value={String(events.length)} />
-              <HeroStat label="Requests" value={String(pendingPlayerRequests.length)} />
+              <HeroStat label="Alerts" value={String(unreadNotifications.length)} />
             </div>
           </div>
         </section>
@@ -725,64 +1025,86 @@ export default function CalendarPage() {
           </div>
         ) : (
           <>
+            <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
+              <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+                Player Identity
+              </div>
+
+              <h2 className="mt-2 text-2xl font-black">Start Here</h2>
+
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                Pick yourself once. Both Check-In and Call Out will use this identity.
+              </p>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                <NameSelect
+                  people={people}
+                  value={selectedPersonKey}
+                  onChange={setSelectedPersonKey}
+                />
+
+                <FieldLabel label="Email">
+                  <input
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                    placeholder="you@example.com"
+                    className={inputClass}
+                  />
+                </FieldLabel>
+
+                <FieldLabel label="Phone Number">
+                  <input
+                    value={contactPhone}
+                    onChange={(event) => setContactPhone(event.target.value)}
+                    placeholder="0711 468303"
+                    className={inputClass}
+                  />
+                </FieldLabel>
+              </div>
+            </section>
+
             <section className="mt-6 grid gap-6 lg:grid-cols-2">
               <ActionCard eyebrow="Player Check-In" title="Pick Your Availability">
                 <p className="text-sm leading-6 text-zinc-400">
-                  Choose your name, pick a day, and submit. Admin will approve
-                  official 1v1 pairings.
+                  This only marks your availability. It does not request a specific opponent.
                 </p>
 
                 <div className="mt-5 space-y-4">
-                  <NameSelect
-                    people={people}
-                    value={selectedPersonKey}
-                    onChange={setSelectedPersonKey}
-                  />
-
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <div className="mb-2 text-sm font-bold text-zinc-300">
-                        Available Day
-                      </div>
+                    <DateField
+                      label="Available Date"
+                      value={selectedDate}
+                      onChange={setSelectedDate}
+                    />
 
-                      <select
-                        value={selectedWeekday}
-                        onChange={(event) => setSelectedWeekday(event.target.value)}
-                        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
-                      >
-                        {weekdays.map((day) => (
-                          <option key={day} value={day}>
-                            {day}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="block">
-                      <div className="mb-2 text-sm font-bold text-zinc-300">
-                        Preferred Time
-                      </div>
-
+                    <FieldLabel label="Preferred Time">
                       <input
                         value={preferredTime}
                         onChange={(event) => setPreferredTime(event.target.value)}
                         placeholder="Example: 4pm - 6pm"
-                        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                        className={inputClass}
                       />
-                    </label>
+                    </FieldLabel>
                   </div>
+
+                  <CourtSelect
+                    courts={courtOptions}
+                    value={preferredCourt}
+                    onChange={setPreferredCourt}
+                    label="Preferred Court"
+                  />
 
                   <textarea
                     rows={3}
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
                     placeholder="Example: I can do 1v1 after class."
-                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                    className={`${inputClass} resize-none`}
                   />
 
                   <button
                     type="button"
-                    onClick={submitWeeklyAvailability}
+                    onClick={submitAvailability}
                     disabled={saving}
                     className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -793,26 +1115,15 @@ export default function CalendarPage() {
 
               <ActionCard eyebrow="Call Out" title="Request A 1v1 Matchup">
                 <p className="text-sm leading-6 text-zinc-400">
-                  Example: Hardy can request JAO. Admin sees the request and
-                  approves it before it appears on 1v1 battles.
+                  This requests a specific opponent. Admin approves before it goes official.
                 </p>
 
                 <div className="mt-5 space-y-4">
-                  <NameSelect
-                    people={people}
-                    value={selectedPersonKey}
-                    onChange={setSelectedPersonKey}
-                  />
-
-                  <label className="block">
-                    <div className="mb-2 text-sm font-bold text-zinc-300">
-                      Who do you want to play?
-                    </div>
-
+                  <FieldLabel label="Who do you want to play?">
                     <select
                       value={challengeOpponentKey}
                       onChange={(event) => setChallengeOpponentKey(event.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                      className={selectClass}
                     >
                       <option value="">Select opponent</option>
                       {opponentOptions.map((person) => (
@@ -826,47 +1137,38 @@ export default function CalendarPage() {
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </FieldLabel>
 
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <div className="mb-2 text-sm font-bold text-zinc-300">
-                        Preferred Day
-                      </div>
+                    <DateField
+                      label="Preferred Date"
+                      value={challengeDate}
+                      onChange={setChallengeDate}
+                    />
 
-                      <select
-                        value={challengeDay}
-                        onChange={(event) => setChallengeDay(event.target.value)}
-                        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
-                      >
-                        {weekdays.map((day) => (
-                          <option key={day} value={day}>
-                            {day}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="block">
-                      <div className="mb-2 text-sm font-bold text-zinc-300">
-                        Preferred Time
-                      </div>
-
+                    <FieldLabel label="Preferred Time">
                       <input
                         value={challengeTime}
                         onChange={(event) => setChallengeTime(event.target.value)}
                         placeholder="Example: 5pm"
-                        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                        className={inputClass}
                       />
-                    </label>
+                    </FieldLabel>
                   </div>
+
+                  <CourtSelect
+                    courts={courtOptions}
+                    value={challengeCourt}
+                    onChange={setChallengeCourt}
+                    label="Preferred Court"
+                  />
 
                   <textarea
                     rows={3}
                     value={challengeNotes}
                     onChange={(event) => setChallengeNotes(event.target.value)}
                     placeholder="Example: I want JAO this Monday."
-                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+                    className={`${inputClass} resize-none`}
                   />
 
                   <button
@@ -881,36 +1183,47 @@ export default function CalendarPage() {
               </ActionCard>
             </section>
 
+            <NotificationBox
+              selectedPerson={selectedPerson}
+              notifications={notifications}
+              onRead={markNotificationRead}
+            />
+
             <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
               <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                1v1 Pool
+                Weekly Board
               </div>
 
-              <h2 className="mt-2 text-2xl font-black">Same-Day Hoopers</h2>
+              <h2 className="mt-2 text-2xl font-black">Available Hoopers</h2>
 
               <p className="mt-2 text-sm leading-6 text-zinc-400">
-                Availability pool only. Admin chooses the official matchups.
+                Active week only. Old availability drops after the week ends.
               </p>
 
               <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                {weeklyGroups.map((group) => (
-                  <div
-                    key={group.day}
-                    className="rounded-3xl border border-white/10 bg-black/70 p-4"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-lg font-black">{group.day}</div>
+                {availabilityGroups.length === 0 ? (
+                  <EmptyBox text="No active availability yet." />
+                ) : (
+                  availabilityGroups.map((group) => (
+                    <div
+                      key={group.date}
+                      className="rounded-3xl border border-white/10 bg-black/70 p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-lg font-black">
+                            {formatDateLabel(group.date)}
+                          </div>
+                          <div className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-500">
+                            {group.weekday}
+                          </div>
+                        </div>
 
-                      <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-300">
-                        {group.rows.length} available
+                        <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-300">
+                          {group.rows.length} available
+                        </div>
                       </div>
-                    </div>
 
-                    {group.rows.length === 0 ? (
-                      <div className="mt-3 text-sm text-zinc-600">
-                        No one has picked this day yet.
-                      </div>
-                    ) : (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {group.rows.map((row) => (
                           <span
@@ -919,50 +1232,40 @@ export default function CalendarPage() {
                           >
                             {row.participant_name}
                             {row.preferred_time ? ` • ${row.preferred_time}` : ""}
+                            {row.preferred_court ? ` • ${row.preferred_court}` : ""}
                           </span>
                         ))}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  ))
+                )}
               </div>
             </section>
 
-            <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
-              <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                Player Requests
-              </div>
-
-              <h2 className="mt-1 text-2xl font-black">Pending Challenge Requests</h2>
-
+            <CalendarFixtureSection eyebrow="Player Requests" title="Pending Challenge Requests">
               {pendingPlayerRequests.length === 0 ? (
                 <EmptyBox text="No player challenge requests yet." />
               ) : (
-                <div className="mt-5 space-y-3">
-                  {pendingPlayerRequests.map((matchup) => (
-                    <BasketballShowcaseCard
-                      key={matchup.id}
-                      leftName={matchup.player_one_name}
-                      rightName={matchup.player_two_name}
-                      leftImage={getPersonImage(matchup.player_one_source, matchup.player_one_id)}
-                      rightImage={getPersonImage(matchup.player_two_source, matchup.player_two_id)}
-                      eyebrow="1V1"
-                      badge="REQUESTED BATTLE"
-                      date={matchup.weekday || "DAY TBA"}
-                      time={matchup.scheduled_time || "TIME TBA"}
-                      venue="Awaiting admin approval"
-                      status="Pending"
-                      statusTone="closed"
-                    />
-                  ))}
-                </div>
+                pendingPlayerRequests.map((matchup) => (
+                  <BasketballShowcaseCard
+                    key={matchup.id}
+                    leftName={matchup.player_one_name}
+                    rightName={matchup.player_two_name}
+                    leftImage={getPersonImage(matchup.player_one_source, matchup.player_one_id)}
+                    rightImage={getPersonImage(matchup.player_two_source, matchup.player_two_id)}
+                    eyebrow="1V1"
+                    badge="REQUESTED BATTLE"
+                    date={formatDateLabel(matchup.scheduled_date?.slice(0, 10))}
+                    time={matchup.scheduled_time || "TIME TBA"}
+                    venue={matchup.venue || "Awaiting admin approval"}
+                    status="Pending"
+                    statusTone="closed"
+                  />
+                ))
               )}
-            </section>
+            </CalendarFixtureSection>
 
-            <CalendarFixtureSection
-              title="Event Availability"
-              eyebrow="Upcoming Events"
-            >
+            <CalendarFixtureSection eyebrow="Upcoming Events" title="Event Availability">
               {events.length === 0 ? (
                 <EmptyBox text="No upcoming FACKTS events are open right now." />
               ) : (
@@ -975,13 +1278,8 @@ export default function CalendarPage() {
                       row.event_id === event.id
                   );
 
-                  const available = responses.filter(
-                    (row) => row.status === "available"
-                  );
-
-                  const notAvailable = responses.filter(
-                    (row) => row.status === "not_available"
-                  );
+                  const available = responses.filter((row) => row.status === "available");
+                  const notAvailable = responses.filter((row) => row.status === "not_available");
 
                   return (
                     <BasketballShowcaseCard
@@ -992,7 +1290,7 @@ export default function CalendarPage() {
                       rightImage={event.poster_url || ""}
                       eyebrow="EVENT"
                       badge={event.event_type.replaceAll("_", " ").toUpperCase()}
-                      date={formatShortDate(event.event_date)}
+                      date={formatDateLabel(event.event_date?.slice(0, 10))}
                       time={formatShortTime(event.event_date)}
                       venue={getEventLocation(event)}
                       status={closed ? "Closed" : "Open"}
@@ -1011,9 +1309,7 @@ export default function CalendarPage() {
                         <button
                           type="button"
                           disabled={closed || saving}
-                          onClick={() =>
-                            submitEventAvailability(event, "not_available")
-                          }
+                          onClick={() => submitEventAvailability(event, "not_available")}
                           className="rounded-full bg-rose-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-40"
                         >
                           No {notAvailable.length}
@@ -1025,10 +1321,7 @@ export default function CalendarPage() {
               )}
             </CalendarFixtureSection>
 
-            <CalendarFixtureSection
-              title="Game Availability"
-              eyebrow="Upcoming Games"
-            >
+            <CalendarFixtureSection eyebrow="Upcoming Games" title="Game Availability">
               {games.length === 0 ? (
                 <EmptyBox text="No upcoming games are open right now." />
               ) : (
@@ -1041,13 +1334,8 @@ export default function CalendarPage() {
                       row.game_id === game.id
                   );
 
-                  const available = responses.filter(
-                    (row) => row.status === "available"
-                  );
-
-                  const notAvailable = responses.filter(
-                    (row) => row.status === "not_available"
-                  );
+                  const available = responses.filter((row) => row.status === "available");
+                  const notAvailable = responses.filter((row) => row.status === "not_available");
 
                   return (
                     <BasketballShowcaseCard
@@ -1058,7 +1346,7 @@ export default function CalendarPage() {
                       rightImage={getGamePoster(game)}
                       eyebrow="GAME"
                       badge="GAME CALL"
-                      date={formatShortDate(getGameDate(game))}
+                      date={formatDateLabel(getGameDate(game)?.slice(0, 10))}
                       time={formatShortTime(getGameDate(game))}
                       venue={getGameLocation(game)}
                       status={closed ? "Closed" : "Open"}
@@ -1077,9 +1365,7 @@ export default function CalendarPage() {
                         <button
                           type="button"
                           disabled={closed || saving}
-                          onClick={() =>
-                            submitGameAvailability(game, "not_available")
-                          }
+                          onClick={() => submitGameAvailability(game, "not_available")}
                           className="rounded-full bg-rose-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-40"
                         >
                           No {notAvailable.length}
@@ -1091,36 +1377,28 @@ export default function CalendarPage() {
               )}
             </CalendarFixtureSection>
 
-            <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
-              <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                Approved Battles
-              </div>
-
-              <h2 className="mt-1 text-2xl font-black">Official 1v1 Matchups</h2>
-
+            <CalendarFixtureSection eyebrow="Approved Battles" title="Official 1v1 Matchups">
               {approvedMatchups.length === 0 ? (
                 <EmptyBox text="No approved matchups yet." />
               ) : (
-                <div className="mt-5 space-y-3">
-                  {approvedMatchups.map((matchup) => (
-                    <BasketballShowcaseCard
-                      key={matchup.id}
-                      leftName={matchup.player_one_name}
-                      rightName={matchup.player_two_name}
-                      leftImage={getPersonImage(matchup.player_one_source, matchup.player_one_id)}
-                      rightImage={getPersonImage(matchup.player_two_source, matchup.player_two_id)}
-                      eyebrow="1V1"
-                      badge="APPROVED BATTLE"
-                      date={formatShortDate(matchup.scheduled_date)}
-                      time={matchup.scheduled_time || "TIME TBA"}
-                      venue={matchup.venue || matchup.weekday || "Venue TBA"}
-                      status="Approved"
-                      statusTone="open"
-                    />
-                  ))}
-                </div>
+                approvedMatchups.map((matchup) => (
+                  <BasketballShowcaseCard
+                    key={matchup.id}
+                    leftName={matchup.player_one_name}
+                    rightName={matchup.player_two_name}
+                    leftImage={getPersonImage(matchup.player_one_source, matchup.player_one_id)}
+                    rightImage={getPersonImage(matchup.player_two_source, matchup.player_two_id)}
+                    eyebrow="1V1"
+                    badge="APPROVED BATTLE"
+                    date={formatDateLabel(matchup.scheduled_date?.slice(0, 10))}
+                    time={matchup.scheduled_time || "TIME TBA"}
+                    venue={matchup.venue || matchup.weekday || "Venue TBA"}
+                    status="Approved"
+                    statusTone="open"
+                  />
+                ))
               )}
-            </section>
+            </CalendarFixtureSection>
           </>
         )}
       </div>
@@ -1134,7 +1412,6 @@ function HeroStat({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
         {label}
       </div>
-
       <div className="mt-2 text-2xl font-black text-orange-300">{value}</div>
     </div>
   );
@@ -1154,11 +1431,92 @@ function ActionCard({
       <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
         {eyebrow}
       </div>
-
       <h2 className="mt-2 text-2xl font-black">{title}</h2>
-
       <div className="mt-2">{children}</div>
     </div>
+  );
+}
+
+function FieldLabel({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-bold text-zinc-300">{label}</div>
+      {children}
+    </label>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function openPicker() {
+    const input = inputRef.current as
+      | (HTMLInputElement & { showPicker?: () => void })
+      | null;
+
+    if (!input) return;
+
+    input.focus();
+
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+
+    input.click();
+  }
+
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-bold text-zinc-300">{label}</div>
+
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="date"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onClick={openPicker}
+          className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 pr-12 text-white outline-none [color-scheme:dark] focus:border-orange-400 [&::-webkit-calendar-picker-indicator]:opacity-0"
+        />
+
+        <button
+          type="button"
+          onClick={openPicker}
+          className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+          aria-label={`Open ${label} calendar`}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M7 2v3M17 2v3M3.5 9h17M6 5h12a2.5 2.5 0 0 1 2.5 2.5v10A2.5 2.5 0 0 1 18 20H6a2.5 2.5 0 0 1-2.5-2.5v-10A2.5 2.5 0 0 1 6 5Z"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+    </label>
   );
 }
 
@@ -1172,13 +1530,11 @@ function NameSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block">
-      <div className="mb-2 text-sm font-bold text-zinc-300">Your Name</div>
-
+    <FieldLabel label="Your Name">
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
+        className={selectClass}
       >
         <option value="">Select player or guest hooper</option>
         {people.map((person) => (
@@ -1188,7 +1544,97 @@ function NameSelect({
           </option>
         ))}
       </select>
-    </label>
+    </FieldLabel>
+  );
+}
+
+function CourtSelect({
+  courts,
+  value,
+  onChange,
+  label,
+}: {
+  courts: string[];
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  return (
+    <FieldLabel label={label}>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={selectClass}
+      >
+        <option value="">Court TBA</option>
+
+        {courts.map((court) => (
+          <option key={court} value={court}>
+            {court}
+          </option>
+        ))}
+      </select>
+    </FieldLabel>
+  );
+}
+
+function NotificationBox({
+  selectedPerson,
+  notifications,
+  onRead,
+}: {
+  selectedPerson?: Person;
+  notifications: NotificationRow[];
+  onRead: (id: string) => void;
+}) {
+  if (!selectedPerson) return null;
+
+  return (
+    <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
+      <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+        Player Notifications
+      </div>
+
+      <h2 className="mt-1 text-2xl font-black">{selectedPerson.full_name}</h2>
+
+      {notifications.length === 0 ? (
+        <EmptyBox text="No notifications yet." />
+      ) : (
+        <div className="mt-4 space-y-3">
+          {notifications.map((note) => (
+            <div
+              key={note.id}
+              className={`rounded-2xl border p-4 ${
+                note.is_read
+                  ? "border-white/10 bg-black/50"
+                  : "border-orange-500/30 bg-orange-500/10"
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-black">{note.title}</div>
+                  {note.body ? (
+                    <p className="mt-1 text-sm leading-6 text-zinc-400">
+                      {note.body}
+                    </p>
+                  ) : null}
+                </div>
+
+                {!note.is_read ? (
+                  <button
+                    type="button"
+                    onClick={() => onRead(note.id)}
+                    className="rounded-full bg-orange-500 px-3 py-1 text-[10px] font-black uppercase text-black"
+                  >
+                    Mark Read
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1203,14 +1649,11 @@ function CalendarFixtureSection({
 }) {
   return (
     <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-            {eyebrow}
-          </div>
-
-          <h2 className="mt-1 text-2xl font-black">{title}</h2>
+      <div className="mb-5">
+        <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+          {eyebrow}
         </div>
+        <h2 className="mt-1 text-2xl font-black">{title}</h2>
       </div>
 
       <div className="space-y-4">{children}</div>
@@ -1251,8 +1694,6 @@ function BasketballShowcaseCard({
     <div className="group relative mx-auto w-full max-w-5xl overflow-hidden rounded-[30px] border border-orange-500/25 bg-[#05070d] shadow-[0_24px_60px_rgba(0,0,0,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_rgba(0,0,0,0.7)]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.18),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_30%)]" />
 
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.03)_0%,transparent_22%,transparent_78%,rgba(255,255,255,0.03)_100%)]" />
-
       {artImage ? (
         <div
           className="absolute inset-0 opacity-[0.10] blur-[1.5px]"
@@ -1265,11 +1706,6 @@ function BasketballShowcaseCard({
       ) : null}
 
       <div className="absolute inset-y-0 right-0 w-full bg-[linear-gradient(160deg,rgba(14,36,73,0.72),rgba(8,18,36,0.92))] sm:w-[34%]" />
-      <div className="absolute inset-y-0 right-[31%] hidden w-16 skew-x-[-18deg] bg-orange-500/12 sm:block" />
-      <div className="absolute inset-y-0 right-[30%] hidden w-[1px] bg-white/10 sm:block" />
-
-      <div className="absolute left-0 right-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-orange-400/70 to-transparent" />
-      <div className="absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-blue-400/50 to-transparent" />
 
       <div className="relative grid min-h-[168px] grid-cols-1 sm:grid-cols-[1fr_240px]">
         <div className="flex items-center justify-center px-4 py-5 sm:px-6">
@@ -1281,9 +1717,8 @@ function BasketballShowcaseCard({
                 {eyebrow}
               </div>
 
-              <div className="relative mt-2 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/10 text-base font-black text-white shadow-[inset_0_0_14px_rgba(255,255,255,0.06)]">
-                <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(249,115,22,0.16),transparent_65%)]" />
-                <span className="relative">VS</span>
+              <div className="relative mt-2 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/10 text-base font-black text-white">
+                VS
               </div>
 
               <div className="mt-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[8px] font-black uppercase tracking-[0.18em] text-blue-200">
@@ -1341,9 +1776,6 @@ function CompetitorBadge({
   return (
     <div className="flex w-[98px] shrink-0 flex-col items-center text-center sm:w-[128px]">
       <div className="relative flex h-[74px] w-[74px] items-center justify-center overflow-hidden rounded-[22px] border border-white/10 bg-[linear-gradient(160deg,#0f172a,#111827)] shadow-[0_12px_25px_rgba(0,0,0,0.35)] sm:h-[82px] sm:w-[82px]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.14),transparent_35%)]" />
-        <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-orange-400/70 to-transparent" />
-
         <SafeImage image={image} name={name} />
       </div>
 
