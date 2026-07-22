@@ -336,6 +336,8 @@ export default function AdminGamesPage() {
         updated_at: new Date().toISOString(),
       };
 
+      let savedGameId = editingId || "";
+
       if (editingId) {
         const { error } = await supabase
           .from("games")
@@ -348,16 +350,33 @@ export default function AdminGamesPage() {
 
         setMessage("Game updated successfully.");
       } else {
-        const { error } = await supabase.from("games").insert({
-          ...payload,
-          created_at: new Date().toISOString(),
-        });
+        const { data: createdGame, error } = await supabase
+          .from("games")
+          .insert({
+            ...payload,
+            created_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
 
         if (error) {
           throw new Error(error.message);
         }
 
+        savedGameId = createdGame.id;
+
         setMessage("Game added successfully.");
+      }
+
+      if (isUpcoming && savedGameId) {
+        await fetch("/api/notification-events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "admin.game_changed",
+            game_id: savedGameId,
+          }),
+        }).catch(() => undefined);
       }
 
       resetForm();

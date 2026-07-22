@@ -1,4 +1,7 @@
 import Link from "next/link";
+import AdminLogoutButton from "@/app/components/AdminLogoutButton";
+import NotificationBell from "@/app/components/NotificationBell";
+import PushNotificationManager from "@/app/components/PushNotificationManager";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,6 +34,14 @@ const coreCards: AdminCard[] = [
       "Review incoming applications and approve hoopers into the correct category.",
     href: "/admin/player-applications",
     badge: "Applications",
+    featured: true,
+  },
+  {
+    title: "Player Accounts",
+    description:
+      "Invite official players, resend secure access links, and revoke player portal access.",
+    href: "/admin/player-access",
+    badge: "Access",
     featured: true,
   },
   {
@@ -134,12 +145,27 @@ const rosterCards: AdminCard[] = [
 
 const businessCards: AdminCard[] = [
   {
+    title: "App Notifications",
+    description:
+      "See alerts, enable device push, and send announcements to active player accounts.",
+    href: "/admin/notifications",
+    badge: "Push",
+    featured: true,
+  },
+  {
     title: "Partners",
     description:
       "Add and edit FACKTS partners, sponsors, collaborators, institutions, and business partners.",
     href: "/admin/partners",
     badge: "Partners",
     featured: true,
+  },
+  {
+    title: "Email Notifications",
+    description:
+      "Check the approved Resend sender and send a live notification test.",
+    href: "/admin/email",
+    badge: "Email",
   },
 ];
 
@@ -166,6 +192,8 @@ export default function AdminPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <NotificationBell />
+
               <Link
                 href="/"
                 className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
@@ -187,12 +215,7 @@ export default function AdminPage() {
                 Public Partners
               </Link>
 
-              <Link
-                href="/api/admin/logout"
-                className="rounded-full bg-orange-500 px-4 py-2 text-sm font-black text-black transition hover:bg-orange-400"
-              >
-                Logout
-              </Link>
+              <AdminLogoutButton />
             </div>
           </div>
 
@@ -201,6 +224,10 @@ export default function AdminPage() {
             <AdminStat label="Events & Media" value={eventCards.length} />
             <AdminStat label="Guests" value={guestCards.length} />
             <AdminStat label="Business Tools" value={businessCards.length} />
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+            <PushNotificationManager compact />
           </div>
         </div>
       </section>

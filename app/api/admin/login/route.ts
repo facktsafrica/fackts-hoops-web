@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 export async function POST(request: NextRequest) {
   const { email, password } = await request.json();
 
-  let response = NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true });
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -34,26 +34,25 @@ export async function POST(request: NextRequest) {
     password,
   });
 
-  if (error || !data.user?.email) {
+  if (error || !data.user) {
     return NextResponse.json(
       { ok: false, error: error?.message ?? "Login failed." },
       { status: 401 }
     );
   }
 
-  const allowedEmails = (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
+  const { data: profile, error: profileError } = await supabase
+    .from("admin_profiles")
+    .select("id, role, is_active")
+    .eq("user_id", data.user.id)
+    .eq("is_active", true)
+    .maybeSingle();
 
-  if (
-    allowedEmails.length > 0 &&
-    !allowedEmails.includes(data.user.email.toLowerCase())
-  ) {
+  if (profileError || !profile) {
     await supabase.auth.signOut();
 
     return NextResponse.json(
-      { ok: false, error: "This email is not allowed to access admin." },
+      { ok: false, error: "This account is not approved for admin access." },
       { status: 403 }
     );
   }

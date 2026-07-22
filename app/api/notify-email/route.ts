@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
 
 export const runtime = "nodejs";
 
@@ -9,122 +11,94 @@ type EmailPayload = {
   html?: string;
 };
 
-function cleanEmailList(value: unknown, adminEmail: string) {
-  if (value === "admin" || !value) return [adminEmail];
-
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => String(item).trim())
-      .filter((item) => item.includes("@"));
-  }
-
-  return String(value)
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.includes("@"));
+function officialPlayerRole(role?: string | null) {
+  const cleanRole = String(role ?? "").toLowerCase();
+  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
 }
 
-function getErrorMessage(result: any) {
-  if (!result) return "Unknown Resend error.";
-  if (typeof result.message === "string") return result.message;
-  if (typeof result.error === "string") return result.error;
-  if (typeof result?.error?.message === "string") return result.error.message;
+function cleanRecipients(value: unknown) {
+  const raw = Array.isArray(value) ? value : String(value ?? "").split(",");
+  return raw
+    .map((item) => String(item).trim().toLowerCase())
+    .filter((item) => item.includes("@"))
+    .slice(0, 5);
+}
 
+export async function POST(request: NextRequest) {
   try {
-    return JSON.stringify(result);
-  } catch {
-    return "Resend rejected the request.";
-  }
-}
+    const origin = request.headers.get("origin");
+    if (origin && origin !== request.nextUrl.origin) {
+      return NextResponse.json({ ok: false, error: "Request rejected." }, { status: 403 });
+    }
 
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    has_resend_api_key: Boolean(process.env.RESEND_API_KEY),
-    admin_email: process.env.FACKTS_ADMIN_EMAIL || "facktsafrica@gmail.com",
-    email_from:
-      process.env.EMAIL_FROM || "FACKTS Hoops <onboarding@resend.dev>",
-  });
-}
+    const supabase = await createServerSupabaseClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
 
-export async function POST(request: Request) {
-  try {
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "Login required." }, { status: 401 });
+    }
+
+    const [{ data: adminProfile }, { data: player }] = await Promise.all([
+      supabase
+        .from("admin_profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .maybeSingle(),
+      supabase
+        .from("players")
+        .select("id, role")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .maybeSingle(),
+    ]);
+
     const body = (await request.json()) as EmailPayload;
+    const config = getEmailConfiguration();
+    const isAdmin = Boolean(adminProfile);
+    const isPlayer = Boolean(player && officialPlayerRole(player.role));
 
-    const apiKey = process.env.RESEND_API_KEY;
-    const adminEmail =
-      process.env.FACKTS_ADMIN_EMAIL || "facktsafrica@gmail.com";
-    const from =
-      process.env.EMAIL_FROM || "FACKTS Hoops <onboarding@resend.dev>";
-
-    const to = cleanEmailList(body.to, adminEmail);
-    const subject = String(body.subject || "").trim();
-    const text = String(body.text || "").trim();
-    const html = String(body.html || "").trim();
-
-    if (!apiKey) {
-      return NextResponse.json({
-        ok: false,
-        error:
-          "RESEND_API_KEY missing. Add it in Vercel Environment Variables and redeploy.",
-      });
+    if (!isAdmin && !isPlayer) {
+      return NextResponse.json({ ok: false, error: "Approved account required." }, { status: 403 });
     }
 
-    if (to.length === 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "No valid recipient email.",
-      });
+    const wantsAdmin = body.to === "admin" || !body.to;
+    const recipients = wantsAdmin
+      ? config.adminEmail
+        ? [config.adminEmail]
+        : []
+      : cleanRecipients(body.to);
+
+    if (!wantsAdmin && !isAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Only admins can email player recipients." },
+        { status: 403 }
+      );
     }
 
-    if (!subject) {
-      return NextResponse.json({
-        ok: false,
-        error: "Email subject missing.",
-      });
+    const subject = String(body.subject ?? "").trim().slice(0, 160);
+    const text = String(body.text ?? "").trim().slice(0, 4000);
+
+    if (!subject || !text || recipients.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Email recipient, subject, or message is missing." },
+        { status: 400 }
+      );
     }
 
-    if (!text && !html) {
-      return NextResponse.json({
-        ok: false,
-        error: "Email body missing.",
-      });
-    }
-
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to,
-        subject,
-        text: text || undefined,
-        html: html || undefined,
-      }),
+    const result = await sendResendEmail({
+      to: recipients,
+      subject,
+      text,
+      html: isAdmin ? String(body.html ?? "").slice(0, 12000) || undefined : undefined,
     });
 
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      return NextResponse.json({
-        ok: false,
-        error: getErrorMessage(result),
-        details: result,
-      });
-    }
-
-    return NextResponse.json({
-      ok: true,
-      message: "Email sent.",
-      result,
-    });
+    return NextResponse.json({ ok: true, message: "Email sent.", id: result.id });
   } catch (error) {
-    return NextResponse.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "Unknown email error.",
-    });
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Email failed." },
+      { status: 400 }
+    );
   }
 }

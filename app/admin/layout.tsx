@@ -29,8 +29,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       setAccess("checking");
       setMessage("Checking login session...");
 
-      const sessionResult = await supabase.auth.getSession();
-      const user = sessionResult.data.session?.user;
+      const userResult = await supabase.auth.getUser();
+      const user = userResult.data.user;
 
       if (!user) {
         if (active) {
@@ -74,15 +74,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
     checkAccess();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      checkAccess();
-    });
-
     return () => {
       active = false;
-      subscription.unsubscribe();
     };
   }, [isLoginPage, pathname]);
 

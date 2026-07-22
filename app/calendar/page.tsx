@@ -451,6 +451,18 @@ async function sendEmailNotification(payload: {
   }
 }
 
+async function sendAppEvent(event: string, details: Record<string, unknown>) {
+  try {
+    await fetch("/api/notification-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, ...details }),
+    });
+  } catch {
+    // The player action remains saved even if a device push is temporarily unavailable.
+  }
+}
+
 export default function CalendarPage() {
   const today = kenyaDateString();
 
@@ -728,6 +740,12 @@ export default function CalendarPage() {
       return;
     }
 
+    await sendAppEvent("player.availability", {
+      date: dateValue,
+      time: preferredTime,
+      court: preferredCourt,
+    });
+
     const emailResult = await sendEmailNotification({
       to: "admin",
       subject: `New FACKTS availability: ${selectedPerson.full_name}`,
@@ -819,6 +837,13 @@ export default function CalendarPage() {
       return;
     }
 
+    await sendAppEvent("player.challenge", {
+      opponent_id: challengeOpponent.id,
+      date: challengeDate,
+      time: challengeTime,
+      court: challengeCourt,
+    });
+
     const emailResult = await sendEmailNotification({
       to: "admin",
       subject: `New 1v1 request: ${selectedPerson.full_name} vs ${challengeOpponent.full_name}`,
@@ -894,6 +919,11 @@ export default function CalendarPage() {
       return;
     }
 
+    await sendAppEvent("player.game_response", {
+      game_id: game.id,
+      status,
+    });
+
     const emailResult = await sendEmailNotification({
       to: "admin",
       subject: `Game availability: ${selectedPerson.full_name}`,
@@ -958,6 +988,11 @@ export default function CalendarPage() {
       setSaving(false);
       return;
     }
+
+    await sendAppEvent("player.event_response", {
+      event_id: event.id,
+      status,
+    });
 
     const emailResult = await sendEmailNotification({
       to: "admin",
@@ -1183,12 +1218,6 @@ export default function CalendarPage() {
               </ActionCard>
             </section>
 
-            <NotificationBox
-              selectedPerson={selectedPerson}
-              notifications={notifications}
-              onRead={markNotificationRead}
-            />
-
             <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
               <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
                 Weekly Board
@@ -1241,29 +1270,6 @@ export default function CalendarPage() {
                 )}
               </div>
             </section>
-
-            <CalendarFixtureSection eyebrow="Player Requests" title="Pending Challenge Requests">
-              {pendingPlayerRequests.length === 0 ? (
-                <EmptyBox text="No player challenge requests yet." />
-              ) : (
-                pendingPlayerRequests.map((matchup) => (
-                  <BasketballShowcaseCard
-                    key={matchup.id}
-                    leftName={matchup.player_one_name}
-                    rightName={matchup.player_two_name}
-                    leftImage={getPersonImage(matchup.player_one_source, matchup.player_one_id)}
-                    rightImage={getPersonImage(matchup.player_two_source, matchup.player_two_id)}
-                    eyebrow="1V1"
-                    badge="REQUESTED BATTLE"
-                    date={formatDateLabel(matchup.scheduled_date?.slice(0, 10))}
-                    time={matchup.scheduled_time || "TIME TBA"}
-                    venue={matchup.venue || "Awaiting admin approval"}
-                    status="Pending"
-                    statusTone="closed"
-                  />
-                ))
-              )}
-            </CalendarFixtureSection>
 
             <CalendarFixtureSection eyebrow="Upcoming Events" title="Event Availability">
               {events.length === 0 ? (

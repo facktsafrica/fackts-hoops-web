@@ -95,6 +95,7 @@ export default function AdminRosterAnnouncementsPage() {
   const [rosters, setRosters] = useState<RosterRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [publishingId, setPublishingId] = useState("");
 
   async function loadData() {
     setLoading(true);
@@ -146,7 +147,9 @@ export default function AdminRosterAnnouncementsPage() {
   }
 
   useEffect(() => {
-    loadData();
+    queueMicrotask(() => {
+      void loadData();
+    });
   }, []);
 
   const rosterByGame = useMemo(() => {
@@ -171,6 +174,30 @@ export default function AdminRosterAnnouncementsPage() {
     } catch {
       setMessage("Copy failed. Open the public roster and share from there.");
     }
+  }
+
+  async function publishRosterNotification(game: Game) {
+    setPublishingId(game.id);
+    setMessage("");
+
+    const response = await fetch("/api/notification-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: "admin.roster_published",
+        game_id: game.id,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+
+    setMessage(
+      response.ok && result.ok
+        ? `Roster alert created for ${result.created ?? 0} players and delivered to ${
+            result.delivered ?? 0
+          } subscribed devices.`
+        : result.error || "Could not publish the roster alert."
+    );
+    setPublishingId("");
   }
 
   return (
@@ -293,6 +320,17 @@ export default function AdminRosterAnnouncementsPage() {
                   </div>
 
                   <div className="mt-4 grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => publishRosterNotification(game)}
+                      disabled={publishingId === game.id || gameRoster.length === 0}
+                      className="rounded-2xl bg-blue-500 px-4 py-3 text-center text-sm font-black text-white transition hover:bg-blue-400 disabled:opacity-40"
+                    >
+                      {publishingId === game.id
+                        ? "Sending App Alert…"
+                        : "Publish Roster + Notify Players"}
+                    </button>
+
                     <Link
                       href={`/rosters/${game.id}`}
                       target="_blank"

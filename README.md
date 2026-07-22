@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## FACKTS account setup
+
+Admin login, player login, temporary player access, app push notifications, and optional Resend email are documented in [`docs/AUTH_AND_EMAIL_SETUP.md`](docs/AUTH_AND_EMAIL_SETUP.md).
+
 ## Getting Started
 
 First, run the development server:

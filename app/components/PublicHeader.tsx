@@ -15,6 +15,8 @@ type NavItem = {
 
 const mainItems: NavItem[] = [
   { label: "Home", href: "/" },
+  { label: "Player Login / Portal", href: "/player", highlight: true },
+  { label: "Admin Login", href: "/admin/login" },
   { label: "Official Players", href: "/players" },
   { label: "Events", href: "/events" },
   { label: "Merch", href: "/merch" },
@@ -101,15 +103,29 @@ export default function PublicHeader() {
 
           <div className="flex shrink-0 items-center gap-2">
             <Link
+              href="/player"
+              className="hidden rounded-full border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-black text-blue-200 transition hover:bg-blue-500 hover:text-white sm:inline-flex md:px-4 md:text-sm"
+            >
+              Player Login
+            </Link>
+
+            <Link
+              href="/admin/login"
+              className="hidden rounded-full border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300 sm:inline-flex md:px-4 md:text-sm"
+            >
+              Admin Login
+            </Link>
+
+            <Link
               href="/court-takeover"
-              className="hidden rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-black md:inline-flex"
+              className="hidden rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-black xl:inline-flex"
             >
               Court Takeover
             </Link>
 
             <Link
               href="/book-coverage"
-              className="hidden rounded-full bg-orange-500 px-5 py-2 text-sm font-black text-black transition hover:bg-orange-400 sm:inline-flex"
+              className="hidden rounded-full bg-orange-500 px-5 py-2 text-sm font-black text-black transition hover:bg-orange-400 2xl:inline-flex"
             >
               Book Coverage
             </Link>

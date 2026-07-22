@@ -377,6 +377,18 @@ async function sendEmailNotification(payload: {
   }
 }
 
+async function sendAdminAppEvent(event: string, details: Record<string, unknown>) {
+  try {
+    await fetch("/api/notification-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, ...details }),
+    });
+  } catch {
+    // The admin action remains saved even if push delivery is temporarily unavailable.
+  }
+}
+
 export default function AdminCalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [availability, setAvailability] = useState<Availability[]>([]);
@@ -659,7 +671,11 @@ export default function AdminCalendarPage() {
       return;
     }
 
-    const recipients = emailList(matchup.player_one_email, matchup.player_two_email);
+    await sendAdminAppEvent("admin.matchup_approved", {
+      matchup_id: matchup.id,
+    });
+
+    const recipients = emailList(matchup.player_one_email);
 
     if (recipients.length > 0) {
       await sendEmailNotification({
@@ -706,6 +722,10 @@ Check the FACKTS Hoops app for updates.`,
       return;
     }
 
+    await sendAdminAppEvent("admin.matchup_rejected", {
+      matchup_id: matchupId,
+    });
+
     setMessage("Player request rejected.");
     setWorkingId(null);
     await loadAdminData();
@@ -730,35 +750,43 @@ Check the FACKTS Hoops app for updates.`,
     setMessage("");
     setErrorMessage("");
 
-    const { error } = await supabase.from("fackts_matchups").insert({
-      matchup_status: "approved",
-      matchup_source: "availability",
-      event_id: "",
-      weekday: getWeekdayName(dateValue),
-      scheduled_date: `${dateValue}T12:00:00+03:00`,
-      player_one_source: pair[0].participant_source,
-      player_one_id: pair[0].participant_id,
-      player_one_name: pair[0].participant_name,
-      player_one_email: pair[0].participant_email || null,
-      player_one_phone: pair[0].participant_phone || null,
-      player_two_source: pair[1].participant_source,
-      player_two_id: pair[1].participant_id,
-      player_two_name: pair[1].participant_name,
-      player_two_email: pair[1].participant_email || null,
-      player_two_phone: pair[1].participant_phone || null,
-      scheduled_time: preferredTime,
-      venue: preferredCourt,
-      notes:
-        "Approved from calendar availability. Admin should update the pending 1v1 battle with poster, venue, date, and match details.",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
+    const { data: createdMatchup, error } = await supabase
+      .from("fackts_matchups")
+      .insert({
+        matchup_status: "approved",
+        matchup_source: "availability",
+        event_id: "",
+        weekday: getWeekdayName(dateValue),
+        scheduled_date: `${dateValue}T12:00:00+03:00`,
+        player_one_source: pair[0].participant_source,
+        player_one_id: pair[0].participant_id,
+        player_one_name: pair[0].participant_name,
+        player_one_email: pair[0].participant_email || null,
+        player_one_phone: pair[0].participant_phone || null,
+        player_two_source: pair[1].participant_source,
+        player_two_id: pair[1].participant_id,
+        player_two_name: pair[1].participant_name,
+        player_two_email: pair[1].participant_email || null,
+        player_two_phone: pair[1].participant_phone || null,
+        scheduled_time: preferredTime,
+        venue: preferredCourt,
+        notes:
+          "Approved from calendar availability. Admin should update the pending 1v1 battle with poster, venue, date, and match details.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
 
     if (error) {
       setErrorMessage(error.message);
       setWorkingId(null);
       return;
     }
+
+    await sendAdminAppEvent("admin.matchup_approved", {
+      matchup_id: createdMatchup.id,
+    });
 
     const recipients = emailList(pair[0].participant_email, pair[1].participant_email);
 
