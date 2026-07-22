@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminAccess, getPlayerAccess } from "@/lib/auth/server";
 import { notifyAdmins, notifyAllPlayers, notifyPlayers } from "@/lib/notifications/server";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
           .from("players")
           .select("id, full_name, name, nickname")
           .eq("id", opponentId)
+          .eq("player_type", FACKTS_PLAYER_TYPE)
           .eq("is_active", true)
           .maybeSingle();
 

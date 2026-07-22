@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -9,6 +10,7 @@ async function getPlayer(id: string) {
     .from("players")
     .select("*")
     .eq("id", id)
+    .eq("player_type", FACKTS_PLAYER_TYPE)
     .maybeSingle();
 
   if (error) return null;

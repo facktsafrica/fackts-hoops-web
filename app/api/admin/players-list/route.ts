@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +13,7 @@ export async function GET() {
       .from("players")
       .select("id, full_name, jersey_number")
       .eq("is_active", true)
+      .eq("player_type", FACKTS_PLAYER_TYPE)
       .order("full_name", { ascending: true });
 
     if (error) {

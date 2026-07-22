@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import PublicHeader from "./components/PublicHeader";
 import PublicMobileNav from "./components/PublicMobileNav";
@@ -7,8 +7,44 @@ import PwaInstallButton from "./components/PwaInstallButton";
 import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://fackts-hoops-web.vercel.app"
+  ),
   title: "FACKTS Hoops",
   description: "Basketball. Culture. Data.",
+  applicationName: "FACKTS Hoops",
+  icons: {
+    icon: [
+      { url: "/favicon.ico?v=20260722", sizes: "any" },
+      { url: "/icons/icon-192x192.png?v=20260722", type: "image/png", sizes: "192x192" },
+    ],
+    shortcut: "/favicon.ico?v=20260722",
+    apple: "/apple-touch-icon.png?v=20260722",
+  },
+  openGraph: {
+    title: "FACKTS Hoops",
+    description: "Basketball. Culture. Data.",
+    type: "website",
+    url: "/",
+    siteName: "FACKTS Hoops",
+    images: [
+      {
+        url: "/fackts-hoops-logo.png?v=20260722",
+        width: 1024,
+        height: 1536,
+        alt: "FACKTS Hoops logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "FACKTS Hoops",
+    description: "Basketball. Culture. Data.",
+    images: ["/fackts-hoops-logo.png?v=20260722"],
+  },
+};
+
+export const viewport: Viewport = {
   themeColor: "#f97316",
 };
 
@@ -20,12 +56,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="manifest" href="/manifest.webmanifest" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.webmanifest?v=20260722" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20260722" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="FACKTS Hoops" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#f97316" />
       </head>
       <body>
         <PwaServiceWorkerClient />

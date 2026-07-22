@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 
 type PlayerRow = {
   id: string;
@@ -11,6 +11,7 @@ type PlayerRow = {
   name?: string | null;
   nickname?: string | null;
   role?: string | null;
+  player_type?: string | null;
   email?: string | null;
   is_active?: boolean | null;
 };
@@ -25,51 +26,59 @@ function playerName(player: PlayerRow) {
   return player.full_name || player.name || player.nickname || "Unnamed Player";
 }
 
-function officialPlayer(player: PlayerRow) {
-  const role = String(player.role ?? "").toLowerCase();
-  return player.is_active !== false && !role.includes("guest") && !role.includes("prospect");
-}
-
 export default function AdminPlayerAccessPage() {
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [emails, setEmails] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [message, setMessage] = useState("");
+  const [playerMessages, setPlayerMessages] = useState<Record<string, string>>({});
   const [credentials, setCredentials] = useState<PlayerCredentials | null>(null);
+  const [credentialsPlayerId, setCredentialsPlayerId] = useState("");
 
   const officialPlayers = useMemo(
-    () => players.filter(officialPlayer).sort((a, b) => playerName(a).localeCompare(playerName(b))),
+    () => players.filter((player) => player.is_active !== false && isOfficialFacktsPlayer(player)).sort((a, b) => playerName(a).localeCompare(playerName(b))),
     [players]
   );
 
   async function loadPlayers() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("players")
-      .select("id, user_id, full_name, name, nickname, role, email, is_active")
-      .order("full_name", { ascending: true });
+    try {
+      const response = await fetch("/api/admin/player-access", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({
+        ok: false,
+        error: "The server returned an unreadable response.",
+      }));
 
-    if (error) {
-      setMessage(
-        error.message.includes("user_id")
-          ? "Run the supplied player-auth migration in Supabase first."
-          : error.message
+      if (!response.ok || !result.ok) {
+        const rawError = String(result.error || "Could not load player accounts.");
+        setMessage(
+          rawError.includes("player_type")
+            ? "Run the supplied player-classification migration in Supabase first."
+            : rawError
+        );
+        setPlayers([]);
+        return;
+      }
+
+      const rows = (result.players ?? []) as PlayerRow[];
+      setMessage("");
+      setPlayers(rows);
+      setEmails(
+        rows.reduce<Record<string, string>>((acc, player) => {
+          acc[player.id] = player.email || "";
+          return acc;
+        }, {})
       );
+    } catch (error) {
       setPlayers([]);
+      setMessage(error instanceof Error ? error.message : "Could not load player accounts.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const rows = (data ?? []) as PlayerRow[];
-    setPlayers(rows);
-    setEmails(
-      rows.reduce<Record<string, string>>((acc, player) => {
-        acc[player.id] = player.email || "";
-        return acc;
-      }, {})
-    );
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -89,27 +98,50 @@ export default function AdminPlayerAccessPage() {
 
     setBusyId(player.id);
     setMessage("");
+    setPlayerMessages((current) => ({ ...current, [player.id]: "Working on this account..." }));
     setCredentials(null);
+    setCredentialsPlayerId("");
 
-    const response = await fetch("/api/admin/player-access", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        player_id: player.id,
-        email: emails[player.id] || player.email || "",
-      }),
-    });
+    const requestedEmail = (emails[player.id] || player.email || "").trim();
+    if (action === "issue" && !requestedEmail.includes("@")) {
+      setPlayerMessages((current) => ({ ...current, [player.id]: "Add a valid player email first." }));
+      setBusyId("");
+      return;
+    }
 
-    const result = await response.json().catch(() => ({
-      ok: false,
-      error: "Could not read the access response.",
-    }));
+    try {
+      const response = await fetch("/api/admin/player-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          action,
+          player_id: player.id,
+          email: requestedEmail,
+        }),
+      });
 
-    setMessage(result.message || result.error || "Player access request finished.");
-    setCredentials(result.credentials || null);
-    setBusyId("");
-    if (result.ok) await loadPlayers();
+      const result = await response.json().catch(() => ({
+        ok: false,
+        error: "The server returned an unreadable response.",
+      }));
+      const resultMessage = result.message || result.error || "Player access request finished.";
+
+      setPlayerMessages((current) => ({ ...current, [player.id]: resultMessage }));
+
+      if (!response.ok || !result.ok) return;
+
+      setCredentials(result.credentials || null);
+      setCredentialsPlayerId(result.credentials ? player.id : "");
+      await loadPlayers();
+    } catch (error) {
+      setPlayerMessages((current) => ({
+        ...current,
+        [player.id]: error instanceof Error ? error.message : "Player account request failed.",
+      }));
+    } finally {
+      setBusyId("");
+    }
   }
 
   async function copyCredentials() {
@@ -119,9 +151,15 @@ export default function AdminPlayerAccessPage() {
 
     try {
       await navigator.clipboard.writeText(text);
-      setMessage("Player login details copied. You can paste them on WhatsApp.");
+      setPlayerMessages((current) => ({
+        ...current,
+        [credentialsPlayerId]: "Player login details copied. You can paste them on WhatsApp.",
+      }));
     } catch {
-      setMessage("Copy failed. Select the details below and copy them manually.");
+      setPlayerMessages((current) => ({
+        ...current,
+        [credentialsPlayerId]: "Copy failed. Select the details below and copy them manually.",
+      }));
     }
   }
 
@@ -135,7 +173,7 @@ export default function AdminPlayerAccessPage() {
             </p>
             <h1 className="mt-2 text-4xl font-black">Player Accounts</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Create a login for each active official player. Copy the temporary details to WhatsApp; email is optional. Guests and prospects remain separate.
+              Create a login for each active official player. Add the player's email, then copy the temporary details to WhatsApp. Guests and prospects remain separate.
             </p>
           </div>
           <Link href="/admin" className="rounded-full border border-slate-700 px-4 py-2 text-sm font-black">
@@ -149,32 +187,17 @@ export default function AdminPlayerAccessPage() {
           </div>
         ) : null}
 
-        {credentials ? (
-          <div className="mt-6 rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-5">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
-              Copy These Details Now
-            </p>
-            <div className="mt-3 space-y-1 text-sm text-emerald-50">
-              <p><strong>Login:</strong> {credentials.login_url}</p>
-              <p><strong>Email:</strong> {credentials.email}</p>
-              <p><strong>Temporary password:</strong> {credentials.temporary_password}</p>
-            </div>
-            <button
-              type="button"
-              onClick={copyCredentials}
-              className="mt-4 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950"
-            >
-              Copy for WhatsApp
-            </button>
-          </div>
-        ) : null}
-
         {loading ? (
           <div className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
             Loading players...
           </div>
         ) : (
           <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {officialPlayers.length === 0 ? (
+              <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400 md:col-span-2">
+                No active official FACKTS players are available for accounts.
+              </div>
+            ) : null}
             {officialPlayers.map((player) => (
               <div key={player.id} className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
                 <div className="flex items-start justify-between gap-3">
@@ -213,7 +236,7 @@ export default function AdminPlayerAccessPage() {
                       ? "Working..."
                       : player.user_id
                         ? "Reset Login"
-                        : "Create Login"}
+                        : "Create Player Account"}
                   </button>
                   <button
                     type="button"
@@ -224,6 +247,35 @@ export default function AdminPlayerAccessPage() {
                     Revoke Access
                   </button>
                 </div>
+
+                {playerMessages[player.id] ? (
+                  <div
+                    aria-live="polite"
+                    className="mt-3 rounded-2xl border border-orange-500/20 bg-orange-500/10 p-3 text-sm text-orange-100"
+                  >
+                    {playerMessages[player.id]}
+                  </div>
+                ) : null}
+
+                {credentials && credentialsPlayerId === player.id ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
+                      Copy These Details Now
+                    </p>
+                    <div className="mt-3 space-y-1 break-words text-sm text-emerald-50">
+                      <p><strong>Login:</strong> {credentials.login_url}</p>
+                      <p><strong>Email:</strong> {credentials.email}</p>
+                      <p><strong>Temporary password:</strong> {credentials.temporary_password}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyCredentials}
+                      className="mt-4 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950"
+                    >
+                      Copy for WhatsApp
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

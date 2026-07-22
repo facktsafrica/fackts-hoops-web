@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -11,6 +12,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("players")
       .select("*")
+      .eq("player_type", FACKTS_PLAYER_TYPE)
       .order("full_name", { ascending: true });
 
     if (error) {
@@ -41,6 +43,7 @@ export async function POST(request: Request) {
           position: body.position || null,
           nickname: body.nickname || null,
           role: body.role || "Bench",
+          player_type: FACKTS_PLAYER_TYPE,
           age: body.age || null,
           height: body.height || null,
           dominant_hand: body.dominant_hand || null,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { escapeHtml, sendResendEmail } from "@/lib/email/resend";
+import { isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 
 export const runtime = "nodejs";
 
@@ -20,11 +21,6 @@ function allowedAttempt(key: string) {
   if (current.count >= MAX_ATTEMPTS) return false;
   current.count += 1;
   return true;
-}
-
-function officialPlayerRole(role?: string | null) {
-  const cleanRole = String(role ?? "").toLowerCase();
-  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
 }
 
 export async function POST(request: NextRequest) {
@@ -73,11 +69,11 @@ export async function POST(request: NextRequest) {
     } else {
       const { data: player } = await admin
         .from("players")
-        .select("id, role")
+        .select("id, role, player_type")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .maybeSingle();
-      approved = Boolean(player && officialPlayerRole(player.role));
+      approved = Boolean(player && isOfficialFacktsPlayer(player));
     }
 
     if (!approved) {

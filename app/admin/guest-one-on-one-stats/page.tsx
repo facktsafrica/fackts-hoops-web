@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
 
 type Player = {
@@ -165,7 +166,7 @@ export default function AdminGuestOneOnOneStatsPage() {
     setMessage("");
 
     const [playersResult, guestsResult, rowsResult] = await Promise.all([
-      supabase.from("players").select("*").order("created_at", {
+      supabase.from("players").select("*").eq("player_type", FACKTS_PLAYER_TYPE).order("created_at", {
         ascending: false,
       }),
       supabase.from("guest_hoopers").select("*").order("created_at", {

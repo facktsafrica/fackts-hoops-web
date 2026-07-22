@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
 
 type ApplicationStatus =
@@ -48,11 +49,10 @@ type AcceptForm = {
   isActive: boolean;
 };
 
-const statusOptions: ApplicationStatus[] = [
+const reviewStatusOptions: ApplicationStatus[] = [
   "pending",
   "reviewing",
   "needs_more_info",
-  "accepted",
   "rejected",
 ];
 
@@ -62,9 +62,6 @@ const roleOptions = [
   "Bench",
   "Captain",
   "Co-Captain",
-  "Prospect",
-  "Guest Hooper",
-  "Featured External Player",
 ];
 
 const photoPositionOptions = [
@@ -156,6 +153,11 @@ export default function AdminPlayerApplicationsPage() {
 
   async function saveReview() {
     if (!selectedApplication) return;
+
+    if (status === "accepted" && !selectedApplication.accepted_player_id) {
+      setMessage("Use Accept as Official FACKTS Player so the player profile is created correctly.");
+      return;
+    }
 
     setSaving(true);
     setMessage("");
@@ -257,6 +259,7 @@ export default function AdminPlayerApplicationsPage() {
       jersey_number: jerseyNumber,
       position: selectedApplication.position || null,
       role: acceptForm.role,
+      player_type: FACKTS_PLAYER_TYPE,
       height: selectedApplication.height || null,
       dominant_hand: selectedApplication.dominant_hand || null,
       current_team: selectedApplication.current_team_or_school || null,
@@ -266,6 +269,12 @@ export default function AdminPlayerApplicationsPage() {
       style_of_play: selectedApplication.style_of_play || null,
       strengths: selectedApplication.strengths || null,
       improvements: selectedApplication.improvement_areas || null,
+      bio: selectedApplication.player_goal || null,
+      email: selectedApplication.email || null,
+      phone: selectedApplication.phone || null,
+      location: selectedApplication.location || null,
+      instagram_url: selectedApplication.social_link || null,
+      highlight_url: selectedApplication.highlight_link || null,
       photo_url: uploadedPhotoUrl,
       photo_position: acceptForm.photoPosition,
       is_featured: acceptForm.isFeatured,
@@ -297,14 +306,15 @@ export default function AdminPlayerApplicationsPage() {
       .eq("id", selectedApplication.id);
 
     if (applicationError) {
+      await supabase.from("players").delete().eq("id", createdPlayer.id);
       setMessage(
-        `Player was created, but application update failed: ${applicationError.message}`
+        `Acceptance was not completed and the partial player record was rolled back: ${applicationError.message}`
       );
       setSaving(false);
       return;
     }
 
-    setMessage("Application accepted. Player profile created.");
+    setMessage("Application accepted. Official FACKTS player profile created. You can now create their login in Player Accounts.");
     setSaving(false);
 
     await loadApplications();
@@ -544,7 +554,10 @@ export default function AdminPlayerApplicationsPage() {
                         }
                         className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-orange-400"
                       >
-                        {statusOptions.map((option) => (
+                        {(selectedApplication.accepted_player_id
+                          ? (["accepted"] as ApplicationStatus[])
+                          : reviewStatusOptions
+                        ).map((option) => (
                           <option key={option} value={option}>
                             {statusLabel(option)}
                           </option>
@@ -581,7 +594,7 @@ export default function AdminPlayerApplicationsPage() {
 
                 <div className="mt-5 rounded-3xl border border-orange-500/30 bg-orange-500/10 p-4">
                   <h3 className="text-lg font-black text-orange-200">
-                    Accept as Player
+                    Accept as Official FACKTS Player
                   </h3>
 
                   <p className="mt-2 text-sm leading-6 text-slate-300">

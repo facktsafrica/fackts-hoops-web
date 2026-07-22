@@ -3,12 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
-
-function officialPlayerRole(role?: string | null) {
-  const cleanRole = String(role ?? "").toLowerCase();
-  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
-}
 
 export default function PlayerLoginPage() {
   const router = useRouter();
@@ -41,12 +37,12 @@ export default function PlayerLoginPage() {
 
     const { data: player, error: playerError } = await supabase
       .from("players")
-      .select("id, role, is_active")
+      .select("id, role, player_type, is_active")
       .eq("user_id", data.user.id)
       .eq("is_active", true)
       .maybeSingle();
 
-    if (playerError || !player || !officialPlayerRole(player.role)) {
+    if (playerError || !player || !isOfficialFacktsPlayer(player)) {
       await supabase.auth.signOut();
       setMessage(
         playerError

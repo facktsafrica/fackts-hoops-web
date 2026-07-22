@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
 
 type PlayerRow = {
@@ -11,6 +12,7 @@ type PlayerRow = {
   nickname?: string | null;
   jersey_number?: number | string | null;
   role?: string | null;
+  player_type?: string | null;
   position?: string | null;
   height?: string | null;
   weight?: string | null;
@@ -122,9 +124,6 @@ const roles = [
   "Bench",
   "Captain",
   "Co-Captain",
-  "Prospect",
-  "Guest Hooper",
-  "Featured External Player",
 ];
 
 const positions = [
@@ -236,6 +235,7 @@ export default function AdminPlayersPage() {
     const { data, error } = await supabase
       .from("players")
       .select("*")
+      .eq("player_type", FACKTS_PLAYER_TYPE)
       .order("jersey_number", { ascending: true });
 
     if (error) {
@@ -372,6 +372,7 @@ export default function AdminPlayersPage() {
         nickname: form.nickname.trim() || null,
         jersey_number: numberOrNull(form.jersey_number),
         role: form.role.trim() || null,
+        player_type: FACKTS_PLAYER_TYPE,
         position: form.position.trim() || null,
         height: form.height.trim() || null,
         weight: form.weight.trim() || null,

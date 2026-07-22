@@ -1,4 +1,5 @@
 import webpush, { type PushSubscription } from "web-push";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type AppNotification = {
@@ -128,6 +129,7 @@ export async function notifyPlayers(
     .from("players")
     .select("id, user_id, full_name, name, nickname, email, phone")
     .in("id", ids)
+    .eq("player_type", FACKTS_PLAYER_TYPE)
     .eq("is_active", true);
 
   if (error) throw new Error(error.message);
@@ -168,6 +170,7 @@ export async function notifyAllPlayers(notification: AppNotification) {
     .from("players")
     .select("id")
     .not("user_id", "is", null)
+    .eq("player_type", FACKTS_PLAYER_TYPE)
     .eq("is_active", true);
 
   if (error) throw new Error(error.message);

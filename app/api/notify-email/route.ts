@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
+import { isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 
 export const runtime = "nodejs";
 
@@ -10,11 +11,6 @@ type EmailPayload = {
   text?: string;
   html?: string;
 };
-
-function officialPlayerRole(role?: string | null) {
-  const cleanRole = String(role ?? "").toLowerCase();
-  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
-}
 
 function cleanRecipients(value: unknown) {
   const raw = Array.isArray(value) ? value : String(value ?? "").split(",");
@@ -48,7 +44,7 @@ export async function POST(request: NextRequest) {
         .maybeSingle(),
       supabase
         .from("players")
-        .select("id, role")
+        .select("id, role, player_type")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .maybeSingle(),
@@ -57,7 +53,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as EmailPayload;
     const config = getEmailConfiguration();
     const isAdmin = Boolean(adminProfile);
-    const isPlayer = Boolean(player && officialPlayerRole(player.role));
+    const isPlayer = Boolean(player && isOfficialFacktsPlayer(player));
 
     if (!isAdmin && !isPlayer) {
       return NextResponse.json({ ok: false, error: "Approved account required." }, { status: 403 });

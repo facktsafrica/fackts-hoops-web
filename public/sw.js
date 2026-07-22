@@ -1,10 +1,10 @@
-const CACHE_NAME = "fackts-hoops-pwa-v3";
+const CACHE_NAME = "fackts-hoops-pwa-v4-20260722";
 const PRECACHE_URLS = [
-  "/",
-  "/manifest.webmanifest",
   "/offline.html",
-  "/fackts-hoops-logo.png",
-  "/apple-touch-icon.png",
+  "/fackts-hoops-logo.png?v=20260722",
+  "/apple-touch-icon.png?v=20260722",
+  "/icons/icon-192x192.png?v=20260722",
+  "/icons/icon-512x512.png?v=20260722",
 ];
 
 const PRIVATE_PREFIXES = [
@@ -44,7 +44,7 @@ function isPrivateRequest(url) {
 
 async function publicNavigation(request) {
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: "no-store" });
 
     if (response.ok && response.type === "basic") {
       const cache = await caches.open(CACHE_NAME);
@@ -60,17 +60,16 @@ async function publicNavigation(request) {
 async function staticAsset(request) {
   const cached = await caches.match(request);
 
-  const network = fetch(request)
-    .then(async (response) => {
-      if (response.ok && response.type === "basic") {
-        const cache = await caches.open(CACHE_NAME);
-        await cache.put(request, response.clone());
-      }
-      return response;
-    })
-    .catch(() => cached);
-
-  return cached || network;
+  try {
+    const response = await fetch(request, { cache: "no-store" });
+    if (response.ok && response.type === "basic") {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    return cached || Response.error();
+  }
 }
 
 self.addEventListener("fetch", (event) => {

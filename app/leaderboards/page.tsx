@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ async function getLeaderboard() {
       .from("players")
       .select("*")
       .eq("is_active", true)
+      .eq("player_type", FACKTS_PLAYER_TYPE)
       .order("jersey_number", { ascending: true }),
 
     supabase.from("player_game_stats").select("*"),

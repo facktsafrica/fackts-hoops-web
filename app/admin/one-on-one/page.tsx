@@ -8,6 +8,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
 
 type PlayerType = "fackts_player" | "guest_hooper" | "external";
@@ -276,7 +277,7 @@ export default function AdminOneOnOnePage() {
     setMessage("");
 
     const [playersResult, guestsResult, matchesResult] = await Promise.all([
-      supabase.from("players").select("*"),
+      supabase.from("players").select("*").eq("player_type", FACKTS_PLAYER_TYPE),
       supabase.from("guest_hoopers").select("*"),
       supabase
         .from("guest_one_on_one_stats")

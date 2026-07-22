@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
 
 type RosterForm = {
@@ -56,6 +57,7 @@ export default function AdminRostersPage() {
         .from("players")
         .select("*")
         .eq("is_active", true)
+        .eq("player_type", FACKTS_PLAYER_TYPE)
         .order("jersey_number", { ascending: true }),
 
       supabase

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 
 type Player = {
   id: string;
@@ -263,7 +264,7 @@ async function getData(id: string) {
   const supabase = getSupabase();
 
   const [playersResult, guestsResult, rowResult] = await Promise.all([
-    supabase.from("players").select("*"),
+    supabase.from("players").select("*").eq("player_type", FACKTS_PLAYER_TYPE),
     supabase.from("guest_hoopers").select("*"),
     supabase.from("guest_one_on_one_stats").select("*").eq("id", id).maybeSingle(),
   ]);

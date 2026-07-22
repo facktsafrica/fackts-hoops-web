@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 
 const FACKTS_LOGO = "/fackts-hoops-logo.png";
 
@@ -131,14 +132,6 @@ type EmailResult = {
 
 function normalize(value?: string | null) {
   return String(value ?? "").trim().toLowerCase();
-}
-
-function isGuestRole(person: any) {
-  return normalize(person.role).includes("guest");
-}
-
-function isProspectRole(person: any) {
-  return normalize(person.role).includes("prospect");
 }
 
 function displayPersonName(person: any) {
@@ -585,7 +578,11 @@ export default function CalendarPage() {
       availabilityResult,
       matchupsResult,
     ] = await Promise.all([
-      supabase.from("players").select("*").eq("is_active", true),
+      supabase
+        .from("players")
+        .select("*")
+        .eq("is_active", true)
+        .eq("player_type", FACKTS_PLAYER_TYPE),
       supabase.from("guest_hoopers").select("*").eq("is_active", true),
       supabase.from("games").select("*").order("game_date", { ascending: true }),
       supabase
@@ -603,22 +600,18 @@ export default function CalendarPage() {
         .order("created_at", { ascending: false }),
     ]);
 
-    const playerPeople: Person[] = (playersResult.data ?? [])
-      .filter((player: any) => !isProspectRole(player))
-      .map((player: any) => {
-        const guestRole = isGuestRole(player);
-
-        return {
-          id: player.id,
-          source: "players",
-          full_name: displayPersonName(player),
-          nickname: player.nickname,
-          role: guestRole ? "Guest Hooper" : player.role || "Player",
-          photo_url: player.photo_url,
-          photo_position: player.photo_position,
-          label: guestRole ? "Guest Hooper" : "FACKTS Player",
-        };
-      });
+    const playerPeople: Person[] = (playersResult.data ?? []).map((player: any) => {
+      return {
+        id: player.id,
+        source: "players",
+        full_name: displayPersonName(player),
+        nickname: player.nickname,
+        role: player.role || "Player",
+        photo_url: player.photo_url,
+        photo_position: player.photo_position,
+        label: "FACKTS Player",
+      };
+    });
 
     const guestPeople: Person[] = (guestsResult.data ?? []).map((guest: any) => ({
       id: guest.id,

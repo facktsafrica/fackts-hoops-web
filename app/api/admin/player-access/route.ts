@@ -2,18 +2,42 @@ import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAccess } from "@/lib/auth/server";
 import { escapeHtml, getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
+import { FACKTS_PLAYER_TYPE, isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 import { notifyPlayers } from "@/lib/notifications/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-function officialPlayerRole(role?: string | null) {
-  const cleanRole = String(role ?? "").toLowerCase();
-  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
-}
-
 function temporaryPassword() {
   return `Fackts!${randomBytes(8).toString("base64url")}`;
+}
+
+export async function GET() {
+  try {
+    const { user, profile } = await getAdminAccess();
+
+    if (!user || !profile) {
+      return NextResponse.json({ ok: false, error: "Admin login required." }, { status: 403 });
+    }
+
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin
+      .from("players")
+      .select("id, user_id, full_name, name, nickname, role, player_type, email, is_active")
+      .eq("player_type", FACKTS_PLAYER_TYPE)
+      .order("full_name", { ascending: true });
+
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ ok: true, players: data ?? [] });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Could not load player accounts." },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -36,7 +60,7 @@ export async function POST(request: NextRequest) {
     const admin = createSupabaseAdminClient();
     const { data: player, error: playerError } = await admin
       .from("players")
-      .select("id, user_id, full_name, name, nickname, role, email, is_active")
+      .select("id, user_id, full_name, name, nickname, role, player_type, email, is_active")
       .eq("id", playerId)
       .maybeSingle();
 
@@ -44,7 +68,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: playerError.message }, { status: 400 });
     }
 
-    if (!player || !player.is_active || !officialPlayerRole(player.role)) {
+    if (!player || !player.is_active || !isOfficialFacktsPlayer(player)) {
       return NextResponse.json(
         { ok: false, error: "Only active official FACKTS players can receive access." },
         { status: 400 }

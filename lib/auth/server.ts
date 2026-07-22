@@ -1,10 +1,12 @@
 import type { User } from "@supabase/supabase-js";
+import { isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export type AdminProfile = {
   id: string;
   user_id: string;
   role?: string | null;
+  player_type?: string | null;
   is_active?: boolean | null;
 };
 
@@ -22,11 +24,6 @@ export type PlayerAccount = {
   position?: string | null;
   is_active?: boolean | null;
 };
-
-function isOfficialPlayerRole(role?: string | null) {
-  const cleanRole = String(role ?? "").toLowerCase();
-  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
-}
 
 export async function getAuthenticatedUser(): Promise<User | null> {
   const supabase = await createServerSupabaseClient();
@@ -71,7 +68,7 @@ export async function getPlayerAccess() {
   const { data: player } = await supabase
     .from("players")
     .select(
-      "id, user_id, full_name, name, nickname, role, email, phone, photo_url, jersey_number, position, is_active"
+      "id, user_id, full_name, name, nickname, role, player_type, email, phone, photo_url, jersey_number, position, is_active"
     )
     .eq("user_id", user.id)
     .eq("is_active", true)
@@ -82,7 +79,7 @@ export async function getPlayerAccess() {
   return {
     user,
     player:
-      officialPlayer && isOfficialPlayerRole(officialPlayer.role)
+      officialPlayer && isOfficialFacktsPlayer(officialPlayer)
         ? officialPlayer
         : null,
     supabase,

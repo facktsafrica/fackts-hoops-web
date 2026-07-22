@@ -1,16 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 
 function copyCookies(source: NextResponse, target: NextResponse) {
   source.cookies.getAll().forEach((cookie) => {
     target.cookies.set(cookie);
   });
   return target;
-}
-
-function officialPlayerRole(role?: string | null) {
-  const cleanRole = String(role ?? "").toLowerCase();
-  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
 }
 
 export async function proxy(request: NextRequest) {
@@ -69,12 +65,12 @@ export async function proxy(request: NextRequest) {
   if (user && (playerRoute || calendarRoute)) {
     const { data: player } = await supabase
       .from("players")
-      .select("id, role")
+      .select("id, role, player_type")
       .eq("user_id", user.id)
       .eq("is_active", true)
       .maybeSingle();
 
-    isPlayer = Boolean(player && officialPlayerRole(player.role));
+    isPlayer = Boolean(player && isOfficialFacktsPlayer(player));
   }
 
   if (adminLogin && isAdmin) {
