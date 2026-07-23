@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  getCareerGameTotals,
+  mergeCareerGameStats,
+} from "@/lib/hoops/careerStats";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
 
@@ -36,7 +40,7 @@ type LeaderboardPlayer = {
 };
 
 async function getLeaderboard() {
-  const [playersResult, statsResult] = await Promise.all([
+  const [playersResult, statsResult, linkedGuestsResult, guestStatsResult] = await Promise.all([
     supabase
       .from("players")
       .select("*")
@@ -45,46 +49,40 @@ async function getLeaderboard() {
       .order("jersey_number", { ascending: true }),
 
     supabase.from("player_game_stats").select("*"),
+
+    supabase
+      .from("guest_hoopers")
+      .select("id, source_player_id")
+      .not("source_player_id", "is", null),
+
+    supabase.from("guest_game_stats").select("*"),
   ]);
 
-  if (playersResult.error || statsResult.error) {
+  if (
+    playersResult.error ||
+    statsResult.error ||
+    linkedGuestsResult.error ||
+    guestStatsResult.error
+  ) {
     return [];
   }
 
   const players = playersResult.data ?? [];
   const stats = statsResult.data ?? [];
+  const linkedGuests = linkedGuestsResult.data ?? [];
+  const guestStats = guestStatsResult.data ?? [];
 
   return players.map((player: any) => {
     const playerStats = stats.filter((row: any) => row.player_id === player.id);
-    const gamesPlayed = playerStats.length;
-
-    const totals = playerStats.reduce(
-      (acc: any, row: any) => {
-        acc.total_points += Number(row.points ?? 0);
-        acc.total_assists += Number(row.assists ?? 0);
-        acc.total_rebounds += Number(row.rebounds ?? 0);
-        acc.total_steals += Number(row.steals ?? 0);
-        acc.total_blocks += Number(row.blocks ?? 0);
-
-        acc.total_three_pointers_made += Number(
-          row.three_pointers_made ??
-            row.three_pointers ??
-            row.threes_made ??
-            row.three_pm ??
-            0
-        );
-
-        return acc;
-      },
-      {
-        total_points: 0,
-        total_assists: 0,
-        total_rebounds: 0,
-        total_steals: 0,
-        total_blocks: 0,
-        total_three_pointers_made: 0,
-      }
+    const linkedGuestIds = linkedGuests
+      .filter((guest: any) => guest.source_player_id === player.id)
+      .map((guest: any) => guest.id);
+    const linkedGuestStats = guestStats.filter((row: any) =>
+      linkedGuestIds.includes(row.guest_hooper_id)
     );
+    const careerRows = mergeCareerGameStats(playerStats, linkedGuestStats);
+    const totals = getCareerGameTotals(careerRows);
+    const gamesPlayed = totals.gamesPlayed;
 
     function avg(value: number) {
       return gamesPlayed > 0 ? Number((value / gamesPlayed).toFixed(1)) : 0;
@@ -102,22 +100,22 @@ async function getLeaderboard() {
 
       games_played: gamesPlayed,
 
-      total_points: totals.total_points,
-      points_per_game: avg(totals.total_points),
+      total_points: totals.points,
+      points_per_game: avg(totals.points),
 
-      total_assists: totals.total_assists,
-      assists_per_game: avg(totals.total_assists),
+      total_assists: totals.assists,
+      assists_per_game: avg(totals.assists),
 
-      total_rebounds: totals.total_rebounds,
-      rebounds_per_game: avg(totals.total_rebounds),
+      total_rebounds: totals.rebounds,
+      rebounds_per_game: avg(totals.rebounds),
 
-      total_steals: totals.total_steals,
-      steals_per_game: avg(totals.total_steals),
+      total_steals: totals.steals,
+      steals_per_game: avg(totals.steals),
 
-      total_blocks: totals.total_blocks,
-      blocks_per_game: avg(totals.total_blocks),
+      total_blocks: totals.blocks,
+      blocks_per_game: avg(totals.blocks),
 
-      total_three_pointers_made: totals.total_three_pointers_made,
+      total_three_pointers_made: totals.threePointersMade,
     } as LeaderboardPlayer;
   });
 }

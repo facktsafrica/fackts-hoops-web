@@ -12,6 +12,8 @@ type Player = {
 
 type GuestHooper = {
   id: string;
+  source_player_id?: string | null;
+  is_active?: boolean | null;
   full_name?: string | null;
   name?: string | null;
   nickname?: string | null;
@@ -100,9 +102,21 @@ function findByName<T extends Player | GuestHooper>(
 function getParticipant(
   row: OneOnOneRow,
   playerMap: Map<string, Player>,
-  guestMap: Map<string, GuestHooper>
+  guestMap: Map<string, GuestHooper>,
+  guestBySourcePlayerId: Map<string, GuestHooper>
 ) {
   if (row.participant_type === "fackts_player" || row.fackts_player_id) {
+    const linkedGuest = row.fackts_player_id
+      ? guestBySourcePlayerId.get(String(row.fackts_player_id))
+      : null;
+
+    if (linkedGuest && linkedGuest.is_active !== false) {
+      return {
+        name: getName(linkedGuest),
+        type: "Guest Hooper",
+      };
+    }
+
     const player = row.fackts_player_id
       ? playerMap.get(String(row.fackts_player_id))
       : null;
@@ -117,6 +131,17 @@ function getParticipant(
     const guest = row.guest_hooper_id
       ? guestMap.get(String(row.guest_hooper_id))
       : null;
+
+    const promotedPlayer = guest?.source_player_id
+      ? playerMap.get(String(guest.source_player_id))
+      : null;
+
+    if (promotedPlayer) {
+      return {
+        name: getName(promotedPlayer),
+        type: "FACKTS Player",
+      };
+    }
 
     return {
       name: getName(guest),
@@ -135,9 +160,21 @@ function getOpponent(
   players: Player[],
   guests: GuestHooper[],
   playerMap: Map<string, Player>,
-  guestMap: Map<string, GuestHooper>
+  guestMap: Map<string, GuestHooper>,
+  guestBySourcePlayerId: Map<string, GuestHooper>
 ) {
   if (row.opponent_type === "fackts_player" || row.opponent_player_id) {
+    const linkedGuest = row.opponent_player_id
+      ? guestBySourcePlayerId.get(String(row.opponent_player_id))
+      : null;
+
+    if (linkedGuest && linkedGuest.is_active !== false) {
+      return {
+        name: getName(linkedGuest),
+        type: "Guest Hooper",
+      };
+    }
+
     const player = row.opponent_player_id
       ? playerMap.get(String(row.opponent_player_id))
       : null;
@@ -152,6 +189,17 @@ function getOpponent(
     const guest = row.opponent_guest_hooper_id
       ? guestMap.get(String(row.opponent_guest_hooper_id))
       : null;
+
+    const promotedPlayer = guest?.source_player_id
+      ? playerMap.get(String(guest.source_player_id))
+      : null;
+
+    if (promotedPlayer) {
+      return {
+        name: getName(promotedPlayer),
+        type: "FACKTS Player",
+      };
+    }
 
     return {
       name: getName(guest),
@@ -279,12 +327,20 @@ async function getData(id: string) {
   const guestMap = new Map<string, GuestHooper>();
   guests.forEach((guest) => guestMap.set(String(guest.id), guest));
 
+  const guestBySourcePlayerId = new Map<string, GuestHooper>();
+  guests.forEach((guest) => {
+    if (guest.source_player_id) {
+      guestBySourcePlayerId.set(String(guest.source_player_id), guest);
+    }
+  });
+
   return {
     row,
     players,
     guests,
     playerMap,
     guestMap,
+    guestBySourcePlayerId,
     error: rowResult.error?.message || "",
   };
 }
@@ -329,13 +385,19 @@ export default async function OneOnOneMatchPage({
   }
 
   const row = data.row;
-  const participant = getParticipant(row, data.playerMap, data.guestMap);
+  const participant = getParticipant(
+    row,
+    data.playerMap,
+    data.guestMap,
+    data.guestBySourcePlayerId
+  );
   const opponent = getOpponent(
     row,
     data.players,
     data.guests,
     data.playerMap,
-    data.guestMap
+    data.guestMap,
+    data.guestBySourcePlayerId
   );
 
   const result = getResult(row);

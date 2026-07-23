@@ -35,6 +35,7 @@ type GameRow = {
 
 type PlayerRow = {
   id: string;
+  is_guest_identity?: boolean;
   full_name?: string | null;
   name?: string | null;
   nickname?: string | null;
@@ -349,12 +350,37 @@ async function getGameData(gameId: string) {
   let players: PlayerRow[] = [];
 
   if (playerIds.length > 0) {
-    const { data: playersData } = await supabase
-      .from("players")
-      .select("*")
-      .in("id", playerIds);
+    const [playersResult, linkedGuestsResult] = await Promise.all([
+      supabase.from("players").select("*").in("id", playerIds),
+      supabase
+        .from("guest_hoopers")
+        .select("*")
+        .in("source_player_id", playerIds),
+    ]);
 
-    players = (playersData || []) as PlayerRow[];
+    players = (playersResult.data || []) as PlayerRow[];
+
+    const loadedPlayerIds = new Set(players.map((player) => player.id));
+    (linkedGuestsResult.data || []).forEach((guest: any) => {
+      if (!guest.source_player_id || loadedPlayerIds.has(guest.source_player_id)) {
+        return;
+      }
+
+      players.push({
+        id: guest.source_player_id,
+        is_guest_identity: true,
+        full_name: guest.full_name,
+        name: guest.full_name,
+        nickname: guest.nickname,
+        role:
+          guest.guest_type === "external_player"
+            ? "External Player"
+            : "Guest Hooper",
+        position: guest.position,
+        photo_url: guest.photo_url,
+        photo_position: guest.photo_position,
+      });
+    });
   }
 
   const playerMap = new Map<string, PlayerRow>();
@@ -603,7 +629,7 @@ export default async function GameDetailsPage({
                 <BigStat label="BLK" value={statNumber(playerOfGame.blocks)} />
               </div>
 
-              {playerOfGame.player?.id ? (
+              {playerOfGame.player?.id && !playerOfGame.player.is_guest_identity ? (
                 <div className="mt-6">
                   <Link
                     href={`/players/${playerOfGame.player.id}`}

@@ -8,6 +8,17 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
+function playerAccessError(error: unknown) {
+  if (
+    error instanceof Error &&
+    error.message === "PLAYER_ACCOUNTS_CONFIGURATION_MISSING"
+  ) {
+    return "Player Accounts is not connected to the secure Supabase Admin key yet. Existing accounts have not been deleted. Add the server-only key in Vercel, then redeploy.";
+  }
+
+  return error instanceof Error ? error.message : "Player Accounts could not be loaded.";
+}
+
 function temporaryPassword() {
   return `Fackts!${randomBytes(8).toString("base64url")}`;
 }
@@ -34,7 +45,7 @@ export async function GET() {
     return NextResponse.json({ ok: true, players: data ?? [] });
   } catch (error) {
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not load player accounts." },
+      { ok: false, error: playerAccessError(error) },
       { status: 500 }
     );
   }
@@ -225,7 +236,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Access setup failed." },
+      { ok: false, error: playerAccessError(error) },
       { status: 500 }
     );
   }

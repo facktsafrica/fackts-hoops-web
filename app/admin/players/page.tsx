@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
-import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
+import {
+  EXTERNAL_PLAYER_TYPE,
+  FACKTS_PLAYER_TYPE,
+  GUEST_HOOPER_TYPE,
+  PROSPECT_PLAYER_TYPE,
+  playerClassificationLabel,
+} from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
 
 type PlayerRow = {
@@ -50,6 +56,7 @@ type PlayerForm = {
   full_name: string;
   nickname: string;
   jersey_number: string;
+  player_type: string;
   role: string;
   position: string;
   height: string;
@@ -86,6 +93,7 @@ const emptyForm: PlayerForm = {
   full_name: "",
   nickname: "",
   jersey_number: "",
+  player_type: FACKTS_PLAYER_TYPE,
   role: "Player",
   position: "",
   height: "",
@@ -124,6 +132,13 @@ const roles = [
   "Bench",
   "Captain",
   "Co-Captain",
+];
+
+const playerTypes = [
+  { label: "Official FACKTS Player", value: FACKTS_PLAYER_TYPE },
+  { label: "External Player", value: EXTERNAL_PLAYER_TYPE },
+  { label: "Guest Hooper", value: GUEST_HOOPER_TYPE },
+  { label: "Prospect", value: PROSPECT_PLAYER_TYPE },
 ];
 
 const positions = [
@@ -235,7 +250,6 @@ export default function AdminPlayersPage() {
     const { data, error } = await supabase
       .from("players")
       .select("*")
-      .eq("player_type", FACKTS_PLAYER_TYPE)
       .order("jersey_number", { ascending: true });
 
     if (error) {
@@ -294,6 +308,7 @@ export default function AdminPlayersPage() {
       full_name: clean(player.full_name || player.name),
       nickname: clean(player.nickname),
       jersey_number: clean(player.jersey_number),
+      player_type: clean(player.player_type) || FACKTS_PLAYER_TYPE,
       role: clean(player.role) || "Player",
       position: clean(player.position),
       height: clean(player.height),
@@ -372,7 +387,7 @@ export default function AdminPlayersPage() {
         nickname: form.nickname.trim() || null,
         jersey_number: numberOrNull(form.jersey_number),
         role: form.role.trim() || null,
-        player_type: FACKTS_PLAYER_TYPE,
+        player_type: form.player_type || FACKTS_PLAYER_TYPE,
         position: form.position.trim() || null,
         height: form.height.trim() || null,
         weight: form.weight.trim() || null,
@@ -419,7 +434,11 @@ export default function AdminPlayersPage() {
           throw new Error(error.message);
         }
 
-        setMessage("Player updated successfully.");
+        setMessage(
+          form.player_type === FACKTS_PLAYER_TYPE
+            ? "Player updated as an official FACKTS player."
+            : `Player moved to ${playerClassificationLabel(form.player_type)}. Their full stats history now follows this category.`
+        );
       } else {
         const { error } = await supabase.from("players").insert({
           ...payload,
@@ -484,8 +503,9 @@ export default function AdminPlayersPage() {
               </h1>
 
               <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
-                Edit player identity, role, measurements, skills, links, photo,
-                and development details as they grow.
+                Edit identity, current category, role, measurements, skills,
+                links, photo, and development details. Career stats follow the
+                current category automatically.
               </p>
             </div>
 
@@ -580,7 +600,23 @@ export default function AdminPlayersPage() {
                 />
               </Field>
 
-              <Field label="Role">
+              <Field label="Current Category">
+                <select
+                  name="player_type"
+                  value={form.player_type}
+                  onChange={handleChange}
+                  className={inputClass}
+                >
+                  {playerTypes.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <Field label="Team Role">
                 <select name="role" value={form.role} onChange={handleChange} className={inputClass}>
                   {roles.map((role) => (
                     <option key={role} value={role}>
@@ -588,8 +624,15 @@ export default function AdminPlayersPage() {
                     </option>
                   ))}
                 </select>
-              </Field>
-            </div>
+            </Field>
+
+            {editingId && form.player_type !== FACKTS_PLAYER_TYPE ? (
+              <div className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-xs font-bold leading-5 text-orange-100">
+                Saving this category removes the player from official FACKTS
+                lists and accounts. Their previous game and 1v1 stats are kept
+                and shown under Guest Leaderboards.
+              </div>
+            ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Position">
@@ -1022,6 +1065,10 @@ export default function AdminPlayersPage() {
                         {player.role || "Player"}
                       </span>
 
+                      <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[11px] font-black uppercase text-orange-200">
+                        {playerClassificationLabel(player.player_type)}
+                      </span>
+
                       {player.is_featured ? (
                         <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] font-black uppercase text-blue-200">
                           Featured
@@ -1061,12 +1108,14 @@ export default function AdminPlayersPage() {
                         Edit Everything
                       </button>
 
-                      <Link
-                        href={`/players/${player.id}`}
-                        className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:border-orange-400/60"
-                      >
-                        View
-                      </Link>
+                      {player.player_type === FACKTS_PLAYER_TYPE ? (
+                        <Link
+                          href={`/players/${player.id}`}
+                          className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:border-orange-400/60"
+                        >
+                          View
+                        </Link>
+                      ) : null}
 
                       <button
                         type="button"

@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  getCareerGameTotals,
+  mergeCareerGameStats,
+} from "@/lib/hoops/careerStats";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -6,6 +10,8 @@ export const revalidate = 0;
 
 type GuestLeader = {
   id: string;
+  source_player_id: string | null;
+  guest_type: string | null;
   full_name: string;
   nickname: string | null;
   position: string | null;
@@ -37,8 +43,104 @@ type GuestLeader = {
   one_v_one_losses: number;
 };
 
+type OneOnOneStatRow = {
+  participant_type?: string | null;
+  fackts_player_id?: string | null;
+  guest_hooper_id?: string | null;
+  opponent_type?: string | null;
+  opponent_player_id?: string | null;
+  opponent_guest_hooper_id?: string | null;
+  opponent_name?: string | null;
+  points_scored?: number | string | null;
+  points_allowed?: number | string | null;
+  result?: string | null;
+  status?: string | null;
+  matches_played?: number | string | null;
+  wins?: number | string | null;
+  losses?: number | string | null;
+};
+
+function statNumber(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function oneOnOneCareerTotals(
+  rows: OneOnOneStatRow[],
+  guestId: string,
+  sourcePlayerId?: string | null
+) {
+  return rows.reduce<{ matches: number; wins: number; losses: number }>(
+    (totals, row) => {
+      const isParticipant =
+        row.guest_hooper_id === guestId ||
+        Boolean(sourcePlayerId && row.fackts_player_id === sourcePlayerId);
+      const isOpponent =
+        row.opponent_guest_hooper_id === guestId ||
+        Boolean(sourcePlayerId && row.opponent_player_id === sourcePlayerId);
+
+      if (!isParticipant && !isOpponent) return totals;
+
+      const aggregateMatches = statNumber(row.matches_played);
+      const aggregateWins = statNumber(row.wins);
+      const aggregateLosses = statNumber(row.losses);
+      const hasMatchOpponent = Boolean(
+        row.opponent_player_id ||
+          row.opponent_guest_hooper_id ||
+          row.opponent_name
+      );
+
+      if (
+        !hasMatchOpponent &&
+        (aggregateMatches > 0 || aggregateWins > 0 || aggregateLosses > 0)
+      ) {
+        totals.matches +=
+          aggregateMatches || aggregateWins + aggregateLosses;
+        totals.wins += aggregateWins;
+        totals.losses += aggregateLosses;
+        return totals;
+      }
+
+      const status = String(row.status ?? "").toLowerCase();
+      if (["upcoming", "pending", "scheduled", "cancelled"].includes(status)) {
+        return totals;
+      }
+
+      const score1 = Number(row.points_scored);
+      const score2 = Number(row.points_allowed);
+      const hasScores = Number.isFinite(score1) && Number.isFinite(score2);
+      const result = String(row.result ?? "").toLowerCase();
+
+      if (!hasScores && !["win", "won", "loss", "lost", "draw"].includes(result)) {
+        return totals;
+      }
+
+      totals.matches += 1;
+
+      if (hasScores) {
+        const ownScore = isParticipant ? score1 : score2;
+        const otherScore = isParticipant ? score2 : score1;
+        if (ownScore > otherScore) totals.wins += 1;
+        if (ownScore < otherScore) totals.losses += 1;
+        return totals;
+      }
+
+      const participantWon = result === "win" || result === "won";
+      const participantLost = result === "loss" || result === "lost";
+      if ((isParticipant && participantWon) || (isOpponent && participantLost)) {
+        totals.wins += 1;
+      }
+      if ((isParticipant && participantLost) || (isOpponent && participantWon)) {
+        totals.losses += 1;
+      }
+      return totals;
+    },
+    { matches: 0, wins: 0, losses: 0 }
+  );
+}
+
 async function getGuestLeaderboard() {
-  const [guestsResult, gameStatsResult, oneOnOneResult] = await Promise.all([
+  const [guestsResult, gameStatsResult, playerStatsResult, oneOnOneResult] = await Promise.all([
     supabase
       .from("guest_hoopers")
       .select("*")
@@ -46,6 +148,8 @@ async function getGuestLeaderboard() {
       .order("created_at", { ascending: false }),
 
     supabase.from("guest_game_stats").select("*"),
+
+    supabase.from("player_game_stats").select("*"),
 
     supabase.from("guest_one_on_one_stats").select("*"),
   ]);
@@ -59,65 +163,38 @@ async function getGuestLeaderboard() {
     console.error("Guest game stats error:", gameStatsResult.error.message);
   }
 
+  if (playerStatsResult.error) {
+    console.error("Former player stats error:", playerStatsResult.error.message);
+  }
+
   if (oneOnOneResult.error) {
     console.error("Guest 1v1 stats error:", oneOnOneResult.error.message);
   }
 
   const guests = guestsResult.data ?? [];
   const gameStats = gameStatsResult.data ?? [];
+  const playerStats = playerStatsResult.data ?? [];
   const oneOnOneStats = oneOnOneResult.data ?? [];
 
   return guests.map((guest: any) => {
     const guestGameStats = gameStats.filter(
       (row: any) => row.guest_hooper_id === guest.id
     );
-
-    const guestOneOnOneStats = oneOnOneStats.filter(
-      (row: any) => row.guest_hooper_id === guest.id
+    const formerPlayerStats = guest.source_player_id
+      ? playerStats.filter(
+          (row: any) => row.player_id === guest.source_player_id
+        )
+      : [];
+    const careerRows = mergeCareerGameStats(
+      guestGameStats,
+      formerPlayerStats
     );
-
-    const gamesPlayed = guestGameStats.length;
-
-    const totals = guestGameStats.reduce(
-      (acc: any, row: any) => {
-        acc.total_points += Number(row.points ?? 0);
-        acc.total_assists += Number(row.assists ?? 0);
-        acc.total_rebounds += Number(row.rebounds ?? 0);
-        acc.total_steals += Number(row.steals ?? 0);
-        acc.total_blocks += Number(row.blocks ?? 0);
-        acc.total_three_pointers_made += Number(row.three_pointers_made ?? 0);
-        return acc;
-      },
-      {
-        total_points: 0,
-        total_assists: 0,
-        total_rebounds: 0,
-        total_steals: 0,
-        total_blocks: 0,
-        total_three_pointers_made: 0,
-      }
-    );
-
-    const oneVOneTotals = guestOneOnOneStats.reduce(
-      (acc: any, row: any) => {
-        acc.matches += Number(row.matches_played ?? 0);
-
-        if (Number(row.wins ?? 0) > 0 || Number(row.losses ?? 0) > 0) {
-          acc.wins += Number(row.wins ?? 0);
-          acc.losses += Number(row.losses ?? 0);
-        } else {
-          const result = String(row.result ?? "").toLowerCase();
-          if (result === "win" || result === "won") acc.wins += 1;
-          if (result === "loss" || result === "lost") acc.losses += 1;
-        }
-
-        return acc;
-      },
-      {
-        matches: 0,
-        wins: 0,
-        losses: 0,
-      }
+    const totals = getCareerGameTotals(careerRows);
+    const gamesPlayed = totals.gamesPlayed;
+    const oneVOneTotals = oneOnOneCareerTotals(
+      oneOnOneStats,
+      guest.id,
+      guest.source_player_id
     );
 
     const calculatedMatches =
@@ -131,31 +208,37 @@ async function getGuestLeaderboard() {
 
     return {
       id: guest.id,
+      source_player_id: guest.source_player_id ?? null,
+      guest_type: guest.guest_type ?? null,
       full_name: guest.full_name,
       nickname: guest.nickname ?? null,
       position: guest.position ?? null,
-      role: guest.role ?? "Guest Hooper",
+      role:
+        guest.role ??
+        (guest.guest_type === "external_player"
+          ? "External Player"
+          : "Guest Hooper"),
       photo_url: guest.photo_url ?? null,
       photo_position: guest.photo_position ?? null,
 
       games_played: gamesPlayed,
 
-      total_points: totals.total_points,
-      points_per_game: avg(totals.total_points),
+      total_points: totals.points,
+      points_per_game: avg(totals.points),
 
-      total_assists: totals.total_assists,
-      assists_per_game: avg(totals.total_assists),
+      total_assists: totals.assists,
+      assists_per_game: avg(totals.assists),
 
-      total_rebounds: totals.total_rebounds,
-      rebounds_per_game: avg(totals.total_rebounds),
+      total_rebounds: totals.rebounds,
+      rebounds_per_game: avg(totals.rebounds),
 
-      total_steals: totals.total_steals,
-      steals_per_game: avg(totals.total_steals),
+      total_steals: totals.steals,
+      steals_per_game: avg(totals.steals),
 
-      total_blocks: totals.total_blocks,
-      blocks_per_game: avg(totals.total_blocks),
+      total_blocks: totals.blocks,
+      blocks_per_game: avg(totals.blocks),
 
-      total_three_pointers_made: totals.total_three_pointers_made,
+      total_three_pointers_made: totals.threePointersMade,
 
       one_v_one_matches: calculatedMatches,
       one_v_one_wins: oneVOneTotals.wins,

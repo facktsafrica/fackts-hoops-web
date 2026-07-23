@@ -17,6 +17,9 @@ type Player = {
 
 type GuestHooper = {
   id: string;
+  source_player_id?: string | null;
+  guest_type?: string | null;
+  is_active?: boolean | null;
   full_name?: string | null;
   name?: string | null;
   nickname?: string | null;
@@ -186,7 +189,8 @@ function findGuestByName(
 function getPlayer1Identity(
   row: OneOnOneRow,
   playerMap: Map<string, Player>,
-  guestMap: Map<string, GuestHooper>
+  guestMap: Map<string, GuestHooper>,
+  guestBySourcePlayerId: Map<string, GuestHooper>
 ): Identity {
   const rowImage =
     row.player_one_cutout_url ||
@@ -195,6 +199,20 @@ function getPlayer1Identity(
     "";
 
   if (row.participant_type === "fackts_player" || row.fackts_player_id) {
+    const linkedGuest = row.fackts_player_id
+      ? guestBySourcePlayerId.get(String(row.fackts_player_id))
+      : null;
+
+    if (linkedGuest && linkedGuest.is_active !== false) {
+      return {
+        id: `guest-${linkedGuest.id}`,
+        name: getPersonName(linkedGuest) || row.participant_name || "Guest Hooper",
+        type: "guest_hooper",
+        position: getPersonPosition(linkedGuest) || "Guest Hooper",
+        photo_url: rowImage || getPersonPhoto(linkedGuest),
+      };
+    }
+
     const player = row.fackts_player_id
       ? playerMap.get(String(row.fackts_player_id))
       : null;
@@ -214,6 +232,20 @@ function getPlayer1Identity(
     const guest = row.guest_hooper_id
       ? guestMap.get(String(row.guest_hooper_id))
       : null;
+
+    const promotedPlayer = guest?.source_player_id
+      ? playerMap.get(String(guest.source_player_id))
+      : null;
+
+    if (promotedPlayer) {
+      return {
+        id: `player-${promotedPlayer.id}`,
+        name: getPersonName(promotedPlayer) || row.participant_name || "FACKTS Player",
+        type: "fackts_player",
+        position: getPersonPosition(promotedPlayer) || "FACKTS Player",
+        photo_url: rowImage || getPersonPhoto(promotedPlayer),
+      };
+    }
 
     const fallbackName = row.participant_name || "Guest Hooper";
 
@@ -239,6 +271,7 @@ function getPlayer2Identity(
   row: OneOnOneRow,
   playerMap: Map<string, Player>,
   guestMap: Map<string, GuestHooper>,
+  guestBySourcePlayerId: Map<string, GuestHooper>,
   players: Player[],
   guests: GuestHooper[]
 ): Identity {
@@ -249,6 +282,20 @@ function getPlayer2Identity(
     "";
 
   if (row.opponent_type === "fackts_player" || row.opponent_player_id) {
+    const linkedGuest = row.opponent_player_id
+      ? guestBySourcePlayerId.get(String(row.opponent_player_id))
+      : null;
+
+    if (linkedGuest && linkedGuest.is_active !== false) {
+      return {
+        id: `guest-${linkedGuest.id}`,
+        name: getPersonName(linkedGuest) || row.opponent_name || "Guest Hooper",
+        type: "guest_hooper",
+        position: getPersonPosition(linkedGuest) || "Guest Hooper",
+        photo_url: rowImage || getPersonPhoto(linkedGuest),
+      };
+    }
+
     const player = row.opponent_player_id
       ? playerMap.get(String(row.opponent_player_id))
       : null;
@@ -268,6 +315,20 @@ function getPlayer2Identity(
     const guest = row.opponent_guest_hooper_id
       ? guestMap.get(String(row.opponent_guest_hooper_id))
       : null;
+
+    const promotedPlayer = guest?.source_player_id
+      ? playerMap.get(String(guest.source_player_id))
+      : null;
+
+    if (promotedPlayer) {
+      return {
+        id: `player-${promotedPlayer.id}`,
+        name: getPersonName(promotedPlayer) || row.opponent_name || "FACKTS Player",
+        type: "fackts_player",
+        position: getPersonPosition(promotedPlayer) || "FACKTS Player",
+        photo_url: rowImage || getPersonPhoto(promotedPlayer),
+      };
+    }
 
     const fallbackName = row.opponent_name || "Guest Hooper";
 
@@ -540,12 +601,20 @@ async function getData() {
   const guestMap = new Map<string, GuestHooper>();
   guests.forEach((guest) => guestMap.set(String(guest.id), guest));
 
+  const guestBySourcePlayerId = new Map<string, GuestHooper>();
+  guests.forEach((guest) => {
+    if (guest.source_player_id) {
+      guestBySourcePlayerId.set(String(guest.source_player_id), guest);
+    }
+  });
+
   return {
     rows,
     players,
     guests,
     playerMap,
     guestMap,
+    guestBySourcePlayerId,
   };
 }
 
@@ -553,6 +622,7 @@ function buildLeaderboard(
   rows: OneOnOneRow[],
   playerMap: Map<string, Player>,
   guestMap: Map<string, GuestHooper>,
+  guestBySourcePlayerId: Map<string, GuestHooper>,
   players: Player[],
   guests: GuestHooper[]
 ) {
@@ -587,8 +657,20 @@ function buildLeaderboard(
 
     if (player1Score === null || player2Score === null) return;
 
-    const player1 = getPlayer1Identity(row, playerMap, guestMap);
-    const player2 = getPlayer2Identity(row, playerMap, guestMap, players, guests);
+    const player1 = getPlayer1Identity(
+      row,
+      playerMap,
+      guestMap,
+      guestBySourcePlayerId
+    );
+    const player2 = getPlayer2Identity(
+      row,
+      playerMap,
+      guestMap,
+      guestBySourcePlayerId,
+      players,
+      guests
+    );
 
     const player1Item = ensureItem(player1);
     const player2Item = ensureItem(player2);
@@ -665,12 +747,20 @@ function getBiggestWin(rows: OneOnOneRow[]) {
 }
 
 export default async function OneOnOnePage() {
-  const { rows, players, guests, playerMap, guestMap } = await getData();
+  const {
+    rows,
+    players,
+    guests,
+    playerMap,
+    guestMap,
+    guestBySourcePlayerId,
+  } = await getData();
 
   const leaderboard = buildLeaderboard(
     rows,
     playerMap,
     guestMap,
+    guestBySourcePlayerId,
     players,
     guests
   );
@@ -756,6 +846,7 @@ export default async function OneOnOnePage() {
             guests={guests}
             playerMap={playerMap}
             guestMap={guestMap}
+            guestBySourcePlayerId={guestBySourcePlayerId}
           />
         ) : (
           <EmptyBox text="No upcoming 1-on-1 battles added yet." />
@@ -819,6 +910,7 @@ export default async function OneOnOnePage() {
             guests={guests}
             playerMap={playerMap}
             guestMap={guestMap}
+            guestBySourcePlayerId={guestBySourcePlayerId}
           />
         ) : (
           <EmptyBox text="No completed 1-on-1 results yet." />
@@ -835,6 +927,7 @@ export default async function OneOnOnePage() {
             guests={guests}
             playerMap={playerMap}
             guestMap={guestMap}
+            guestBySourcePlayerId={guestBySourcePlayerId}
           />
         </section>
       ) : null}
@@ -848,12 +941,14 @@ function FixtureList({
   guests,
   playerMap,
   guestMap,
+  guestBySourcePlayerId,
 }: {
   rows: OneOnOneRow[];
   players: Player[];
   guests: GuestHooper[];
   playerMap: Map<string, Player>;
   guestMap: Map<string, GuestHooper>;
+  guestBySourcePlayerId: Map<string, GuestHooper>;
 }) {
   return (
     <div className="space-y-3">
@@ -865,6 +960,7 @@ function FixtureList({
           guests={guests}
           playerMap={playerMap}
           guestMap={guestMap}
+          guestBySourcePlayerId={guestBySourcePlayerId}
         />
       ))}
     </div>
@@ -877,15 +973,29 @@ function FixtureBattleCard({
   guests,
   playerMap,
   guestMap,
+  guestBySourcePlayerId,
 }: {
   row: OneOnOneRow;
   players: Player[];
   guests: GuestHooper[];
   playerMap: Map<string, Player>;
   guestMap: Map<string, GuestHooper>;
+  guestBySourcePlayerId: Map<string, GuestHooper>;
 }) {
-  const player1 = getPlayer1Identity(row, playerMap, guestMap);
-  const player2 = getPlayer2Identity(row, playerMap, guestMap, players, guests);
+  const player1 = getPlayer1Identity(
+    row,
+    playerMap,
+    guestMap,
+    guestBySourcePlayerId
+  );
+  const player2 = getPlayer2Identity(
+    row,
+    playerMap,
+    guestMap,
+    guestBySourcePlayerId,
+    players,
+    guests
+  );
 
   const status = getMatchStatus(row);
   const player1Score = getPlayer1Score(row);
