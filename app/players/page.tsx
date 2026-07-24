@@ -222,7 +222,7 @@ export default async function PlayersPage() {
         <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
           <SectionHeader eyebrow="Spotlight" title="Featured Official Players" />
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {featuredPlayers.map((player) => (
               <PlayerCard key={player.id} player={player} featured />
             ))}
@@ -236,7 +236,7 @@ export default async function PlayersPage() {
         {players.length === 0 ? (
           <EmptyBox text="No official active players found yet." />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[...featuredPlayers, ...regularPlayers].map((player) => (
               <PlayerCard key={player.id} player={player} />
             ))}
@@ -257,22 +257,22 @@ function PlayerCard({
   return (
     <Link
       href={`/players/${player.id}`}
-      className="group block overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/90 shadow-xl shadow-black/20 backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-orange-400/60 hover:shadow-orange-950/30"
+      className="group block overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/90 shadow-lg shadow-black/20 backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-orange-400/60 hover:shadow-orange-950/30"
     >
       <div className="relative overflow-hidden bg-black">
-        <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2">
+        <div className="absolute left-2 top-2 z-10 flex flex-wrap gap-1.5">
           {hasValue(player.jersey_number) ? (
-            <span className="rounded-full bg-orange-500 px-3 py-1 text-[11px] font-black text-black">
+            <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[9px] font-black text-black">
               #{player.jersey_number}
             </span>
           ) : null}
 
-          <span className="rounded-full border border-white/10 bg-black/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white backdrop-blur">
-            FACKTS Player
+          <span className="rounded-full border border-white/10 bg-black/70 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white backdrop-blur">
+            FACKTS
           </span>
 
           {featured ? (
-            <span className="rounded-full border border-orange-400/40 bg-black/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-orange-200 backdrop-blur">
+            <span className="rounded-full border border-orange-400/40 bg-black/70 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-orange-200 backdrop-blur">
               Featured
             </span>
           ) : null}
@@ -282,64 +282,62 @@ function PlayerCard({
           <img
             src={player.photo_url}
             alt={getPlayerName(player)}
-            className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-60"
+            className="h-36 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-44 md:h-48"
             style={{
               objectPosition: player.photo_position || "center center",
             }}
           />
         ) : (
-          <div className="flex h-56 w-full items-center justify-center bg-[radial-gradient(circle,_rgba(249,115,22,0.25),_transparent_55%),#050505] sm:h-60">
+          <div className="flex h-36 w-full items-center justify-center bg-[radial-gradient(circle,_rgba(249,115,22,0.25),_transparent_55%),#050505] sm:h-44 md:h-48">
             <div className="text-center">
-              <p className="text-5xl font-black text-orange-500">
+              <p className="text-3xl font-black text-orange-500 sm:text-4xl">
                 {getInitials(player) || "FH"}
               </p>
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-600">
-                FACKTS Player
+              <p className="text-[8px] font-black uppercase tracking-[0.18em] text-zinc-600">
+                FACKTS
               </p>
             </div>
           </div>
         )}
       </div>
 
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="line-clamp-1 text-xl font-black text-white group-hover:text-orange-200">
-              {getPlayerName(player)}
-            </h2>
+      <div className="p-3 sm:p-4">
+        <div className="min-w-0">
+          <h2 className="line-clamp-1 text-sm font-black leading-tight text-white group-hover:text-orange-200 sm:text-base">
+            {getPlayerName(player)}
+          </h2>
 
-            {hasValue(player.nickname) ? (
-              <p className="mt-1 line-clamp-1 text-sm font-bold text-orange-300">
-                “{player.nickname}”
-              </p>
-            ) : null}
-          </div>
+          {hasValue(player.nickname) ? (
+            <p className="mt-1 line-clamp-1 text-[11px] font-bold text-orange-300 sm:text-xs">
+              "{player.nickname}"
+            </p>
+          ) : null}
+        </div>
 
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {hasValue(player.position) ? (
-            <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase text-zinc-300">
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[8px] font-black uppercase text-zinc-300 sm:text-[9px]">
               {player.position}
+            </span>
+          ) : null}
+
+          {hasValue(player.role) ? (
+            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[8px] font-black uppercase text-orange-200 sm:text-[9px]">
+              {player.role}
             </span>
           ) : null}
         </div>
 
-        {hasValue(player.role) ? (
-          <div className="mt-3">
-            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-orange-200">
-              {player.role}
-            </span>
-          </div>
-        ) : null}
-
-        <div className="mt-4 grid grid-cols-4 gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
           <StatPill label="GP" value={player.games_played} />
           <StatPill label="PPG" value={player.points_per_game} />
           <StatPill label="RPG" value={player.rebounds_per_game} />
           <StatPill label="APG" value={player.assists_per_game} />
         </div>
 
-        <div className="mt-4">
-          <span className="inline-flex w-full justify-center rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-black transition group-hover:bg-orange-400">
-            Open Profile
+        <div className="mt-3">
+          <span className="inline-flex w-full justify-center rounded-full bg-orange-500 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-black transition group-hover:bg-orange-400 sm:text-[10px]">
+            Open
           </span>
         </div>
       </div>
@@ -383,12 +381,14 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 function StatPill({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/60 px-2 py-3 text-center">
-      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-zinc-500">
+    <div className="rounded-xl border border-white/10 bg-black/60 px-1.5 py-2 text-center sm:rounded-2xl">
+      <p className="text-[8px] font-black uppercase tracking-[0.1em] text-zinc-500">
         {label}
       </p>
 
-      <p className="mt-1 text-base font-black text-white">{value}</p>
+      <p className="mt-0.5 text-sm font-black text-white sm:text-base">
+        {value}
+      </p>
     </div>
   );
 }

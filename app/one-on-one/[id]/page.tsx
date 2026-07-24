@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
+import AnimatedNumber from "@/app/components/AnimatedNumber";
 
 type Player = {
   id: string;
@@ -454,7 +455,7 @@ export default async function OneOnOneMatchPage({
                   </p>
                   <p className="text-xs text-zinc-500">{participant.type}</p>
                   <p className="mt-3 text-5xl font-black text-orange-300">
-                    {participantScore ?? "-"}
+                    <AnimatedNumber value={participantScore ?? "-"} />
                   </p>
                 </div>
 
@@ -468,7 +469,7 @@ export default async function OneOnOneMatchPage({
                   </p>
                   <p className="text-xs text-zinc-500">{opponent.type}</p>
                   <p className="mt-3 text-5xl font-black text-white">
-                    {opponentScore ?? "-"}
+                    <AnimatedNumber value={opponentScore ?? "-"} />
                   </p>
                 </div>
               </div>

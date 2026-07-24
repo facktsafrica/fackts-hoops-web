@@ -49,6 +49,7 @@ const workWithUsItems: NavItem[] = [
 export default function PublicHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const isAdminPage = pathname.startsWith("/admin");
 
   function isActive(item: NavItem) {
     if (item.href === "/") return pathname === "/";
@@ -76,6 +77,10 @@ export default function PublicHeader() {
     }
 
     return "rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-center text-sm font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300";
+  }
+
+  if (isAdminPage) {
+    return null;
   }
 
   return (
@@ -133,9 +138,16 @@ export default function PublicHeader() {
             <button
               type="button"
               onClick={() => setOpen(true)}
-              className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300 md:px-5 md:text-sm"
+              aria-label="Open site menu"
+              aria-expanded={open}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
             >
-              Menu
+              <span className="sr-only">Open site menu</span>
+              <span className="flex w-5 flex-col gap-1.5" aria-hidden="true">
+                <span className="h-0.5 w-full rounded-full bg-current" />
+                <span className="h-0.5 w-full rounded-full bg-current" />
+                <span className="h-0.5 w-full rounded-full bg-current" />
+              </span>
             </button>
           </div>
         </div>
@@ -179,9 +191,10 @@ export default function PublicHeader() {
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="rounded-full border border-slate-700 px-4 py-2 text-sm font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300"
+                  aria-label="Close site menu"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 text-xl font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300"
                 >
-                  Close
+                  ×
                 </button>
               </div>
             </div>

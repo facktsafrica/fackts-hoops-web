@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import AdminNavigation from "@/app/components/AdminNavigation";
 
 type AccessState = "checking" | "allowed" | "denied";
 
@@ -125,5 +126,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  if (isLoginPage) return <>{children}</>;
+
+  return (
+    <>
+      <AdminNavigation />
+      {children}
+    </>
+  );
 }

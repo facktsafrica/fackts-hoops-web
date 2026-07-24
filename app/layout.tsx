@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./fackts-motion.css";
 import PublicHeader from "./components/PublicHeader";
 import PublicMobileNav from "./components/PublicMobileNav";
 import FacktsTicker from "./components/FacktsTicker";
 import PwaInstallButton from "./components/PwaInstallButton";
 import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
+import PlayerPortalReturn from "./components/PlayerPortalReturn";
+import FacktsMotionSystem from "./components/FacktsMotionSystem";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -63,11 +66,13 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body>
+        <FacktsMotionSystem />
         <PwaServiceWorkerClient />
         <PublicHeader />
         <PwaInstallButton />
         <FacktsTicker />
         {children}
+        <PlayerPortalReturn />
         <PublicMobileNav />
       </body>
     </html>

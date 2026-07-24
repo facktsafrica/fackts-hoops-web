@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -8,6 +9,7 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 export default function PwaInstallButton() {
+  const pathname = usePathname();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [showIosInstructions, setShowIosInstructions] = useState(false);
@@ -60,7 +62,7 @@ export default function PwaInstallButton() {
     }
   };
 
-  if (!installSupported) {
+  if (pathname.startsWith("/admin") || !installSupported) {
     return null;
   }
 

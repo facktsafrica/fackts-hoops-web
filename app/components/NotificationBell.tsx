@@ -41,12 +41,14 @@ export default function NotificationBell() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative z-[110]">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         className="relative rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400"
         aria-label={`${unread} unread notifications`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
       >
         Alerts
         {unread > 0 ? (
@@ -57,7 +59,11 @@ export default function NotificationBell() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-2xl shadow-black">
+        <div
+          role="dialog"
+          aria-label="Player notifications"
+          className="absolute right-0 z-[120] mt-3 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
+        >
           <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
             <p className="font-black">Notifications</p>
             <button type="button" onClick={() => setOpen(false)} className="text-xs font-bold text-slate-400">

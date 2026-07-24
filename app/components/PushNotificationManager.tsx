@@ -129,7 +129,21 @@ export default function PushNotificationManager({ compact = false }: { compact?:
   }
 
   if (status === "unconfigured") {
-    return <span className="text-xs font-bold text-amber-300">Push setup is waiting for the VAPID keys.</span>;
+    if (compact) {
+      return null;
+    }
+
+    return (
+      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
+          Device Alerts
+        </p>
+        <h2 className="mt-2 text-xl font-black">Push notifications unavailable</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-400">
+          This feature is not connected right now. In-app alerts will continue to work.
+        </p>
+      </div>
+    );
   }
 
   return (

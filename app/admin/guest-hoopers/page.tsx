@@ -14,6 +14,20 @@ type GuestHooperForm = {
   is_active: boolean;
 };
 
+type AdminGuestHooper = {
+  id: string;
+  source_id: string;
+  source: "guest_hoopers" | "players";
+  full_name: string;
+  nickname: string | null;
+  position: string | null;
+  photo_url: string | null;
+  photo_position: string | null;
+  notes: string | null;
+  role: string | null;
+  is_active: boolean;
+};
+
 const emptyForm: GuestHooperForm = {
   full_name: "",
   nickname: "",
@@ -36,8 +50,33 @@ const imagePositions = [
   { label: "Bottom Right", value: "right bottom" },
 ];
 
+function normalize(value?: string | null) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function identityValues(person: any) {
+  return [
+    person.full_name,
+    person.name,
+    person.nickname,
+  ]
+    .map((value) => normalize(value))
+    .filter(Boolean);
+}
+
+function displayName(person: any) {
+  return (
+    person.full_name ||
+    person.name ||
+    person.nickname ||
+    "Guest Hooper"
+  );
+}
+
 export default function AdminGuestHoopersPage() {
-  const [guestHoopers, setGuestHoopers] = useState<any[]>([]);
+  const [guestHoopers, setGuestHoopers] = useState<AdminGuestHooper[]>([]);
   const [form, setForm] = useState<GuestHooperForm>(emptyForm);
   const [editingGuestId, setEditingGuestId] = useState<string | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
@@ -45,22 +84,95 @@ export default function AdminGuestHoopersPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [message, setMessage] = useState("");
 
+  const directGuestCount = guestHoopers.filter(
+    (guest) => guest.source === "guest_hoopers"
+  ).length;
+
+  const convertedPlayerCount = guestHoopers.filter(
+    (guest) => guest.source === "players"
+  ).length;
+
   async function loadGuestHoopers() {
     setLoadingPage(true);
     setMessage("");
 
-    const { data, error } = await supabase
-      .from("guest_hoopers")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const [guestResult, playerResult] = await Promise.all([
+      supabase
+        .from("guest_hoopers")
+        .select("*")
+        .order("created_at", { ascending: false }),
 
-    if (error) {
-      setMessage(`Failed to load guest hoopers: ${error.message}`);
-      setLoadingPage(false);
-      return;
+      supabase
+        .from("players")
+        .select("*")
+        .ilike("role", "%guest%")
+        .order("full_name", { ascending: true }),
+    ]);
+
+    const messages: string[] = [];
+
+    if (guestResult.error) {
+      messages.push(`Guest table error: ${guestResult.error.message}`);
     }
 
-    setGuestHoopers(data ?? []);
+    if (playerResult.error) {
+      messages.push(`Converted players error: ${playerResult.error.message}`);
+    }
+
+    const directGuests: AdminGuestHooper[] = (guestResult.data ?? []).map(
+      (guest: any) => ({
+        id: `guest-${guest.id}`,
+        source_id: guest.id,
+        source: "guest_hoopers",
+        full_name: guest.full_name ?? "Guest Hooper",
+        nickname: guest.nickname ?? null,
+        position: guest.position ?? null,
+        photo_url: guest.photo_url ?? null,
+        photo_position: guest.photo_position ?? "center center",
+        notes: guest.notes ?? null,
+        role: "Guest Hooper",
+        is_active: guest.is_active ?? true,
+      })
+    );
+
+    const directGuestKeys = new Set<string>();
+
+    for (const guest of directGuests) {
+      for (const key of identityValues(guest)) {
+        directGuestKeys.add(key);
+      }
+    }
+
+    const convertedPlayers: AdminGuestHooper[] = (playerResult.data ?? [])
+      .filter((player: any) => {
+        const keys = identityValues(player);
+
+        // If a real guest profile already exists with the same full name,
+        // name, or nickname, do not show the converted player duplicate.
+        return !keys.some((key) => directGuestKeys.has(key));
+      })
+      .map((player: any) => ({
+        id: `player-${player.id}`,
+        source_id: player.id,
+        source: "players",
+        full_name: displayName(player),
+        nickname: player.nickname ?? null,
+        position: player.position ?? null,
+        photo_url: player.photo_url ?? null,
+        photo_position: player.photo_position ?? "center center",
+        notes:
+          player.bio ??
+          "Converted from official players. Existing player stats should follow this record.",
+        role: player.role ?? "Guest Hooper",
+        is_active: player.is_active ?? true,
+      }));
+
+    setGuestHoopers([...directGuests, ...convertedPlayers]);
+
+    if (messages.length > 0) {
+      setMessage(messages.join(" | "));
+    }
+
     setLoadingPage(false);
   }
 
@@ -84,8 +196,15 @@ export default function AdminGuestHoopersPage() {
     setMessage("");
   }
 
-  function startEdit(guest: any) {
-    setEditingGuestId(guest.id);
+  function startEdit(guest: AdminGuestHooper) {
+    if (guest.source !== "guest_hoopers") {
+      setMessage(
+        `${guest.full_name} is a converted player. Edit this person inside Admin Players.`
+      );
+      return;
+    }
+
+    setEditingGuestId(guest.source_id);
 
     setForm({
       full_name: guest.full_name ?? "",
@@ -97,7 +216,9 @@ export default function AdminGuestHoopersPage() {
       is_active: guest.is_active ?? true,
     });
 
-    setMessage(`Editing ${guest.full_name}. Make changes above, then click Update Guest Hooper.`);
+    setMessage(
+      `Editing ${guest.full_name}. Make changes above, then click Update Guest Hooper.`
+    );
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -132,7 +253,9 @@ export default function AdminGuestHoopersPage() {
       return;
     }
 
-    const { data } = supabase.storage.from("player-photos").getPublicUrl(filePath);
+    const { data } = supabase.storage
+      .from("player-photos")
+      .getPublicUrl(filePath);
 
     updateField("photo_url", data.publicUrl);
     setMessage("Photo uploaded successfully. Remember to click Create or Update.");
@@ -186,16 +309,27 @@ export default function AdminGuestHoopersPage() {
       setMessage("Guest hooper created successfully.");
     }
 
-    resetForm();
+    setForm(emptyForm);
+    setEditingGuestId(null);
     await loadGuestHoopers();
     setLoading(false);
   }
 
-  async function handleDeleteGuestHooper(guestId: string) {
+  async function handleDeleteGuestHooper(guest: AdminGuestHooper) {
+    if (guest.source !== "guest_hoopers") {
+      setMessage(
+        `${guest.full_name} is from the players table. Change their role inside Admin Players instead.`
+      );
+      return;
+    }
+
     const yes = window.confirm("Delete this guest hooper?");
     if (!yes) return;
 
-    const result = await supabase.from("guest_hoopers").delete().eq("id", guestId);
+    const result = await supabase
+      .from("guest_hoopers")
+      .delete()
+      .eq("id", guest.source_id);
 
     if (result.error) {
       setMessage(`Failed to delete guest hooper: ${result.error.message}`);
@@ -214,7 +348,7 @@ export default function AdminGuestHoopersPage() {
             href="/admin"
             className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
           >
-            ← Back to Admin
+            Back to Admin
           </Link>
 
           <div className="mt-4 text-sm uppercase tracking-[0.25em] text-orange-300">
@@ -225,9 +359,16 @@ export default function AdminGuestHoopersPage() {
             Guest Hoopers
           </h1>
 
-          <p className="mt-3 text-slate-400">
-            Create and manage non-FACKTS players who appear in 1-on-1 battles or guest game rosters.
+          <p className="mt-3 max-w-3xl text-slate-400">
+            This admin page now shows direct guest profiles plus official players
+            converted to Guest Hooper. Converted players are managed from Admin Players.
           </p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <MiniStat label="Total Showing" value={String(guestHoopers.length)} />
+            <MiniStat label="Guest Profiles" value={String(directGuestCount)} />
+            <MiniStat label="Converted Players" value={String(convertedPlayerCount)} />
+          </div>
         </div>
 
         {message ? (
@@ -395,13 +536,13 @@ export default function AdminGuestHoopersPage() {
                 <h2 className="mt-1 text-2xl font-bold">All Guest Hoopers</h2>
 
                 <p className="mt-2 text-sm text-slate-500">
-                  Guest hoopers can later be used in 1-on-1 battles and game rosters.
+                  This list combines direct guest profiles and players whose role is Guest Hooper.
                 </p>
               </div>
 
               {guestHoopers.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
-                  No guest hoopers created yet.
+                  No guest hoopers found yet.
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -423,8 +564,8 @@ export default function AdminGuestHoopersPage() {
                               }}
                             />
                           ) : (
-                            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-800 text-3xl">
-                              🏀
+                            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-800 text-xl font-black text-orange-300">
+                              GH
                             </div>
                           )}
 
@@ -433,6 +574,16 @@ export default function AdminGuestHoopersPage() {
                               <div className="text-xl font-bold">
                                 {guest.full_name}
                               </div>
+
+                              {guest.source === "players" ? (
+                                <span className="rounded-full bg-blue-500/15 px-2 py-1 text-xs font-medium text-blue-300">
+                                  CONVERTED PLAYER
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-orange-500/15 px-2 py-1 text-xs font-medium text-orange-300">
+                                  GUEST PROFILE
+                                </span>
+                              )}
 
                               {guest.is_active ? (
                                 <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-xs font-medium text-emerald-300">
@@ -455,25 +606,42 @@ export default function AdminGuestHoopersPage() {
                                 {guest.notes}
                               </div>
                             ) : null}
+
+                            {guest.source === "players" ? (
+                              <div className="mt-2 rounded-2xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-200">
+                                Managed from Admin Players. Their old player stats stay attached to this player record.
+                              </div>
+                            ) : null}
                           </div>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(guest)}
-                            className="rounded-2xl border border-orange-500/40 px-4 py-2 text-sm font-semibold text-orange-300 hover:bg-orange-500/10"
-                          >
-                            Edit
-                          </button>
+                          {guest.source === "guest_hoopers" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEdit(guest)}
+                                className="rounded-2xl border border-orange-500/40 px-4 py-2 text-sm font-semibold text-orange-300 hover:bg-orange-500/10"
+                              >
+                                Edit
+                              </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteGuestHooper(guest.id)}
-                            className="rounded-2xl border border-rose-500/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
-                          >
-                            Delete
-                          </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteGuestHooper(guest)}
+                                className="rounded-2xl border border-rose-500/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          ) : (
+                            <Link
+                              href="/admin/players"
+                              className="rounded-2xl border border-blue-500/40 px-4 py-2 text-sm font-semibold text-blue-300 hover:bg-blue-500/10"
+                            >
+                              Edit in Players
+                            </Link>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -485,6 +653,18 @@ export default function AdminGuestHoopersPage() {
         )}
       </div>
     </main>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </div>
+
+      <div className="mt-2 text-2xl font-black text-orange-300">{value}</div>
+    </div>
   );
 }
 

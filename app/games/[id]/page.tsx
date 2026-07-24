@@ -3,6 +3,7 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import AnimatedNumber from "@/app/components/AnimatedNumber";
 
 type GameRow = {
   id: string;
@@ -537,7 +538,7 @@ export default async function GameDetailsPage({
                     </p>
 
                     <p className="text-5xl font-black text-white sm:text-6xl">
-                      {facktsScore ?? "-"}
+                      <AnimatedNumber value={facktsScore ?? "-"} />
                     </p>
                   </div>
 
@@ -549,7 +550,7 @@ export default async function GameDetailsPage({
                     </p>
 
                     <p className="text-5xl font-black text-white sm:text-6xl">
-                      {opponentScore ?? "-"}
+                      <AnimatedNumber value={opponentScore ?? "-"} />
                     </p>
                   </div>
                 </div>
@@ -843,7 +844,9 @@ function BigStat({ label, value }: { label: string; value: number }) {
         {label}
       </p>
 
-      <p className="mt-2 text-4xl font-black text-orange-300">{value}</p>
+      <p className="mt-2 text-4xl font-black text-orange-300">
+        <AnimatedNumber value={value} />
+      </p>
     </div>
   );
 }

@@ -1,7 +1,5 @@
 import Link from "next/link";
 import AdminLogoutButton from "@/app/components/AdminLogoutButton";
-import NotificationBell from "@/app/components/NotificationBell";
-import PushNotificationManager from "@/app/components/PushNotificationManager";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -192,27 +190,11 @@ export default function AdminPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <NotificationBell />
-
               <Link
                 href="/"
                 className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
               >
                 View Site
-              </Link>
-
-              <Link
-                href="/events"
-                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
-              >
-                Public Events
-              </Link>
-
-              <Link
-                href="/partners"
-                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
-              >
-                Public Partners
               </Link>
 
               <AdminLogoutButton />
@@ -224,10 +206,6 @@ export default function AdminPage() {
             <AdminStat label="Events & Media" value={eventCards.length} />
             <AdminStat label="Guests" value={guestCards.length} />
             <AdminStat label="Business Tools" value={businessCards.length} />
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
-            <PushNotificationManager compact />
           </div>
         </div>
       </section>
@@ -289,10 +267,6 @@ function AdminCardItem({ card }: { card: AdminCard }) {
           }
         >
           {card.badge}
-        </span>
-
-        <span className="text-xs font-black uppercase tracking-[0.14em] text-orange-300">
-          Open
         </span>
       </div>
 

@@ -3,6 +3,7 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import AnimatedNumber from "@/app/components/AnimatedNumber";
 
 type GameRow = {
   id: string;
@@ -516,7 +517,8 @@ function FeaturedGameCard({
           </p>
 
           <p className="mt-2 text-5xl font-black">
-            {getFacktsScore(game) ?? "-"} - {getOpponentScore(game) ?? "-"}
+            <AnimatedNumber value={getFacktsScore(game) ?? "-"} /> -{" "}
+            <AnimatedNumber value={getOpponentScore(game) ?? "-"} />
           </p>
 
           {getGameStatus(game) === "Completed" ? (
@@ -630,7 +632,8 @@ function GameCard({
           </p>
 
           <p className="mt-1 text-3xl font-black">
-            {facktsScore ?? "-"} - {opponentScore ?? "-"}
+            <AnimatedNumber value={facktsScore ?? "-"} /> -{" "}
+            <AnimatedNumber value={opponentScore ?? "-"} />
           </p>
 
           {status === "Completed" ? (

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AnimatedNumber from "@/app/components/AnimatedNumber";
 import { supabase } from "@/lib/supabase";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 
@@ -328,7 +329,9 @@ function BigStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-3xl border border-orange-500/20 bg-slate-900 p-5 text-center shadow-lg shadow-orange-950/10">
       <div className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</div>
-      <div className="mt-2 text-3xl font-black text-orange-300">{value}</div>
+      <div className="mt-2 text-3xl font-black text-orange-300">
+        <AnimatedNumber value={value} />
+      </div>
     </div>
   );
 }
@@ -337,7 +340,9 @@ function SmallStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-center">
       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 text-lg font-black text-orange-300">{value}</div>
+      <div className="mt-1 text-lg font-black text-orange-300">
+        <AnimatedNumber value={value} />
+      </div>
     </div>
   );
 }

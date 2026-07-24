@@ -458,3 +458,66 @@ textarea:focus {
 }
 
 /* END FACKTS MOBILE SAFE COMPACT FIX */
+
+/* =========================================================
+   GLOBAL MOTION CONTROLLER
+   Handles server and late-loading Supabase content.
+   ========================================================= */
+
+.fackts-motion-item {
+  opacity: 0;
+  transform: translate3d(0, 18px, 0) scale(0.985);
+  transition:
+    opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease,
+    border-color 220ms ease,
+    background-color 220ms ease;
+  transition-delay: var(--fackts-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.fackts-motion-item.fackts-motion-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+main tbody > tr.fackts-motion-item {
+  transform: translate3d(-14px, 0, 0);
+}
+
+main tbody > tr.fackts-motion-visible {
+  transform: translate3d(0, 0, 0);
+}
+
+main article.fackts-motion-visible:hover,
+main a.fackts-motion-visible:hover {
+  transform: translate3d(0, -4px, 0) scale(1.008);
+}
+
+header,
+nav,
+.fackts-ticker-track {
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+
+@media (max-width: 768px) {
+  .fackts-motion-item {
+    transform: translate3d(0, 12px, 0) scale(0.99);
+    transition-duration: 480ms;
+  }
+
+  .fackts-motion-item.fackts-motion-visible {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fackts-motion-item,
+  .fackts-motion-item.fackts-motion-visible {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

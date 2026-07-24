@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import PlayerLogoutButton from "@/app/components/PlayerLogoutButton";
 import NotificationBell from "@/app/components/NotificationBell";
 import PushNotificationManager from "@/app/components/PushNotificationManager";
+import AnimatedNumber from "@/app/components/AnimatedNumber";
 import { getPlayerAccess } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +67,7 @@ export default async function PlayerPortalPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <section className="border-b border-slate-800 bg-gradient-to-br from-black via-slate-950 to-blue-950/40">
+      <section className="relative z-40 overflow-visible border-b border-slate-800 bg-gradient-to-br from-black via-slate-950 to-blue-950/40">
         <div className="mx-auto max-w-7xl px-5 py-9 sm:px-6">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div className="flex items-center gap-5">
@@ -108,13 +109,44 @@ export default async function PlayerPortalPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6">
+      <section className="relative z-0 mx-auto max-w-7xl px-5 py-8 sm:px-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <PortalLink href="/calendar" title="Schedule Games & Challenges" text="Set availability, respond to games and events, and request 1v1 matchups." featured />
-          <PortalLink href={`/players/${player.id}`} title="My Public Profile" text="View your player card, stats, bio, and game log." />
-          <PortalLink href="/games" title="Games" text="See fixtures, results, posters, coverage, and reports." />
-          <PortalLink href="/leaderboards" title="Leaderboards" text="Track FACKTS rankings and current performance." />
-          <PortalLink href="/player/settings" title="Account Settings" text="Change your password and control phone or laptop notifications." />
+          <PortalLink
+            href="/calendar"
+            eyebrow="Compete"
+            title="Schedule Games & Challenges"
+            text="Set availability, respond to games and events, and request 1v1 matchups."
+            imageUrl={player.photo_url}
+            featured
+          />
+          <PortalLink
+            href={`/players/${player.id}`}
+            eyebrow="Identity"
+            title="My Public Profile"
+            text="View your player card, stats, bio, and game log."
+            imageUrl={player.photo_url}
+          />
+          <PortalLink
+            href="/games"
+            eyebrow="Game Centre"
+            title="Games"
+            text="See fixtures, results, posters, coverage, and reports."
+            imageUrl={player.photo_url}
+          />
+          <PortalLink
+            href="/leaderboards"
+            eyebrow="Rankings"
+            title="Leaderboards"
+            text="Track FACKTS rankings and current performance."
+            imageUrl={player.photo_url}
+          />
+          <PortalLink
+            href="/player/settings"
+            eyebrow="Your Access"
+            title="Account Settings"
+            text="Change your password and control phone or laptop notifications."
+            imageUrl={player.photo_url}
+          />
         </div>
       </section>
 
@@ -183,23 +215,66 @@ function PortalStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-slate-800 bg-black/40 p-4">
       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-black text-orange-300">{value}</p>
+      <p className="mt-2 text-3xl font-black text-orange-300">
+        <AnimatedNumber value={value} />
+      </p>
     </div>
   );
 }
 
-function PortalLink({ href, title, text, featured = false }: { href: string; title: string; text: string; featured?: boolean }) {
+function PortalLink({
+  href,
+  eyebrow,
+  title,
+  text,
+  imageUrl,
+  featured = false,
+}: {
+  href: string;
+  eyebrow: string;
+  title: string;
+  text: string;
+  imageUrl?: string | null;
+  featured?: boolean;
+}) {
   return (
     <Link
       href={href}
-      className={`rounded-3xl border p-5 transition hover:-translate-y-1 ${
+      className={`group relative isolate min-h-44 overflow-hidden rounded-3xl border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(0,0,0,0.45)] ${
         featured
-          ? "border-orange-500/30 bg-orange-500/10"
-          : "border-slate-800 bg-slate-900 hover:border-orange-400/50"
+          ? "border-orange-500/50 bg-orange-950/30 hover:border-orange-400"
+          : "border-slate-700/80 bg-slate-900 hover:border-orange-400/70"
       }`}
     >
-      <p className="text-xl font-black">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{text}</p>
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 -z-20 h-full w-full scale-110 object-cover opacity-30 blur-[2px] grayscale-[20%] transition duration-700 group-hover:scale-125 group-hover:opacity-40"
+        />
+      ) : (
+        <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_85%_20%,rgba(249,115,22,0.2),transparent_45%)]" />
+      )}
+      <div className="absolute inset-0 -z-10 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/45 transition duration-300 group-hover:via-slate-950/80" />
+      <div className="absolute inset-x-0 bottom-0 -z-10 h-2/3 bg-gradient-to-t from-black/80 to-transparent" />
+
+      <div className="flex h-full min-h-34 flex-col justify-between">
+        <div className="flex items-start justify-between gap-3">
+          <p className={`text-[10px] font-black uppercase tracking-[0.22em] ${featured ? "text-orange-300" : "text-slate-400"}`}>
+            {eyebrow}
+          </p>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-orange-300 transition duration-300 group-hover:translate-x-1 group-hover:border-orange-400/60 group-hover:bg-orange-500 group-hover:text-black">
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-2">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </span>
+        </div>
+        <div>
+          <p className="max-w-xs text-xl font-black leading-tight text-white drop-shadow-lg">{title}</p>
+          <p className="mt-2 max-w-sm text-sm leading-6 text-slate-300 drop-shadow">{text}</p>
+        </div>
+      </div>
     </Link>
   );
 }

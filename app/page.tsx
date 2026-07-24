@@ -2,6 +2,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import FacktsNetwork from "./components/FacktsNetwork";
 import FacktsStories from "./components/FacktsStories";
+import AnimatedNumber from "./components/AnimatedNumber";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -38,6 +39,7 @@ type GameRow = {
 type PlayerRow = {
   id: string;
   full_name?: string | null;
+  name?: string | null;
   nickname?: string | null;
   jersey_number?: number | string | null;
   role?: string | null;
@@ -49,6 +51,11 @@ type PlayerRow = {
   photo_position?: string | null;
   is_featured?: boolean | null;
   is_active?: boolean | null;
+
+  player_type?: string | null;
+  roster_status?: string | null;
+  category?: string | null;
+  is_guest?: boolean | null;
 };
 
 type PlayerStatRow = {
@@ -65,7 +72,25 @@ type PlayerStatRow = {
   player?: PlayerRow | null;
   game?: GameRow | null;
 };
+function isOfficialRosterPlayer(player: any) {
+  const combinedType = [
+    player.player_type,
+    player.roster_status,
+    player.category,
+    player.role,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
+  if (player.is_guest === true) return false;
+  if (combinedType.includes("guest")) return false;
+  if (combinedType.includes("prospect")) return false;
+  if (combinedType.includes("external")) return false;
+  if (combinedType.includes("partner team")) return false;
+
+  return true;
+}
 async function getPlayers() {
   const { data, error } = await supabase
     .from("players")
@@ -75,7 +100,7 @@ async function getPlayers() {
 
   if (error) return [];
 
-  return (data ?? []) as PlayerRow[];
+  return ((data ?? []) as PlayerRow[]).filter(isOfficialRosterPlayer);
 }
 
 function numberValue(...values: unknown[]): number | null {
@@ -275,35 +300,47 @@ async function getHomepagePOG() {
 
   const stats = gameStats as PlayerStatRow[];
 
-  const manuallySelected = stats.find(
-    (row) => row.is_homepage_pog === true && playerContribution(row) > 0
+  const validStats = stats.filter((row) => playerContribution(row) > 0);
+
+  const manuallySelected = validStats.find(
+    (row) => row.is_homepage_pog === true
   );
 
-  const statRow =
-    manuallySelected ??
-    [...stats].sort((a, b) => {
-      const contributionDiff = playerContribution(b) - playerContribution(a);
+  const sortedStats = [...validStats].sort((a, b) => {
+    const contributionDiff = playerContribution(b) - playerContribution(a);
 
-      if (contributionDiff !== 0) return contributionDiff;
+    if (contributionDiff !== 0) return contributionDiff;
 
-      return Number(b.points ?? 0) - Number(a.points ?? 0);
-    })[0];
+    return Number(b.points ?? 0) - Number(a.points ?? 0);
+  });
 
-  if (!statRow || playerContribution(statRow) <= 0) {
-    return null;
+  const candidates = manuallySelected
+    ? [
+        manuallySelected,
+        ...sortedStats.filter((row) => row.id !== manuallySelected.id),
+      ]
+    : sortedStats;
+
+  for (const statRow of candidates) {
+    if (!statRow?.player_id) continue;
+
+    const { data: playerData } = await supabase
+      .from("players")
+      .select("*")
+      .eq("id", statRow.player_id)
+      .maybeSingle();
+
+    if (!playerData) continue;
+    if (!isOfficialRosterPlayer(playerData)) continue;
+
+    return {
+      ...statRow,
+      player: playerData as PlayerRow,
+      game: latestCompletedGame,
+    };
   }
 
-  const { data: playerData } = await supabase
-    .from("players")
-    .select("*")
-    .eq("id", statRow.player_id)
-    .maybeSingle();
-
-  return {
-    ...statRow,
-    player: (playerData ?? null) as PlayerRow | null,
-    game: latestCompletedGame,
-  };
+  return null;
 }
 
 async function getPlayerAverages(playerId: string) {
@@ -1041,7 +1078,9 @@ function HeroStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 backdrop-blur">
       <div className="text-sm text-slate-400">{label}</div>
-      <div className="mt-2 text-3xl font-black text-orange-300">{value}</div>
+      <div className="mt-2 text-3xl font-black text-orange-300">
+        <AnimatedNumber value={value} />
+      </div>
     </div>
   );
 }
@@ -1067,7 +1106,9 @@ function FeaturedStat({ label, value }: { label: string; value: string }) {
         {label}
       </div>
 
-      <div className="mt-1 text-lg font-black text-orange-300">{value}</div>
+      <div className="mt-1 text-lg font-black text-orange-300">
+        <AnimatedNumber value={value} />
+      </div>
     </div>
   );
 }
@@ -1079,7 +1120,9 @@ function FlashStat({ label, value }: { label: string; value: number }) {
         {label}
       </div>
 
-      <div className="mt-2 text-4xl font-black text-orange-300">{value}</div>
+      <div className="mt-2 text-4xl font-black text-orange-300">
+        <AnimatedNumber value={value} />
+      </div>
     </div>
   );
 }
