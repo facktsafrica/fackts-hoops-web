@@ -1,5 +1,6 @@
 import webpush, { type PushSubscription } from "web-push";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
+import { resolveVapidConfiguration } from "@/lib/notifications/vapid";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type AppNotification = {
@@ -38,27 +39,30 @@ type PlayerRecipient = {
   phone?: string | null;
 };
 
-function configuredVapid() {
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const privateKey = process.env.VAPID_PRIVATE_KEY;
-  const subject =
-    process.env.VAPID_SUBJECT || "mailto:facktsafrica@gmail.com";
+type PushTarget = {
+  endpoint?: string;
+};
 
-  if (!publicKey || !privateKey) return null;
-
-  return { publicKey, privateKey, subject };
+export function getPushConfigurationStatus() {
+  const result = resolveVapidConfiguration();
+  return {
+    configured: Boolean(result.configuration),
+    publicKey: result.configuration?.publicKey || "",
+    issue: result.issue,
+  };
 }
 
 export function pushDeliveryConfigured() {
-  return Boolean(configuredVapid());
+  return getPushConfigurationStatus().configured;
 }
 
 export async function sendPushToUsers(
   userIds: Array<string | null | undefined>,
-  notification: AppNotification
+  notification: AppNotification,
+  target: PushTarget = {}
 ) {
   const ids = Array.from(new Set(userIds.filter(Boolean) as string[]));
-  const vapid = configuredVapid();
+  const vapid = resolveVapidConfiguration();
 
   if (ids.length === 0) {
     return {
@@ -67,12 +71,12 @@ export async function sendPushToUsers(
       delivered: 0,
       failed: 0,
       removed: 0,
-      configured: Boolean(vapid),
+      configured: Boolean(vapid.configuration),
       reason: "No linked user accounts were found.",
     };
   }
 
-  if (!vapid) {
+  if (!vapid.configuration) {
     return {
       attempted: 0,
       subscribed: 0,
@@ -80,18 +84,22 @@ export async function sendPushToUsers(
       failed: 0,
       removed: 0,
       configured: false,
-      reason: "VAPID keys are not configured.",
+      reason: vapid.issue || "Push notifications are not configured.",
     };
   }
 
-  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
-
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
+  let subscriptionQuery = admin
     .from("push_subscriptions")
     .select("id, user_id, endpoint, p256dh, auth")
     .in("user_id", ids)
     .eq("enabled", true);
+
+  if (target.endpoint) {
+    subscriptionQuery = subscriptionQuery.eq("endpoint", target.endpoint);
+  }
+
+  const { data, error } = await subscriptionQuery;
 
   if (error) throw new Error(error.message);
 
@@ -109,7 +117,7 @@ export async function sendPushToUsers(
       };
 
       try {
-        await webpush.sendNotification(
+        const response = await webpush.sendNotification(
           subscription,
           JSON.stringify({
             title: notification.title,
@@ -127,7 +135,7 @@ export async function sendPushToUsers(
           notification_type: notification.notificationType,
           title: notification.title,
           delivery_status: "delivered",
-          status_code: 201,
+          status_code: response.statusCode || 201,
           error_message: null,
         });
       } catch (error) {
@@ -139,9 +147,8 @@ export async function sendPushToUsers(
 
         if (expired) {
           expiredIds.push(row.id);
-        } else {
-          failed += 1;
         }
+        failed += 1;
 
         deliveryLogs.push({
           user_id: row.user_id,

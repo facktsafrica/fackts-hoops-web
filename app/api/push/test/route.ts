@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth/server";
 import { sendPushToUsers } from "@/lib/notifications/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const user = await getAuthenticatedUser();
 
   if (!user) {
@@ -16,20 +16,30 @@ export async function POST() {
   }
 
   try {
+    const body = await request.json().catch(() => ({}));
+    const endpoint = String(body.endpoint ?? "").trim();
+
+    if (!endpoint.startsWith("https://")) {
+      return NextResponse.json(
+        { ok: false, error: "This device does not have a valid push subscription." },
+        { status: 400 }
+      );
+    }
+
     const result = await sendPushToUsers([user.id], {
       title: "FACKTS notification test",
       body: "Your phone or laptop is connected to FACKTS Hoops alerts.",
       notificationType: "device_test",
       linkUrl: user.user_metadata?.role === "player" ? "/player" : "/admin/notifications",
       tag: `device-test-${user.id}-${Date.now()}`,
-    });
+    }, { endpoint });
 
     if (!result.configured) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Push keys are missing. Add the VAPID variables before testing phone alerts.",
+            result.reason || "Push notifications are not configured.",
           delivery: result,
         },
         { status: 503 }
@@ -41,7 +51,7 @@ export async function POST() {
         {
           ok: false,
           error:
-            "This account has no active device subscription. Turn notifications off, enable them again, then retest.",
+            "This device is not registered. Use Repair Notifications, then test again.",
           delivery: result,
         },
         { status: 409 }
@@ -53,7 +63,9 @@ export async function POST() {
         {
           ok: false,
           error:
-            "The push provider did not accept the test. Check browser permission and phone notification settings.",
+            result.removed > 0
+              ? "This device subscription expired. Use Repair Notifications to reconnect it."
+              : "The push provider rejected this device. Use Repair Notifications, then check the browser notification settings.",
           delivery: result,
         },
         { status: 502 }
@@ -67,12 +79,11 @@ export async function POST() {
       }.`,
       delivery: result,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error ? error.message : "Push notification test failed.",
+        error: "The notification test could not be completed.",
       },
       { status: 500 }
     );

@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth/server";
-import { pushDeliveryConfigured } from "@/lib/notifications/server";
+import {
+  getPushConfigurationStatus,
+} from "@/lib/notifications/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -14,36 +16,41 @@ type SubscriptionBody = {
   };
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser();
+  const configuration = getPushConfigurationStatus();
 
   if (!user) {
     return NextResponse.json(
-      { ok: false, configured: pushDeliveryConfigured(), subscribed: false },
+      { ok: false, ...configuration, subscribed: false },
       { status: 401 }
     );
   }
 
+  const endpoint = request.nextUrl.searchParams.get("endpoint")?.trim() || "";
   const admin = createSupabaseAdminClient();
-  const { count, error } = await admin
+  const { data, error } = await admin
     .from("push_subscriptions")
-    .select("id", { count: "exact", head: true })
+    .select("endpoint")
     .eq("user_id", user.id)
     .eq("enabled", true);
 
   if (error) {
     return NextResponse.json(
-      { ok: false, configured: pushDeliveryConfigured(), subscribed: false, error: error.message },
+      { ok: false, ...configuration, subscribed: false, error: error.message },
       { status: 400 }
     );
   }
 
+  const subscriptions = data ?? [];
+
   return NextResponse.json({
     ok: true,
-    configured: pushDeliveryConfigured(),
-    subscribed: Number(count ?? 0) > 0,
-    subscriptionCount: Number(count ?? 0),
-    publicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "",
+    ...configuration,
+    subscribed: Boolean(
+      endpoint && subscriptions.some((row) => row.endpoint === endpoint)
+    ),
+    subscriptionCount: subscriptions.length,
   });
 }
 
@@ -54,9 +61,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Login required." }, { status: 401 });
   }
 
-  if (!pushDeliveryConfigured()) {
+  const configuration = getPushConfigurationStatus();
+  if (!configuration.configured) {
     return NextResponse.json(
-      { ok: false, error: "Push notifications are not configured yet." },
+      {
+        ok: false,
+        error: configuration.issue || "Push notifications are not configured yet.",
+      },
       { status: 503 }
     );
   }
@@ -91,7 +102,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, message: "Notifications enabled on this device." });
+  const { count } = await admin
+    .from("push_subscriptions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("enabled", true);
+
+  return NextResponse.json({
+    ok: true,
+    message: "Notifications enabled on this device.",
+    subscriptionCount: Number(count ?? 0),
+  });
 }
 
 export async function DELETE(request: NextRequest) {
@@ -105,14 +126,33 @@ export async function DELETE(request: NextRequest) {
   const endpoint = String(body.endpoint ?? "").trim();
   const admin = createSupabaseAdminClient();
 
-  let query = admin.from("push_subscriptions").delete().eq("user_id", user.id);
-  if (endpoint) query = query.eq("endpoint", endpoint);
+  if (!endpoint) {
+    return NextResponse.json({
+      ok: true,
+      message: "This device has no saved notification subscription.",
+      subscriptionCount: 0,
+    });
+  }
 
-  const { error } = await query;
+  const { error } = await admin
+    .from("push_subscriptions")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("endpoint", endpoint);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, message: "Notifications disabled on this device." });
+  const { count } = await admin
+    .from("push_subscriptions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("enabled", true);
+
+  return NextResponse.json({
+    ok: true,
+    message: "Notifications disabled on this device.",
+    subscriptionCount: Number(count ?? 0),
+  });
 }
