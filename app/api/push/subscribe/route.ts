@@ -42,6 +42,7 @@ export async function GET() {
     ok: true,
     configured: pushDeliveryConfigured(),
     subscribed: Number(count ?? 0) > 0,
+    subscriptionCount: Number(count ?? 0),
     publicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "",
   });
 }

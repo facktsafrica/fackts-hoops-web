@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import PlayerLogoutButton from "@/app/components/PlayerLogoutButton";
 import NotificationBell from "@/app/components/NotificationBell";
+import PlayerActivityTracker from "@/app/components/PlayerActivityTracker";
 import PushNotificationManager from "@/app/components/PushNotificationManager";
 import AnimatedNumber from "@/app/components/AnimatedNumber";
 import { getPlayerAccess } from "@/lib/auth/server";
@@ -67,6 +68,7 @@ export default async function PlayerPortalPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
+      <PlayerActivityTracker />
       <section className="relative z-40 overflow-visible border-b border-slate-800 bg-gradient-to-br from-black via-slate-950 to-blue-950/40">
         <div className="mx-auto max-w-7xl px-5 py-9 sm:px-6">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">

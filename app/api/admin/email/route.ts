@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { getAdminAccess } from "@/lib/auth/server";
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 import { getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
 
 export const runtime = "nodejs";
 
 async function authorized() {
-  const { user, profile } = await getAdminAccess();
-  return Boolean(user && profile);
+  const { allowed } = await getAdminCapabilityAccess("email");
+  return allowed;
 }
 
 export async function GET() {

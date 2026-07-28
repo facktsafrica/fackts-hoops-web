@@ -30,10 +30,20 @@ export default function AdminNotificationsPage() {
     const result = await response.json().catch(() => ({}));
 
     if (response.ok && result.ok) {
+      const created = Number(result.created ?? 0);
+      const subscribed = Number(result.subscribed ?? 0);
+      const delivered = Number(result.delivered ?? 0);
+      const failed = Number(result.failed ?? 0);
+      const deliveryNote = !result.configured
+        ? " Phone push is not configured yet."
+        : subscribed === 0
+          ? " No player phone is currently subscribed for push."
+          : ` Push accepted by ${delivered}/${subscribed} subscribed devices${
+              failed > 0 ? `; ${failed} failed` : ""
+            }.`;
+
       setMessage(
-        `Announcement saved for ${result.created ?? 0} players and pushed to ${
-          result.delivered ?? 0
-        } subscribed devices.`
+        `Announcement saved inside the app for ${created} players.${deliveryNote}`
       );
       setTitle("");
       setBody("");
@@ -56,6 +66,11 @@ export default function AdminNotificationsPage() {
             <h1 className="mt-2 text-4xl font-black">App Notifications</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
               Automatic alerts handle player responses, match decisions, games and rosters. Use this page for a direct announcement to every active player account.
+            </p>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
+              Use the device test below to confirm a real popup. Phone sound and
+              vibration also depend on the browser notification channel and
+              silent-mode settings.
             </p>
           </div>
 

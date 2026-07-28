@@ -3,6 +3,13 @@
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import {
+  canAdmin,
+  capabilityForAdminPath,
+  isSuperAdmin,
+  isSuperAdminRole,
+  type AdminPermissionProfile,
+} from "@/lib/admin/permissions";
 import { supabase } from "@/lib/supabase";
 import AdminNavigation from "@/app/components/AdminNavigation";
 
@@ -45,25 +52,60 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
       const profileResult = await supabase
         .from("admin_profiles")
-        .select("id, role, is_active")
+        .select("id, role, is_active, is_super_admin, permissions")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .maybeSingle();
 
+      let profile = profileResult.data as AdminPermissionProfile | null;
+
       if (profileResult.error) {
-        if (active) {
-          setAccess("denied");
-          setMessage(`Admin check failed: ${profileResult.error.message}`);
+        const legacyResult = await supabase
+          .from("admin_profiles")
+          .select("id, role, is_active")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (legacyResult.error) {
+          if (active) {
+            setAccess("denied");
+            setMessage(`Admin check failed: ${legacyResult.error.message}`);
+          }
+          return;
         }
-        return;
+
+        profile = legacyResult.data
+          ? {
+              ...legacyResult.data,
+              is_super_admin: isSuperAdminRole(legacyResult.data.role),
+              permissions: undefined,
+            }
+          : null;
       }
 
-      if (!profileResult.data) {
+      if (!profile) {
         await supabase.auth.signOut();
 
         if (active) {
           setAccess("denied");
           setMessage("This account is not approved for FACKTS admin access.");
+        }
+        return;
+      }
+
+      const requiredCapability = capabilityForAdminPath(pathname);
+      const needsSuperAdmin = pathname === "/admin/mini-admins";
+      const permitted = needsSuperAdmin
+        ? isSuperAdmin(profile)
+        : !requiredCapability || canAdmin(profile, requiredCapability);
+
+      if (!permitted) {
+        if (active) {
+          setAccess("denied");
+          setMessage(
+            "Your mini-admin account does not have permission to open this tool."
+          );
         }
         return;
       }
@@ -104,16 +146,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             FACKTS Admin
           </div>
 
-          <h1 className="mt-3 text-2xl font-black">Admin Login Required</h1>
+          <h1 className="mt-3 text-2xl font-black">Admin Access Required</h1>
 
           <p className="mt-3 text-sm leading-6 text-zinc-400">{message}</p>
 
-          <Link
-            href="/admin/login"
-            className="mt-5 inline-flex rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400"
-          >
-            Go to Admin Login
-          </Link>
+          {message.includes("permission") ? (
+            <Link
+              href="/admin"
+              className="mt-5 inline-flex rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400"
+            >
+              Back to My Admin Tools
+            </Link>
+          ) : (
+            <Link
+              href="/admin/login"
+              className="mt-5 inline-flex rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400"
+            >
+              Go to Admin Login
+            </Link>
+          )}
 
           <Link
             href="/"

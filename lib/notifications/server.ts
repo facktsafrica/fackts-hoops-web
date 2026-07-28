@@ -18,6 +18,16 @@ type PushSubscriptionRow = {
   auth: string;
 };
 
+type PushDeliveryLog = {
+  user_id: string;
+  subscription_id: string;
+  notification_type: string;
+  title: string;
+  delivery_status: "delivered" | "failed" | "expired";
+  status_code: number | null;
+  error_message: string | null;
+};
+
 type PlayerRecipient = {
   id: string;
   user_id?: string | null;
@@ -50,8 +60,28 @@ export async function sendPushToUsers(
   const ids = Array.from(new Set(userIds.filter(Boolean) as string[]));
   const vapid = configuredVapid();
 
-  if (ids.length === 0 || !vapid) {
-    return { delivered: 0, removed: 0, configured: Boolean(vapid) };
+  if (ids.length === 0) {
+    return {
+      attempted: 0,
+      subscribed: 0,
+      delivered: 0,
+      failed: 0,
+      removed: 0,
+      configured: Boolean(vapid),
+      reason: "No linked user accounts were found.",
+    };
+  }
+
+  if (!vapid) {
+    return {
+      attempted: 0,
+      subscribed: 0,
+      delivered: 0,
+      failed: 0,
+      removed: 0,
+      configured: false,
+      reason: "VAPID keys are not configured.",
+    };
   }
 
   webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
@@ -67,7 +97,9 @@ export async function sendPushToUsers(
 
   const rows = (data ?? []) as PushSubscriptionRow[];
   const expiredIds: string[] = [];
+  const deliveryLogs: PushDeliveryLog[] = [];
   let delivered = 0;
+  let failed = 0;
 
   await Promise.all(
     rows.map(async (row) => {
@@ -89,15 +121,40 @@ export async function sendPushToUsers(
           })
         );
         delivered += 1;
+        deliveryLogs.push({
+          user_id: row.user_id,
+          subscription_id: row.id,
+          notification_type: notification.notificationType,
+          title: notification.title,
+          delivery_status: "delivered",
+          status_code: 201,
+          error_message: null,
+        });
       } catch (error) {
         const statusCode =
           typeof error === "object" && error && "statusCode" in error
             ? Number(error.statusCode)
             : 0;
+        const expired = statusCode === 404 || statusCode === 410;
 
-        if (statusCode === 404 || statusCode === 410) {
+        if (expired) {
           expiredIds.push(row.id);
+        } else {
+          failed += 1;
         }
+
+        deliveryLogs.push({
+          user_id: row.user_id,
+          subscription_id: row.id,
+          notification_type: notification.notificationType,
+          title: notification.title,
+          delivery_status: expired ? "expired" : "failed",
+          status_code: statusCode || null,
+          error_message:
+            error instanceof Error
+              ? error.message.slice(0, 500)
+              : "Push provider rejected the notification.",
+        });
       }
     })
   );
@@ -106,10 +163,24 @@ export async function sendPushToUsers(
     await admin.from("push_subscriptions").delete().in("id", expiredIds);
   }
 
+  if (deliveryLogs.length > 0) {
+    await admin.from("push_delivery_logs").insert(deliveryLogs).then(
+      () => undefined,
+      () => undefined
+    );
+  }
+
   return {
+    attempted: rows.length,
+    subscribed: rows.length,
     delivered,
+    failed,
     removed: expiredIds.length,
     configured: true,
+    reason:
+      rows.length === 0
+        ? "No active push subscription exists for the selected account."
+        : null,
   };
 }
 
@@ -122,7 +193,18 @@ export async function notifyPlayers(
   notification: AppNotification
 ) {
   const ids = Array.from(new Set(playerIds.filter(Boolean)));
-  if (ids.length === 0) return { created: 0, delivered: 0 };
+  if (ids.length === 0) {
+    return {
+      created: 0,
+      attempted: 0,
+      subscribed: 0,
+      delivered: 0,
+      failed: 0,
+      removed: 0,
+      configured: pushDeliveryConfigured(),
+      reason: "No eligible players were selected.",
+    };
+  }
 
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
@@ -153,7 +235,13 @@ export async function notifyPlayers(
       }))
     );
 
-    if (insertError) throw new Error(insertError.message);
+    if (insertError) {
+      throw new Error(
+        insertError.message.includes("fackts_notifications")
+          ? "Notification database is not installed. Run the included admin-upgrade SQL."
+          : insertError.message
+      );
+    }
   }
 
   const push = await sendPushToUsers(
@@ -161,7 +249,7 @@ export async function notifyPlayers(
     notification
   );
 
-  return { created: players.length, delivered: push.delivered };
+  return { created: players.length, ...push };
 }
 
 export async function notifyAllPlayers(notification: AppNotification) {
@@ -209,7 +297,13 @@ export async function notifyAdmins(notification: AppNotification) {
       }))
     );
 
-    if (insertError) throw new Error(insertError.message);
+    if (insertError) {
+      throw new Error(
+        insertError.message.includes("fackts_notifications")
+          ? "Notification database is not installed. Run the included admin-upgrade SQL."
+          : insertError.message
+      );
+    }
   }
 
   const push = await sendPushToUsers(
@@ -217,5 +311,5 @@ export async function notifyAdmins(notification: AppNotification) {
     notification
   );
 
-  return { created: admins.length, delivered: push.delivered };
+  return { created: admins.length, ...push };
 }

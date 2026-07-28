@@ -1,4 +1,9 @@
 import type { User } from "@supabase/supabase-js";
+import {
+  type AdminCapability,
+  canAdmin,
+  isSuperAdminRole,
+} from "@/lib/admin/permissions";
 import { isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -8,6 +13,10 @@ export type AdminProfile = {
   role?: string | null;
   player_type?: string | null;
   is_active?: boolean | null;
+  display_name?: string | null;
+  email?: string | null;
+  is_super_admin?: boolean | null;
+  permissions?: string[] | null;
 };
 
 export type PlayerAccount = {
@@ -42,17 +51,51 @@ export async function getAdminAccess() {
     return { user: null, profile: null, supabase };
   }
 
-  const { data: profile } = await supabase
+  const extendedResult = await supabase
     .from("admin_profiles")
-    .select("id, user_id, role, is_active")
+    .select(
+      "id, user_id, role, is_active, display_name, email, is_super_admin, permissions"
+    )
     .eq("user_id", user.id)
     .eq("is_active", true)
     .maybeSingle();
 
+  let profile = extendedResult.data as AdminProfile | null;
+
+  if (extendedResult.error) {
+    const legacyResult = await supabase
+      .from("admin_profiles")
+      .select("id, user_id, role, is_active")
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    profile = legacyResult.data
+      ? {
+          ...(legacyResult.data as AdminProfile),
+          is_super_admin: isSuperAdminRole(legacyResult.data.role),
+          permissions: undefined,
+        }
+      : null;
+  }
+
   return {
     user,
-    profile: (profile as AdminProfile | null) ?? null,
+    profile,
     supabase,
+  };
+}
+
+export async function getAdminCapabilityAccess(
+  capability: AdminCapability
+) {
+  const access = await getAdminAccess();
+
+  return {
+    ...access,
+    allowed: Boolean(
+      access.user && access.profile && canAdmin(access.profile, capability)
+    ),
   };
 }
 

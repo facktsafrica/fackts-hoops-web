@@ -1,5 +1,12 @@
 import Link from "next/link";
+import AdminActivityPanel from "@/app/components/AdminActivityPanel";
 import AdminLogoutButton from "@/app/components/AdminLogoutButton";
+import {
+  canAdmin,
+  capabilityForAdminPath,
+  isSuperAdmin,
+} from "@/lib/admin/permissions";
+import { getAdminAccess } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -165,9 +172,35 @@ const businessCards: AdminCard[] = [
     href: "/admin/email",
     badge: "Email",
   },
+  {
+    title: "Mini Admins",
+    description:
+      "Create restricted team administrators and select exactly which tools each person can access.",
+    href: "/admin/mini-admins",
+    badge: "Super Admin",
+    featured: true,
+  },
 ];
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const { profile } = await getAdminAccess();
+
+  function visibleCards(cards: AdminCard[]) {
+    return cards.filter((card) => {
+      if (!profile) return false;
+      if (card.href === "/admin/mini-admins") return isSuperAdmin(profile);
+
+      const capability = capabilityForAdminPath(card.href);
+      return !capability || canAdmin(profile, capability);
+    });
+  }
+
+  const visibleCoreCards = visibleCards(coreCards);
+  const visibleEventCards = visibleCards(eventCards);
+  const visibleGuestCards = visibleCards(guestCards);
+  const visibleRosterCards = visibleCards(rosterCards);
+  const visibleBusinessCards = visibleCards(businessCards);
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <section className="border-b border-slate-800 bg-black/30">
@@ -202,38 +235,56 @@ export default function AdminPage() {
           </div>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <AdminStat label="Core Tools" value={coreCards.length} />
-            <AdminStat label="Events & Media" value={eventCards.length} />
-            <AdminStat label="Guests" value={guestCards.length} />
-            <AdminStat label="Business Tools" value={businessCards.length} />
+            <AdminStat label="Core Tools" value={visibleCoreCards.length} />
+            <AdminStat label="Events & Media" value={visibleEventCards.length} />
+            <AdminStat label="Guests" value={visibleGuestCards.length} />
+            <AdminStat
+              label="Business Tools"
+              value={visibleBusinessCards.length}
+            />
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Priority" title="Main Admin Tools" />
-        <AdminGrid cards={coreCards} />
-      </section>
+      <AdminActivityPanel />
 
-      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Events" title="Events, Matchups & Media" />
-        <AdminGrid cards={eventCards} />
-      </section>
+      {visibleCoreCards.length > 0 ? (
+        <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
+          <SectionHeader eyebrow="Priority" title="Main Admin Tools" />
+          <AdminGrid cards={visibleCoreCards} />
+        </section>
+      ) : null}
 
-      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Guests" title="Guest Hoopers & External Players" />
-        <AdminGrid cards={guestCards} />
-      </section>
+      {visibleEventCards.length > 0 ? (
+        <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+          <SectionHeader eyebrow="Events" title="Events, Matchups & Media" />
+          <AdminGrid cards={visibleEventCards} />
+        </section>
+      ) : null}
 
-      <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Rosters" title="Rosters & Announcements" />
-        <AdminGrid cards={rosterCards} />
-      </section>
+      {visibleGuestCards.length > 0 ? (
+        <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+          <SectionHeader
+            eyebrow="Guests"
+            title="Guest Hoopers & External Players"
+          />
+          <AdminGrid cards={visibleGuestCards} />
+        </section>
+      ) : null}
 
-      <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Business" title="Partners & Business Tools" />
-        <AdminGrid cards={businessCards} />
-      </section>
+      {visibleRosterCards.length > 0 ? (
+        <section className="mx-auto max-w-7xl px-5 pb-8 sm:px-6 lg:px-8">
+          <SectionHeader eyebrow="Rosters" title="Rosters & Announcements" />
+          <AdminGrid cards={visibleRosterCards} />
+        </section>
+      ) : null}
+
+      {visibleBusinessCards.length > 0 ? (
+        <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
+          <SectionHeader eyebrow="Business" title="Partners & Business Tools" />
+          <AdminGrid cards={visibleBusinessCards} />
+        </section>
+      ) : null}
     </main>
   );
 }

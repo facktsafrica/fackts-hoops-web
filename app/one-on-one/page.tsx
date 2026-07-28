@@ -95,6 +95,22 @@ type LeaderboardItem = {
   type: "fackts_player" | "guest_hooper" | "external";
 };
 
+type OneOnOneSearchParams = Promise<{
+  upcomingPage?: string | string[];
+  resultsPage?: string | string[];
+}>;
+
+const BATTLES_PER_PAGE = 6;
+
+function getRequestedPage(value?: string | string[]) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(rawValue);
+
+  if (!Number.isInteger(parsed) || parsed < 1) return 1;
+
+  return parsed;
+}
+
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -746,7 +762,12 @@ function getBiggestWin(rows: OneOnOneRow[]) {
   );
 }
 
-export default async function OneOnOnePage() {
+export default async function OneOnOnePage({
+  searchParams,
+}: {
+  searchParams: OneOnOneSearchParams;
+}) {
+  const query = await searchParams;
   const {
     rows,
     players,
@@ -768,6 +789,31 @@ export default async function OneOnOnePage() {
   const upcomingRows = rows.filter((row) => getMatchStatus(row) === "Upcoming");
   const completedRows = rows.filter((row) => getMatchStatus(row) === "Completed");
   const cancelledRows = rows.filter((row) => getMatchStatus(row) === "Cancelled");
+
+  const upcomingPageCount = Math.max(
+    1,
+    Math.ceil(upcomingRows.length / BATTLES_PER_PAGE)
+  );
+  const resultsPageCount = Math.max(
+    1,
+    Math.ceil(completedRows.length / BATTLES_PER_PAGE)
+  );
+  const upcomingPage = Math.min(
+    getRequestedPage(query.upcomingPage),
+    upcomingPageCount
+  );
+  const resultsPage = Math.min(
+    getRequestedPage(query.resultsPage),
+    resultsPageCount
+  );
+  const visibleUpcomingRows = upcomingRows.slice(
+    (upcomingPage - 1) * BATTLES_PER_PAGE,
+    upcomingPage * BATTLES_PER_PAGE
+  );
+  const visibleCompletedRows = completedRows.slice(
+    (resultsPage - 1) * BATTLES_PER_PAGE,
+    resultsPage * BATTLES_PER_PAGE
+  );
 
   const highestScoringMatch = getHighestScoringMatch(rows);
   const closestMatch = getClosestMatch(rows);
@@ -836,21 +882,51 @@ export default async function OneOnOnePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Fight Card" title="Upcoming Battles" />
+      <section
+        id="upcoming-battles"
+        className="scroll-mt-24 mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8"
+      >
+        <SectionHeader
+          eyebrow="Fight Card"
+          title="Upcoming Battles"
+          meta={
+            upcomingRows.length > 0
+              ? `${upcomingRows.length} scheduled`
+              : undefined
+          }
+        />
 
         {upcomingRows.length > 0 ? (
-          <FixtureList
-            rows={upcomingRows}
-            players={players}
-            guests={guests}
-            playerMap={playerMap}
-            guestMap={guestMap}
-            guestBySourcePlayerId={guestBySourcePlayerId}
-          />
+          <>
+            <FixtureList
+              rows={visibleUpcomingRows}
+              players={players}
+              guests={guests}
+              playerMap={playerMap}
+              guestMap={guestMap}
+              guestBySourcePlayerId={guestBySourcePlayerId}
+            />
+            <BattlePagination
+              currentPage={upcomingPage}
+              totalPages={upcomingPageCount}
+              totalItems={upcomingRows.length}
+              pageSize={BATTLES_PER_PAGE}
+              queryKey="upcomingPage"
+              anchor="upcoming-battles"
+            />
+          </>
         ) : (
           <EmptyBox text="No upcoming 1-on-1 battles added yet." />
         )}
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
+        <LeaderboardCard
+          eyebrow="1-on-1 Standings"
+          title="Rankings"
+          emptyText="No completed 1-on-1 results yet."
+          items={leaderboard}
+        />
       </section>
 
       <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
@@ -891,27 +967,39 @@ export default async function OneOnOnePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
-        <LeaderboardCard
-          eyebrow="1-on-1 Wins"
-          title="Leaderboard"
-          emptyText="No completed 1-on-1 results yet."
-          items={leaderboard}
+      <section
+        id="previous-battles"
+        className="scroll-mt-24 mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8"
+      >
+        <SectionHeader
+          eyebrow="Results"
+          title="Previous Battles"
+          meta={
+            completedRows.length > 0
+              ? `${completedRows.length} completed`
+              : undefined
+          }
         />
-      </section>
-
-      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Results" title="Previous Battles" />
 
         {completedRows.length > 0 ? (
-          <FixtureList
-            rows={completedRows}
-            players={players}
-            guests={guests}
-            playerMap={playerMap}
-            guestMap={guestMap}
-            guestBySourcePlayerId={guestBySourcePlayerId}
-          />
+          <>
+            <FixtureList
+              rows={visibleCompletedRows}
+              players={players}
+              guests={guests}
+              playerMap={playerMap}
+              guestMap={guestMap}
+              guestBySourcePlayerId={guestBySourcePlayerId}
+            />
+            <BattlePagination
+              currentPage={resultsPage}
+              totalPages={resultsPageCount}
+              totalItems={completedRows.length}
+              pageSize={BATTLES_PER_PAGE}
+              queryKey="resultsPage"
+              anchor="previous-battles"
+            />
+          </>
         ) : (
           <EmptyBox text="No completed 1-on-1 results yet." />
         )}
@@ -1007,90 +1095,74 @@ function FixtureBattleCard({
   return (
     <Link
       href={`/one-on-one/${row.id}`}
-      className="group mx-auto block overflow-hidden rounded-[1.35rem] border border-white/10 bg-white shadow-[0_10px_24px_rgba(0,0,0,0.32)] transition duration-300 hover:-translate-y-0.5 hover:border-blue-400/60 hover:shadow-[0_16px_30px_rgba(37,99,235,0.18)]"
+      className="group mx-auto block overflow-hidden rounded-xl border border-[#1f3766] bg-[#071127]/95 shadow-[0_8px_22px_rgba(0,0,0,0.28)] transition duration-300 hover:-translate-y-0.5 hover:border-orange-400/70 hover:shadow-[0_12px_28px_rgba(14,72,160,0.2)]"
     >
-      <div className="grid min-h-[88px] grid-cols-[1fr_150px] sm:min-h-[96px] sm:grid-cols-[1fr_240px]">
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 bg-white px-3 py-2 text-black sm:gap-4 sm:px-4">
-          <FixtureFighter
-            identity={player1}
-            score={player1Score}
-            status={status}
-            winner={winnerSide === "player1"}
-            align="left"
-          />
-
-          <div className="flex flex-col items-center justify-center">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-black uppercase text-slate-500 shadow-inner sm:h-10 sm:w-10">
-              VS
-            </div>
-
-            <div className="mt-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-blue-800">
-              {row.match_type || "1v1"}
-            </div>
-          </div>
-
-          <FixtureFighter
-            identity={player2}
-            score={player2Score}
-            status={status}
-            winner={winnerSide === "player2"}
-            align="right"
-          />
+      <div className="flex min-h-7 items-center justify-between gap-2 border-b border-white/8 bg-[#0d1d3e] px-3 py-1.5 md:hidden">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <StatusBadge row={row} />
+          {row.match_number ? (
+            <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.08em] text-slate-400">
+              #{row.match_number}
+            </span>
+          ) : null}
         </div>
 
-        <div className="relative flex flex-col justify-center overflow-hidden bg-[#0b2a66] px-3 py-2 text-white sm:px-4">
-          {row.poster_url ? (
-            <img
-              src={row.poster_url}
-              alt={row.match_title || `${player1.name} vs ${player2.name}`}
-              className="absolute inset-0 h-full w-full object-cover opacity-12 transition duration-500 group-hover:scale-105"
-            />
-          ) : null}
+        <p className="truncate text-right text-[9px] font-black uppercase tracking-[0.04em] text-blue-100">
+          {formatFixtureDate(displayDate)} · {formatFixtureTime(displayDate)}
+        </p>
+      </div>
 
-          <div className="absolute inset-y-0 -left-7 w-12 skew-x-[-14deg] bg-white sm:-left-8 sm:w-14" />
-          <div className="absolute inset-0 bg-gradient-to-br from-[#2563eb]/95 via-[#0f2f73]/96 to-[#081a3d]/98" />
+      <div className="grid min-h-[72px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-3 py-2 sm:gap-4 sm:px-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_220px]">
+        <FixtureFighter
+          identity={player1}
+          winner={winnerSide === "player1"}
+          align="left"
+        />
 
-          <div className="relative pl-2 sm:pl-3">
-            <div className="mb-1.5 flex flex-wrap gap-1">
-              <StatusBadge row={row} />
+        <div className="min-w-[62px] text-center sm:min-w-[82px]">
+          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">
+            {row.match_type || "1v1"}
+          </p>
+          <p className="mt-1 whitespace-nowrap text-xl font-black leading-none text-white sm:text-2xl">
+            {status === "Completed" &&
+            player1Score !== null &&
+            player2Score !== null
+              ? `${player1Score} - ${player2Score}`
+              : "VS"}
+          </p>
+        </div>
 
-              {row.match_number ? (
-                <span className="rounded-full bg-black/25 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white">
-                  #{row.match_number}
-                </span>
-              ) : null}
-            </div>
+        <FixtureFighter
+          identity={player2}
+          winner={winnerSide === "player2"}
+          align="right"
+        />
 
-            <p className="line-clamp-2 text-[10px] font-black uppercase leading-4 tracking-[0.01em] text-white sm:text-[11px]">
-              {row.match_title || `${player1.name} vs ${player2.name}`}
-            </p>
-
-            <div className="mt-1.5 flex items-end gap-2">
-              <div>
-                <p className="text-[8px] font-black uppercase tracking-[0.08em] text-blue-100 sm:text-[9px]">
-                  {formatFixtureDate(displayDate)}
-                </p>
-
-                <p className="mt-0.5 text-lg font-black leading-none tracking-tight text-white sm:text-2xl">
-                  {formatFixtureTime(displayDate)}
-                </p>
-              </div>
-            </div>
-
-            <p className="mt-1.5 line-clamp-1 text-[8px] font-bold uppercase tracking-[0.08em] text-blue-100 sm:text-[9px]">
-              {getRowLocation(row)}
-            </p>
-
-            {status === "Completed" ? (
-              <p className="mt-1.5 line-clamp-1 rounded-full bg-emerald-500/20 px-2 py-1 text-[8px] font-black uppercase text-emerald-100">
-                Winner: {winnerName}
-              </p>
-            ) : row.calendar_matchup_id ? (
-              <p className="mt-1.5 line-clamp-1 rounded-full bg-blue-400/20 px-2 py-1 text-[8px] font-black uppercase text-blue-100">
-                Calendar Approved
-              </p>
+        <div className="hidden min-w-0 border-l border-white/10 pl-4 md:block">
+          <div className="flex items-center gap-2">
+            <StatusBadge row={row} />
+            {row.match_number ? (
+              <span className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">
+                #{row.match_number}
+              </span>
             ) : null}
           </div>
+          <p className="mt-1 truncate text-[10px] font-black uppercase tracking-[0.02em] text-white">
+            {row.match_title || `${player1.name} vs ${player2.name}`}
+          </p>
+          <p className="mt-1 truncate text-[9px] font-bold uppercase tracking-[0.04em] text-blue-200">
+            {formatFixtureDate(displayDate)} · {formatFixtureTime(displayDate)} ·{" "}
+            {getRowLocation(row)}
+          </p>
+          {status === "Completed" ? (
+            <p className="mt-1 truncate text-[9px] font-black uppercase text-orange-300">
+              Winner: {winnerName}
+            </p>
+          ) : row.calendar_matchup_id ? (
+            <p className="mt-1 text-[9px] font-black uppercase text-blue-300">
+              Calendar Approved
+            </p>
+          ) : null}
         </div>
       </div>
     </Link>
@@ -1099,58 +1171,47 @@ function FixtureBattleCard({
 
 function FixtureFighter({
   identity,
-  score,
-  status,
   winner,
   align,
 }: {
   identity: Identity;
-  score: number | null;
-  status: string;
   winner: boolean;
   align: "left" | "right";
 }) {
-  const visibleScore = score === null && status === "Upcoming" ? 0 : score;
-
   return (
     <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
       <div
-        className={`mb-1 flex items-center gap-2 ${
+        className={`flex items-center gap-2 ${
           align === "right" ? "flex-row-reverse" : ""
         }`}
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 shadow-inner sm:h-11 sm:w-11">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-[#10234a] sm:h-10 sm:w-10">
           {identity.photo_url ? (
             <img
               src={identity.photo_url}
               alt={identity.name}
-              className="h-full w-full object-contain p-0.5"
+              className="h-full w-full object-contain p-0.5 transition duration-300 group-hover:scale-105"
             />
           ) : (
-            <div className="text-xs font-black text-blue-800">
+            <div className="text-[10px] font-black text-blue-200">
               {getInitials(identity.name) || "FH"}
             </div>
           )}
         </div>
+
+        <div className="min-w-0">
+          <p
+            className={`line-clamp-2 text-[10px] font-black uppercase leading-3.5 tracking-[0.02em] sm:text-xs ${
+              winner ? "text-orange-300" : "text-white"
+            }`}
+          >
+            {identity.name}
+          </p>
+          <p className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-[0.04em] text-slate-500 sm:text-[9px]">
+            {identity.position || identity.type.replace("_", " ")}
+          </p>
+        </div>
       </div>
-
-      <p className="truncate text-[10px] font-black uppercase tracking-[0.03em] text-blue-900 sm:text-xs">
-        {identity.name}
-      </p>
-
-      <p className="truncate text-[8px] font-bold uppercase tracking-[0.04em] text-slate-500 sm:text-[9px]">
-        {identity.position || identity.type.replace("_", " ")}
-      </p>
-
-      <p
-        className={
-          winner
-            ? "mt-1 text-2xl font-black leading-none text-blue-600 sm:text-4xl"
-            : "mt-1 text-2xl font-black leading-none text-slate-950 sm:text-4xl"
-        }
-      >
-        {visibleScore ?? "-"}
-      </p>
     </div>
   );
 }
@@ -1167,8 +1228,8 @@ function LeaderboardCard({
   items: LeaderboardItem[];
 }) {
   return (
-    <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-4 shadow-2xl shadow-black/20 backdrop-blur-sm sm:p-5">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="overflow-hidden rounded-2xl border border-[#213766] bg-[#071127]/95 shadow-2xl shadow-black/20 backdrop-blur-sm">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
             {eyebrow}
@@ -1178,61 +1239,139 @@ function LeaderboardCard({
         </div>
 
         <p className="text-xs font-bold text-zinc-500">
-          Ranked by wins, win rate, point difference, and scoring.
+          Wins → win rate → point difference
         </p>
       </div>
 
-      <div className="space-y-2">
-        {items.length > 0 ? (
-          items.map((item, index) => (
-            <div
-              key={item.id}
-              className="grid gap-3 rounded-2xl border border-white/10 bg-black/50 p-3 transition hover:border-orange-400/40 sm:grid-cols-[auto_1fr_auto]"
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-500 text-sm font-black text-black">
-                {index + 1}
-              </div>
-
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black text-white">
-                  {item.name}
-                </p>
-
-                <p className="text-xs text-zinc-500">
-                  {item.matches} battles • {item.points} pts •{" "}
-                  {item.pointsAllowed} allowed
-                </p>
-              </div>
-
-              <div className="grid grid-cols-4 gap-2 text-center sm:w-[280px]">
-                <LeaderboardStat label="W" value={item.wins} />
-                <LeaderboardStat label="%" value={`${item.winRate}`} />
-                <LeaderboardStat label="+/-" value={item.pointDiff} />
-                <LeaderboardStat label="AVG" value={item.avgPoints} />
-              </div>
+      {items.length > 0 ? (
+        <>
+          <div className="sm:hidden">
+            <div className="grid grid-cols-[30px_minmax(92px,1fr)_28px_28px_28px_42px_42px] items-center gap-1 bg-[#0d2350] px-3 py-2 text-center text-[8px] font-black uppercase tracking-[0.08em] text-blue-200">
+              <span>#</span>
+              <span className="text-left">Hooper</span>
+              <span>P</span>
+              <span>W</span>
+              <span>L</span>
+              <span>+/-</span>
+              <span>Win</span>
             </div>
-          ))
-        ) : (
-          <p className="rounded-xl bg-black/40 p-4 text-sm text-zinc-500">
-            {emptyText}
-          </p>
-        )}
-      </div>
+            {items.map((item, index) => (
+              <LeaderboardMobileRow
+                key={item.id}
+                item={item}
+                position={index + 1}
+              />
+            ))}
+          </div>
+
+          <div className="hidden sm:block">
+            <div className="grid grid-cols-[42px_minmax(170px,1fr)_42px_42px_42px_42px_50px_50px_56px_62px] items-center gap-1 bg-[#0d2350] px-4 py-2 text-center text-[9px] font-black uppercase tracking-[0.09em] text-blue-200">
+              <span>Pos</span>
+              <span className="text-left">Hooper</span>
+              <span>P</span>
+              <span>W</span>
+              <span>D</span>
+              <span>L</span>
+              <span>PF</span>
+              <span>PA</span>
+              <span>+/-</span>
+              <span>Win %</span>
+            </div>
+            {items.map((item, index) => (
+              <LeaderboardDesktopRow
+                key={item.id}
+                item={item}
+                position={index + 1}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="bg-black/30 p-4 text-sm text-zinc-500">{emptyText}</p>
+      )}
     </div>
   );
 }
 
-function LeaderboardStat({
-  label,
-  value,
+function LeaderboardMobileRow({
+  item,
+  position,
 }: {
-  label: string;
-  value: number | string;
+  item: LeaderboardItem;
+  position: number;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-950 px-2 py-2">
-      <p className="text-[9px] font-black uppercase text-zinc-600">{label}</p>
-      <p className="mt-1 text-sm font-black text-white">{value}</p>
+    <div
+      className={`grid min-h-12 grid-cols-[30px_minmax(92px,1fr)_28px_28px_28px_42px_42px] items-center gap-1 border-t border-white/7 px-3 py-2 text-center text-[11px] font-black transition hover:bg-blue-500/8 ${
+        position === 1 ? "bg-orange-500/8" : "bg-black/10"
+      }`}
+    >
+      <span
+        className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md ${
+          position === 1
+            ? "bg-orange-500 text-black"
+            : position <= 3
+              ? "bg-blue-500/20 text-blue-200"
+              : "text-slate-400"
+        }`}
+      >
+        {position}
+      </span>
+      <span className="min-w-0 text-left">
+        <span className="line-clamp-2 text-[11px] leading-3.5 text-white">
+          {item.name}
+        </span>
+      </span>
+      <span className="text-slate-300">{item.matches}</span>
+      <span className="text-white">{item.wins}</span>
+      <span className="text-slate-500">{item.losses}</span>
+      <span className={item.pointDiff >= 0 ? "text-blue-300" : "text-orange-300"}>
+        {item.pointDiff > 0 ? "+" : ""}
+        {item.pointDiff}
+      </span>
+      <span className="text-white">{item.winRate}%</span>
+    </div>
+  );
+}
+
+function LeaderboardDesktopRow({
+  item,
+  position,
+}: {
+  item: LeaderboardItem;
+  position: number;
+}) {
+  return (
+    <div
+      className={`grid min-h-12 grid-cols-[42px_minmax(170px,1fr)_42px_42px_42px_42px_50px_50px_56px_62px] items-center gap-1 border-t border-white/7 px-4 py-2 text-center text-xs font-black transition hover:bg-blue-500/8 ${
+        position === 1 ? "bg-orange-500/8" : "bg-black/10"
+      }`}
+    >
+      <span
+        className={`mx-auto flex h-7 w-7 items-center justify-center rounded-md ${
+          position === 1
+            ? "bg-orange-500 text-black"
+            : position <= 3
+              ? "bg-blue-500/20 text-blue-200"
+              : "text-slate-400"
+        }`}
+      >
+        {position}
+      </span>
+      <span className="min-w-0 truncate text-left text-sm text-white">
+        {item.name}
+      </span>
+      <span className="text-slate-300">{item.matches}</span>
+      <span className="text-white">{item.wins}</span>
+      <span className="text-slate-400">{item.draws}</span>
+      <span className="text-slate-500">{item.losses}</span>
+      <span className="text-slate-300">{item.points}</span>
+      <span className="text-slate-400">{item.pointsAllowed}</span>
+      <span className={item.pointDiff >= 0 ? "text-blue-300" : "text-orange-300"}>
+        {item.pointDiff > 0 ? "+" : ""}
+        {item.pointDiff}
+      </span>
+      <span className="text-white">{item.winRate}%</span>
     </div>
   );
 }
@@ -1271,14 +1410,90 @@ function InsightCard({
   );
 }
 
-function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
+function SectionHeader({
+  eyebrow,
+  title,
+  meta,
+}: {
+  eyebrow: string;
+  title: string;
+  meta?: string;
+}) {
   return (
-    <div className="mb-5">
-      <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
-        {eyebrow}
+    <div className="mb-5 flex items-end justify-between gap-3">
+      <div>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
+          {eyebrow}
+        </p>
+
+        <h2 className="mt-1 text-3xl font-black">{title}</h2>
+      </div>
+      {meta ? (
+        <p className="pb-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+          {meta}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function BattlePagination({
+  currentPage,
+  totalPages,
+  totalItems,
+  pageSize,
+  queryKey,
+  anchor,
+}: {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  queryKey: "upcomingPage" | "resultsPage";
+  anchor: string;
+}) {
+  const firstItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const lastItem = Math.min(currentPage * pageSize, totalItems);
+
+  return (
+    <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-[#1f3766] bg-[#071127]/90 px-3 py-2">
+      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+        {firstItem}-{lastItem} of {totalItems}
       </p>
 
-      <h2 className="mt-1 text-3xl font-black">{title}</h2>
+      <div className="flex items-center gap-2">
+        {currentPage > 1 ? (
+          <Link
+            href={`/one-on-one?${queryKey}=${currentPage - 1}#${anchor}`}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase text-white transition hover:border-orange-400/60 hover:text-orange-300"
+            aria-label={`Go to page ${currentPage - 1}`}
+          >
+            Previous
+          </Link>
+        ) : (
+          <span className="rounded-lg border border-white/5 px-3 py-1.5 text-[10px] font-black uppercase text-slate-700">
+            Previous
+          </span>
+        )}
+
+        <span className="text-[10px] font-black uppercase tracking-[0.08em] text-blue-200">
+          {currentPage} / {totalPages}
+        </span>
+
+        {currentPage < totalPages ? (
+          <Link
+            href={`/one-on-one?${queryKey}=${currentPage + 1}#${anchor}`}
+            className="rounded-lg bg-orange-500 px-3 py-1.5 text-[10px] font-black uppercase text-black transition hover:bg-orange-400"
+            aria-label={`Go to page ${currentPage + 1}`}
+          >
+            Next
+          </Link>
+        ) : (
+          <span className="rounded-lg border border-white/5 px-3 py-1.5 text-[10px] font-black uppercase text-slate-700">
+            Next
+          </span>
+        )}
+      </div>
     </div>
   );
 }

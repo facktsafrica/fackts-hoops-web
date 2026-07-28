@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { recordPlayerActivity } from "@/lib/activity/server";
+import { canAdmin, type AdminCapability } from "@/lib/admin/permissions";
 import { getAdminAccess, getPlayerAccess } from "@/lib/auth/server";
 import { notifyAdmins, notifyAllPlayers, notifyPlayers } from "@/lib/notifications/server";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
@@ -22,6 +24,20 @@ function dateLabel(value: unknown) {
     year: "numeric",
     timeZone: "Africa/Nairobi",
   });
+}
+
+function capabilityForNotificationEvent(event: string): AdminCapability | null {
+  if (event === "admin.broadcast") return "notifications";
+  if (event === "admin.game_changed") return "games";
+  if (event === "admin.roster_published") return "rosters";
+  if (
+    event === "admin.matchup_approved" ||
+    event === "admin.matchup_rejected"
+  ) {
+    return "one_on_one";
+  }
+
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -50,6 +66,15 @@ export async function POST(request: NextRequest) {
           notificationType: "player_availability",
           linkUrl: "/admin/calendar",
           tag: `availability-${player.id}`,
+        });
+
+        await recordPlayerActivity({
+          playerId: player.id,
+          userId: user.id,
+          playerName: name,
+          eventType: "availability_submitted",
+          title: "Submitted availability",
+          details: `${date}, ${time}, ${court}`,
         });
 
         return NextResponse.json({ ok: true, ...result });
@@ -87,6 +112,16 @@ export async function POST(request: NextRequest) {
           });
         }
 
+        await recordPlayerActivity({
+          playerId: player.id,
+          userId: user.id,
+          playerName: name,
+          eventType: "challenge_requested",
+          title: "Requested a 1v1 matchup",
+          details: `${opponentName} - ${date}`,
+          metadata: { opponent_id: opponentId },
+        });
+
         return NextResponse.json({ ok: true, ...result });
       }
 
@@ -106,6 +141,16 @@ export async function POST(request: NextRequest) {
           notificationType: "game_availability",
           linkUrl: "/admin/calendar",
           tag: `game-response-${gameId}-${player.id}`,
+        });
+
+        await recordPlayerActivity({
+          playerId: player.id,
+          userId: user.id,
+          playerName: name,
+          eventType: "game_response",
+          title: "Responded to a game",
+          details: `${status} - FACKTS vs ${opponent}`,
+          metadata: { game_id: gameId, status },
         });
 
         return NextResponse.json({ ok: true, ...result });
@@ -128,6 +173,18 @@ export async function POST(request: NextRequest) {
           tag: `event-response-${eventId}-${player.id}`,
         });
 
+        await recordPlayerActivity({
+          playerId: player.id,
+          userId: user.id,
+          playerName: name,
+          eventType: "event_response",
+          title: "Responded to an event",
+          details: `${status} - ${
+            calendarEvent?.title || "FACKTS event"
+          }`,
+          metadata: { event_id: eventId, status },
+        });
+
         return NextResponse.json({ ok: true, ...result });
       }
 
@@ -137,6 +194,17 @@ export async function POST(request: NextRequest) {
     const { user, profile } = await getAdminAccess();
     if (!user || !profile) {
       return NextResponse.json({ ok: false, error: "Admin login required." }, { status: 403 });
+    }
+
+    const requiredCapability = capabilityForNotificationEvent(event);
+    if (requiredCapability && !canAdmin(profile, requiredCapability)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Your mini-admin account does not have permission for this action.",
+        },
+        { status: 403 }
+      );
     }
 
     if (event === "admin.matchup_approved" || event === "admin.matchup_rejected") {

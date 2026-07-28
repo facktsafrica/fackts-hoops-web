@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAccess } from "@/lib/auth/server";
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 import { escapeHtml, getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
 import { FACKTS_PLAYER_TYPE, isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
 import { notifyPlayers } from "@/lib/notifications/server";
@@ -25,10 +25,14 @@ function temporaryPassword() {
 
 export async function GET() {
   try {
-    const { user, profile } = await getAdminAccess();
+    const { user, profile, allowed } =
+      await getAdminCapabilityAccess("player_access");
 
-    if (!user || !profile) {
-      return NextResponse.json({ ok: false, error: "Admin login required." }, { status: 403 });
+    if (!user || !profile || !allowed) {
+      return NextResponse.json(
+        { ok: false, error: "Player Accounts permission required." },
+        { status: 403 }
+      );
     }
 
     const admin = createSupabaseAdminClient();
@@ -53,10 +57,14 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile } = await getAdminAccess();
+    const { user, profile, allowed } =
+      await getAdminCapabilityAccess("player_access");
 
-    if (!user || !profile) {
-      return NextResponse.json({ ok: false, error: "Admin login required." }, { status: 403 });
+    if (!user || !profile || !allowed) {
+      return NextResponse.json(
+        { ok: false, error: "Player Accounts permission required." },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
