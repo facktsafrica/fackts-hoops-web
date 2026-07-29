@@ -242,7 +242,7 @@ function PortalLink({
   return (
     <Link
       href={href}
-      className={`group relative isolate min-h-44 overflow-hidden rounded-3xl border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(0,0,0,0.45)] ${
+      className={`group relative isolate min-h-[132px] overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(0,0,0,0.45)] sm:min-h-44 sm:rounded-3xl ${
         featured
           ? "border-orange-500/50 bg-orange-950/30 hover:border-orange-400"
           : "border-slate-700/80 bg-slate-900 hover:border-orange-400/70"
@@ -261,7 +261,7 @@ function PortalLink({
       <div className="absolute inset-0 -z-10 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/45 transition duration-300 group-hover:via-slate-950/80" />
       <div className="absolute inset-x-0 bottom-0 -z-10 h-2/3 bg-gradient-to-t from-black/80 to-transparent" />
 
-      <div className="flex h-full min-h-34 flex-col justify-between">
+      <div className="relative flex min-h-[132px] flex-col justify-between p-4 sm:min-h-44 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <p className={`text-[10px] font-black uppercase tracking-[0.22em] ${featured ? "text-orange-300" : "text-slate-400"}`}>
             {eyebrow}
@@ -273,8 +273,8 @@ function PortalLink({
           </span>
         </div>
         <div>
-          <p className="max-w-xs text-xl font-black leading-tight text-white drop-shadow-lg">{title}</p>
-          <p className="mt-2 max-w-sm text-sm leading-6 text-slate-300 drop-shadow">{text}</p>
+          <p className="max-w-xs text-lg font-black leading-tight text-white drop-shadow-lg sm:text-xl">{title}</p>
+          <p className="mt-1 line-clamp-2 max-w-sm text-xs leading-5 text-slate-300 drop-shadow sm:mt-2 sm:text-sm sm:leading-6">{text}</p>
         </div>
       </div>
     </Link>

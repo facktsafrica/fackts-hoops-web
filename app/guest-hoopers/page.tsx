@@ -220,7 +220,8 @@ function GuestCard({ guest }: { guest: GuestHooper }) {
   const note = guest.bio || guest.notes || guest.style_of_play || guest.strengths;
 
   return (
-    <article className="group overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/90 shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-orange-400/50">
+    <Link
+      href={`/guest-hoopers/${guest.id}`} className="group overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/90 shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-orange-400/50">
       <div className="relative overflow-hidden bg-slate-950">
         <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2">
           {hasValue(guest.jersey_number) ? (
@@ -277,7 +278,7 @@ function GuestCard({ guest }: { guest: GuestHooper }) {
             : "External hooper connected to FACKTS games, coverage, or battle moments."}
         </p>
       </div>
-    </article>
+    </Link>
   );
 }
 

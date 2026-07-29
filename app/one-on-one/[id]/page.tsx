@@ -257,11 +257,7 @@ function getStatusClass(result: string) {
   return "bg-orange-500/15 text-orange-300";
 }
 
-function getVideoUrl(row: OneOnOneRow) {
-  return row.video_url || row.highlight_url || "";
-}
-
-function getEmbedUrl(videoUrl?: string | null) {
+function getEmbedUrl(videoUrl?: string | null): string | null {
   if (!videoUrl) return "";
 
   try {
@@ -269,18 +265,18 @@ function getEmbedUrl(videoUrl?: string | null) {
 
     if (url.hostname.includes("youtu.be")) {
       const id = url.pathname.replace("/", "");
-      return id ? `https://www.youtube.com/embed/${id}` : videoUrl;
+      return id ? `https://www.youtube.com/embed/${id}` : null;
     }
 
     if (url.hostname.includes("youtube.com")) {
       if (url.pathname.startsWith("/watch")) {
         const id = url.searchParams.get("v");
-        return id ? `https://www.youtube.com/embed/${id}` : videoUrl;
+        return id ? `https://www.youtube.com/embed/${id}` : null;
       }
 
       if (url.pathname.startsWith("/shorts/")) {
         const id = url.pathname.split("/shorts/")[1]?.split("/")[0];
-        return id ? `https://www.youtube.com/embed/${id}` : videoUrl;
+        return id ? `https://www.youtube.com/embed/${id}` : null;
       }
 
       if (url.pathname.startsWith("/embed/")) {
@@ -290,12 +286,12 @@ function getEmbedUrl(videoUrl?: string | null) {
 
     if (url.hostname.includes("vimeo.com")) {
       const id = url.pathname.replace("/", "");
-      return id ? `https://player.vimeo.com/video/${id}` : videoUrl;
+      return id ? `https://player.vimeo.com/video/${id}` : null;
     }
 
-    return videoUrl;
+    return null;
   } catch {
-    return videoUrl || "";
+    return null;
   }
 }
 
@@ -404,8 +400,8 @@ export default async function OneOnOneMatchPage({
   const result = getResult(row);
   const participantScore = numberValue(row.points_scored);
   const opponentScore = numberValue(row.points_allowed);
-  const videoUrl = getVideoUrl(row);
-  const embedUrl = getEmbedUrl(videoUrl);
+  const fullVideoUrl = row.video_url || "";
+  const highlightUrl = row.highlight_url || "";
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -500,37 +496,105 @@ export default async function OneOnOneMatchPage({
       <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-4">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
-            Watch
+            Match Media
           </p>
-          <h2 className="text-2xl font-black">Game Video</h2>
+          <h2 className="text-2xl font-black">Watch the Battle</h2>
         </div>
 
-        {videoUrl ? (
-          <div className="rounded-3xl border border-white/10 bg-zinc-950 p-3">
-            {isDirectVideoUrl(videoUrl) ? (
-              <video
-                src={videoUrl}
-                controls
-                playsInline
-                className="aspect-video w-full rounded-2xl bg-black"
+        {fullVideoUrl || highlightUrl ? (
+          <div
+            className={`grid gap-5 ${
+              fullVideoUrl && highlightUrl ? "lg:grid-cols-2" : ""
+            }`}
+          >
+            {fullVideoUrl ? (
+              <MatchMediaCard
+                eyebrow="Full Game"
+                title="Full Game Video"
+                url={fullVideoUrl}
+                buttonLabel="Open Full Game"
+                mediaTitle={`${participant.name} vs ${opponent.name} full game`}
               />
-            ) : (
-              <iframe
-                src={embedUrl}
-                title={`${participant.name} vs ${opponent.name} video`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                className="aspect-video w-full rounded-2xl bg-black"
+            ) : null}
+
+            {highlightUrl ? (
+              <MatchMediaCard
+                eyebrow="Highlights"
+                title="Match Highlight"
+                url={highlightUrl}
+                buttonLabel="Open Match Highlight"
+                mediaTitle={`${participant.name} vs ${opponent.name} match highlight`}
               />
-            )}
+            ) : null}
           </div>
         ) : (
           <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 text-sm text-zinc-400">
-            No video has been linked to this 1-on-1 game yet.
+            No full game video or match highlight has been linked yet.
           </div>
         )}
       </section>
     </main>
+  );
+}
+
+function MatchMediaCard({
+  eyebrow,
+  title,
+  url,
+  buttonLabel,
+  mediaTitle,
+}: {
+  eyebrow: string;
+  title: string;
+  url: string;
+  buttonLabel: string;
+  mediaTitle: string;
+}) {
+  const embedUrl = getEmbedUrl(url);
+  const directVideo = isDirectVideoUrl(url);
+
+  return (
+    <article className="overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 p-3">
+      <div className="px-2 pb-3 pt-1">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
+          {eyebrow}
+        </p>
+        <h3 className="mt-1 text-xl font-black text-white">{title}</h3>
+      </div>
+
+      {directVideo ? (
+        <video
+          src={url}
+          controls
+          playsInline
+          className="aspect-video w-full rounded-2xl bg-black"
+        />
+      ) : embedUrl ? (
+        <iframe
+          src={embedUrl}
+          title={mediaTitle}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          className="aspect-video w-full rounded-2xl bg-black"
+        />
+      ) : (
+        <div className="rounded-2xl border border-white/10 bg-black/60 p-5">
+          <p className="text-sm leading-6 text-zinc-400">
+            This link cannot play inside the app, but the match media is
+            available through the button below.
+          </p>
+        </div>
+      )}
+
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-3 inline-flex rounded-full bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-black transition hover:bg-orange-400"
+      >
+        {buttonLabel}
+      </a>
+    </article>
   );
 }
 

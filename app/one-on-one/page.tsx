@@ -160,6 +160,13 @@ function getPersonPosition(person?: Player | GuestHooper | null) {
   return person.position || "";
 }
 
+function toSentenceCase(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized
+    ? normalized.charAt(0).toUpperCase() + normalized.slice(1)
+    : "";
+}
+
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -1097,33 +1104,32 @@ function FixtureBattleCard({
       href={`/one-on-one/${row.id}`}
       className="group mx-auto block overflow-hidden rounded-xl border border-[#1f3766] bg-[#071127]/95 shadow-[0_8px_22px_rgba(0,0,0,0.28)] transition duration-300 hover:-translate-y-0.5 hover:border-orange-400/70 hover:shadow-[0_12px_28px_rgba(14,72,160,0.2)]"
     >
-      <div className="flex min-h-7 items-center justify-between gap-2 border-b border-white/8 bg-[#0d1d3e] px-3 py-1.5 md:hidden">
-        <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-h-7 items-center justify-between gap-1.5 border-b border-white/8 bg-[#0d1d3e] px-2.5 py-1.5 md:hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
           <StatusBadge row={row} />
           {row.match_number ? (
-            <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.08em] text-slate-400">
+            <span className="min-w-0 truncate text-[7px] font-black uppercase tracking-[0.03em] text-slate-400 sm:text-[8px] sm:tracking-[0.08em]">
               #{row.match_number}
             </span>
           ) : null}
         </div>
 
-        <p className="truncate text-right text-[9px] font-black uppercase tracking-[0.04em] text-blue-100">
-          {formatFixtureDate(displayDate)} · {formatFixtureTime(displayDate)}
-        </p>
+        <span className="shrink-0 whitespace-nowrap text-right text-[9px] font-black uppercase tracking-[-0.01em] text-blue-100 sm:text-[9px] sm:tracking-[0.04em]">{formatFixtureDate(displayDate)} · {formatFixtureTime(displayDate)}
+        </span>
       </div>
 
-      <div className="grid min-h-[72px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-3 py-2 sm:gap-4 sm:px-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_220px]">
+      <div className="grid min-h-[72px] grid-cols-[minmax(0,1fr)_52px_minmax(0,1fr)] items-center gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-4 sm:px-4 sm:py-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_220px]">
         <FixtureFighter
           identity={player1}
           winner={winnerSide === "player1"}
           align="left"
         />
 
-        <div className="min-w-[62px] text-center sm:min-w-[82px]">
-          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">
+        <div className="min-w-0 text-center sm:min-w-[82px]">
+          <p className="text-[7px] font-black uppercase tracking-[0.08em] text-slate-500 sm:text-[8px] sm:tracking-[0.16em]">
             {row.match_type || "1v1"}
           </p>
-          <p className="mt-1 whitespace-nowrap text-xl font-black leading-none text-white sm:text-2xl">
+          <p className="mt-1 whitespace-nowrap text-lg font-black leading-none text-white sm:text-2xl">
             {status === "Completed" &&
             player1Score !== null &&
             player2Score !== null
@@ -1181,7 +1187,7 @@ function FixtureFighter({
   return (
     <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
       <div
-        className={`flex items-center gap-2 ${
+        className={`flex items-center gap-1.5 sm:gap-2 ${
           align === "right" ? "flex-row-reverse" : ""
         }`}
       >
@@ -1200,16 +1206,14 @@ function FixtureFighter({
         </div>
 
         <div className="min-w-0">
-          <p
-            className={`line-clamp-2 text-[10px] font-black uppercase leading-3.5 tracking-[0.02em] sm:text-xs ${
+          <span
+            className={`line-clamp-2 min-h-[17px] text-[9px] font-bold uppercase leading-[8.5px] tracking-[0.015em] sm:min-h-0 sm:text-xs sm:font-black sm:leading-3.5 sm:tracking-[0.02em] ${
               winner ? "text-orange-300" : "text-white"
-            }`}
-          >
-            {identity.name}
-          </p>
-          <p className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-[0.04em] text-slate-500 sm:text-[9px]">
-            {identity.position || identity.type.replace("_", " ")}
-          </p>
+            }`}>{identity.name}
+          </span>
+          <span className="mt-1 block truncate text-[7px] font-black leading-none tracking-[0.01em] text-slate-500 sm:mt-0.5 sm:text-[8px] sm:font-black sm:tracking-[0.04em]">
+            {toSentenceCase(identity.position || identity.type.replace("_", " "))}
+          </span>
         </div>
       </div>
     </div>
@@ -1239,29 +1243,73 @@ function LeaderboardCard({
         </div>
 
         <p className="text-xs font-bold text-zinc-500">
-          Wins → win rate → point difference
+          Wins - win rate - point difference
         </p>
       </div>
 
       {items.length > 0 ? (
         <>
-          <div className="sm:hidden">
-            <div className="grid grid-cols-[30px_minmax(92px,1fr)_28px_28px_28px_42px_42px] items-center gap-1 bg-[#0d2350] px-3 py-2 text-center text-[8px] font-black uppercase tracking-[0.08em] text-blue-200">
-              <span>#</span>
-              <span className="text-left">Hooper</span>
-              <span>P</span>
-              <span>W</span>
-              <span>L</span>
-              <span>+/-</span>
-              <span>Win</span>
+          <div className="sm:hidden" data-mobile-rankings-scroll-v2>
+            <div className="flex items-center justify-between border-b border-blue-300/15 bg-[#0a1936] px-3 py-2 text-[9px] font-black uppercase tracking-[0.08em] text-blue-100">
+              <span>Swipe sideways for all stats</span>
+              <span aria-hidden="true" className="text-sm leading-none text-orange-300">
+                &harr;
+              </span>
             </div>
-            {items.map((item, index) => (
-              <LeaderboardMobileRow
-                key={item.id}
-                item={item}
-                position={index + 1}
-              />
-            ))}
+
+            <div
+              className="relative"
+              style={{
+                maxHeight: "390px",
+                overflowX: "auto",
+                overflowY: "auto",
+                overscrollBehavior: "contain",
+                WebkitOverflowScrolling: "touch",
+                touchAction: "pan-x pan-y",
+                scrollbarGutter: "stable",
+              }}
+            >
+              <table
+                className="border-separate border-spacing-0 text-center text-[10px] font-black"
+                style={{ minWidth: "760px", width: "760px" }}
+              >
+                <colgroup>
+                  <col style={{ width: "54px" }} />
+                  <col style={{ width: "190px" }} />
+                  <col style={{ width: "48px" }} />
+                  <col style={{ width: "48px" }} />
+                  <col style={{ width: "48px" }} />
+                  <col style={{ width: "48px" }} />
+                  <col style={{ width: "58px" }} />
+                  <col style={{ width: "58px" }} />
+                  <col style={{ width: "72px" }} />
+                  <col style={{ width: "80px" }} />
+                </colgroup>
+                <thead className="sticky top-0 z-20 bg-[#0d2350] text-[8px] uppercase tracking-[0.08em] text-blue-200">
+                  <tr>
+                    <th className="border-b border-white/10 px-2 py-2">Rank</th>
+                    <th className="border-b border-white/10 px-3 py-2 text-left">Player</th>
+                    <th className="border-b border-white/10 px-2 py-2">P</th>
+                    <th className="border-b border-white/10 px-2 py-2">W</th>
+                    <th className="border-b border-white/10 px-2 py-2">D</th>
+                    <th className="border-b border-white/10 px-2 py-2">L</th>
+                    <th className="border-b border-white/10 px-2 py-2">PF</th>
+                    <th className="border-b border-white/10 px-2 py-2">PA</th>
+                    <th className="border-b border-white/10 px-2 py-2">+/-</th>
+                    <th className="border-b border-white/10 px-2 py-2">Win %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, index) => (
+                    <LeaderboardMobileRow
+                      key={item.id}
+                      item={item}
+                      position={index + 1}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="hidden sm:block">
@@ -1292,7 +1340,6 @@ function LeaderboardCard({
     </div>
   );
 }
-
 function LeaderboardMobileRow({
   item,
   position,
@@ -1301,39 +1348,47 @@ function LeaderboardMobileRow({
   position: number;
 }) {
   return (
-    <div
-      className={`grid min-h-12 grid-cols-[30px_minmax(92px,1fr)_28px_28px_28px_42px_42px] items-center gap-1 border-t border-white/7 px-3 py-2 text-center text-[11px] font-black transition hover:bg-blue-500/8 ${
-        position === 1 ? "bg-orange-500/8" : "bg-black/10"
-      }`}
+    <tr
+      className={
+        position === 1
+          ? "bg-orange-500/8"
+          : "bg-black/10"
+      }
     >
-      <span
-        className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md ${
-          position === 1
-            ? "bg-orange-500 text-black"
-            : position <= 3
-              ? "bg-blue-500/20 text-blue-200"
-              : "text-slate-400"
+      <td className="border-b border-white/7 px-2 py-2.5">
+        <span
+          className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md ${
+            position === 1
+              ? "bg-orange-500 text-black"
+              : position <= 3
+                ? "bg-blue-500/20 text-blue-200"
+                : "text-slate-400"
+          }`}
+        >
+          {position}
+        </span>
+      </td>
+      <td className="whitespace-nowrap border-b border-white/7 px-3 py-2.5 text-left text-[11px] text-white">
+        {item.name}
+      </td>
+      <td className="border-b border-white/7 px-2 py-2.5 text-slate-300">{item.matches}</td>
+      <td className="border-b border-white/7 px-2 py-2.5 text-white">{item.wins}</td>
+      <td className="border-b border-white/7 px-2 py-2.5 text-slate-400">{item.draws}</td>
+      <td className="border-b border-white/7 px-2 py-2.5 text-slate-500">{item.losses}</td>
+      <td className="border-b border-white/7 px-2 py-2.5 text-slate-300">{item.points}</td>
+      <td className="border-b border-white/7 px-2 py-2.5 text-slate-400">{item.pointsAllowed}</td>
+      <td
+        className={`border-b border-white/7 px-2 py-2.5 ${
+          item.pointDiff >= 0 ? "text-blue-300" : "text-orange-300"
         }`}
       >
-        {position}
-      </span>
-      <span className="min-w-0 text-left">
-        <span className="line-clamp-2 text-[11px] leading-3.5 text-white">
-          {item.name}
-        </span>
-      </span>
-      <span className="text-slate-300">{item.matches}</span>
-      <span className="text-white">{item.wins}</span>
-      <span className="text-slate-500">{item.losses}</span>
-      <span className={item.pointDiff >= 0 ? "text-blue-300" : "text-orange-300"}>
         {item.pointDiff > 0 ? "+" : ""}
         {item.pointDiff}
-      </span>
-      <span className="text-white">{item.winRate}%</span>
-    </div>
+      </td>
+      <td className="border-b border-white/7 px-2 py-2.5 text-white">{item.winRate}%</td>
+    </tr>
   );
 }
-
 function LeaderboardDesktopRow({
   item,
   position,
@@ -1510,7 +1565,7 @@ function StatusBadge({ row }: { row: OneOnOneRow }) {
 
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${className}`}
+      className={`shrink-0 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[7px] font-black uppercase leading-none tracking-[0.04em] sm:px-2 sm:text-[8px] sm:tracking-[0.12em] ${className}`}
     >
       {status}
     </span>
