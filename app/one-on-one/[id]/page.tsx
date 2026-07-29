@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import AnimatedNumber from "@/app/components/AnimatedNumber";
 
+export const revalidate = 60;
+
 type Player = {
   id: string;
   full_name?: string | null;

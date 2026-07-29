@@ -1,5 +1,4 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
@@ -187,7 +186,7 @@ function formatDate(value?: string | null) {
 
 function getLocation(game: GameRow) {
   return (
-    [game.venue, game.location].filter(Boolean).join(" • ") ||
+    [game.venue, game.location].filter(Boolean).join(" â€¢ ") ||
     "Venue not added"
   );
 }
@@ -460,7 +459,7 @@ export default async function GameDetailsPage({
               href="/games"
               className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
             >
-              ← Back to Games
+              â† Back to Games
             </Link>
 
             <Link
@@ -618,7 +617,7 @@ export default async function GameDetailsPage({
               </h2>
 
               <p className="mt-2 text-sm font-bold text-zinc-400">
-                #{playerOfGame.player?.jersey_number ?? "-"} •{" "}
+                #{playerOfGame.player?.jersey_number ?? "-"} â€¢{" "}
                 {playerOfGame.player?.position || "FACKTS Player"}
               </p>
 
@@ -771,7 +770,7 @@ function PlayerStatRowCard({ row }: { row: FullStatRow }) {
           </p>
 
           <p className="text-xs text-zinc-500">
-            #{player?.jersey_number ?? "-"} • {player?.position || "Player"}
+            #{player?.jersey_number ?? "-"} â€¢ {player?.position || "Player"}
           </p>
         </div>
       </div>

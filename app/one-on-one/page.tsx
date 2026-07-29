@@ -1,5 +1,4 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
@@ -519,7 +518,7 @@ function getIntensity(row: OneOnOneRow) {
 }
 
 function getRowLocation(row: OneOnOneRow) {
-  return [row.venue, row.location, row.court].filter(Boolean).join(" • ") || "Court TBA";
+  return [row.venue, row.location, row.court].filter(Boolean).join(" â€¢ ") || "Court TBA";
 }
 
 function getDateForDisplay(row: OneOnOneRow) {
@@ -945,7 +944,7 @@ export default async function OneOnOnePage({
             value={topHooper?.name || "No leader yet"}
             sub={
               topHooper
-                ? `${topHooper.wins} wins • ${topHooper.winRate}% win rate`
+                ? `${topHooper.wins} wins â€¢ ${topHooper.winRate}% win rate`
                 : "Needs completed battles"
             }
           />
@@ -1114,7 +1113,7 @@ function FixtureBattleCard({
           ) : null}
         </div>
 
-        <span className="shrink-0 whitespace-nowrap text-right text-[9px] font-black uppercase tracking-[-0.01em] text-blue-100 sm:text-[9px] sm:tracking-[0.04em]">{formatFixtureDate(displayDate)} · {formatFixtureTime(displayDate)}
+        <span className="shrink-0 whitespace-nowrap text-right text-[9px] font-black uppercase tracking-[-0.01em] text-blue-100 sm:text-[9px] sm:tracking-[0.04em]">{formatFixtureDate(displayDate)} Â· {formatFixtureTime(displayDate)}
         </span>
       </div>
 
@@ -1157,7 +1156,7 @@ function FixtureBattleCard({
             {row.match_title || `${player1.name} vs ${player2.name}`}
           </p>
           <p className="mt-1 truncate text-[9px] font-bold uppercase tracking-[0.04em] text-blue-200">
-            {formatFixtureDate(displayDate)} · {formatFixtureTime(displayDate)} ·{" "}
+            {formatFixtureDate(displayDate)} Â· {formatFixtureTime(displayDate)} Â·{" "}
             {getRowLocation(row)}
           </p>
           {status === "Completed" ? (

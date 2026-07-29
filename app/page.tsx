@@ -4,8 +4,7 @@ import FacktsNetwork from "./components/FacktsNetwork";
 import FacktsStories from "./components/FacktsStories";
 import AnimatedNumber from "./components/AnimatedNumber";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 type GameRow = {
   id: string;
@@ -226,7 +225,7 @@ function formatDate(value?: string | null) {
 function getLocation(game?: GameRow | null) {
   if (!game) return "Venue TBA";
 
-  return [game.venue, game.location].filter(Boolean).join(" • ") || "Venue TBA";
+  return [game.venue, game.location].filter(Boolean).join(" â€¢ ") || "Venue TBA";
 }
 
 function getWinner(game?: GameRow | null) {

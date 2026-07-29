@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 type PageProps = {
   params: Promise<{
@@ -31,7 +30,7 @@ function getPlayerName(row: any) {
 }
 
 function getJersey(row: any) {
-  return row.player?.jersey_number ?? "—";
+  return row.player?.jersey_number ?? "â€”";
 }
 
 function getRoleLabel(value: string | null | undefined) {
@@ -91,7 +90,7 @@ function buildWhatsAppText(game: any, roster: any[]) {
   const venue = game?.venue ?? "Venue TBA";
   const matchType = game?.match_type ?? "Game";
 
-  return `🏀 FACKTS GAME ROSTER%0A%0AFACKTS vs ${opponent}%0A${matchType}%0A📍 ${venue}%0A📅 ${date}%0A%0A🔥 STARTERS%0A${starterLines}%0A%0A💪 BENCH%0A${benchLines}%0A%0AFACKTS Hoops. Kenyan basketball, documented.`;
+  return `ðŸ€ FACKTS GAME ROSTER%0A%0AFACKTS vs ${opponent}%0A${matchType}%0AðŸ“ ${venue}%0AðŸ“… ${date}%0A%0AðŸ”¥ STARTERS%0A${starterLines}%0A%0AðŸ’ª BENCH%0A${benchLines}%0A%0AFACKTS Hoops. Kenyan basketball, documented.`;
 }
 
 async function getGame(gameId: string) {
@@ -171,7 +170,7 @@ export default async function PublicRosterPage({ params }: PageProps) {
             href="/games"
             className="rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
           >
-            ← Back to Games
+            â† Back to Games
           </Link>
 
           <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
@@ -228,7 +227,7 @@ export default async function PublicRosterPage({ params }: PageProps) {
             href="/games"
             className="inline-flex rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-2 text-sm font-bold text-slate-300 backdrop-blur transition hover:bg-slate-800"
           >
-            ← Back to Games
+            â† Back to Games
           </Link>
 
           <div className="mt-8 max-w-4xl">
@@ -436,13 +435,13 @@ function RosterSection({ title, rows }: { title: string; rows: any[] }) {
                     />
                   ) : (
                     <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-800 text-2xl">
-                      🏀
+                      ðŸ€
                     </div>
                   )}
 
                   <div className="min-w-0 flex-1">
                     <div className="text-lg font-black leading-tight">
-                      #{player?.jersey_number ?? "—"}{" "}
+                      #{player?.jersey_number ?? "â€”"}{" "}
                       {player?.full_name ?? "Unknown Player"}
                     </div>
 
@@ -453,7 +452,7 @@ function RosterSection({ title, rows }: { title: string; rows: any[] }) {
                     ) : null}
 
                     <div className="mt-1 text-xs text-slate-400">
-                      {player?.position ?? "Position TBA"} •{" "}
+                      {player?.position ?? "Position TBA"} â€¢{" "}
                       {getRoleLabel(row.roster_role)}
                     </div>
                   </div>

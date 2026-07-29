@@ -3,8 +3,7 @@ import AnimatedNumber from "@/app/components/AnimatedNumber";
 import { supabase } from "@/lib/supabase";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 async function getPlayer(id: string) {
   const { data, error } = await supabase
@@ -127,7 +126,7 @@ export default async function PlayerProfilePage({
             href="/players"
             className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
           >
-            ← Back to Players
+            â† Back to Players
           </Link>
 
           <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
@@ -170,7 +169,7 @@ export default async function PlayerProfilePage({
             href="/players"
             className="inline-flex rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2 text-sm text-slate-300 backdrop-blur transition hover:bg-slate-800 hover:text-white"
           >
-            ← Back to Players
+            â† Back to Players
           </Link>
 
           <div className="mt-8 grid gap-8 lg:grid-cols-[0.8fr,1.2fr] lg:items-center">
@@ -186,14 +185,14 @@ export default async function PlayerProfilePage({
                 />
               ) : (
                 <div className="flex h-[520px] w-full items-center justify-center bg-slate-900 text-7xl">
-                  🏀
+                  ðŸ€
                 </div>
               )}
             </div>
 
             <div>
               <div className="inline-flex rounded-full bg-orange-500 px-4 py-2 text-sm font-black text-slate-950">
-                #{player.jersey_number ?? "—"}
+                #{player.jersey_number ?? "â€”"}
               </div>
 
               {player.is_featured ? (
@@ -211,19 +210,19 @@ export default async function PlayerProfilePage({
               </div>
 
               <div className="mt-5 text-lg text-slate-300">
-                {player.position ?? "Position TBA"} • {player.role ?? "Role TBA"}
+                {player.position ?? "Position TBA"} â€¢ {player.role ?? "Role TBA"}
               </div>
 
               <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                <ProfileInfo label="Height" value={player.height ?? "—"} />
-                <ProfileInfo label="Age" value={player.age?.toString() ?? "—"} />
-                <ProfileInfo label="Hand" value={player.dominant_hand ?? "—"} />
-                <ProfileInfo label="Level" value={player.highest_level ?? "—"} />
+                <ProfileInfo label="Height" value={player.height ?? "â€”"} />
+                <ProfileInfo label="Age" value={player.age?.toString() ?? "â€”"} />
+                <ProfileInfo label="Hand" value={player.dominant_hand ?? "â€”"} />
+                <ProfileInfo label="Level" value={player.highest_level ?? "â€”"} />
                 <ProfileInfo
                   label="Years Played"
-                  value={player.years_played?.toString() ?? "—"}
+                  value={player.years_played?.toString() ?? "â€”"}
                 />
-                <ProfileInfo label="Current Team" value={player.current_team ?? "—"} />
+                <ProfileInfo label="Current Team" value={player.current_team ?? "â€”"} />
               </div>
             </div>
           </div>
@@ -295,7 +294,7 @@ export default async function PlayerProfilePage({
                       </div>
 
                       <div className="mt-2 text-sm text-slate-400">
-                        {game?.game_date ?? "Date TBA"} • {game?.venue ?? "Venue TBA"}
+                        {game?.game_date ?? "Date TBA"} â€¢ {game?.venue ?? "Venue TBA"}
                       </div>
                     </div>
 

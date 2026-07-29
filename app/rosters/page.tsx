@@ -2,8 +2,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import CopyRosterButton from "../components/CopyRosterButton";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 function formatGameDate(value: string | null | undefined) {
   if (!value) return "Date TBA";
@@ -94,11 +93,11 @@ async function getRosters() {
 }
 
 function playerLine(row: any) {
-  const number = row.player?.jersey_number ?? "—";
+  const number = row.player?.jersey_number ?? "â€”";
   const name = row.player?.full_name ?? "Unknown Player";
   const position = row.player?.position ?? "Player";
 
-  return `#${number} ${name} — ${position}`;
+  return `#${number} ${name} â€” ${position}`;
 }
 
 function buildCopyText(game: any, roster: any[]) {
@@ -122,17 +121,17 @@ function buildCopyText(game: any, roster: any[]) {
 
   const time = formatGameTime(game);
 
-  return `🏀 FACKTS GAME ROSTER
+  return `ðŸ€ FACKTS GAME ROSTER
 
 FACKTS vs ${game.opponent ?? "Opponent"}
 ${game.match_type ?? "Game"}
-📍 ${game.venue ?? "Venue TBA"}
-📅 ${formatGameDate(game.game_date)}${time ? `\n⏰ ${time}` : ""}
+ðŸ“ ${game.venue ?? "Venue TBA"}
+ðŸ“… ${formatGameDate(game.game_date)}${time ? `\nâ° ${time}` : ""}
 
-🔥 STARTERS
+ðŸ”¥ STARTERS
 ${starterLines}
 
-💪 BENCH
+ðŸ’ª BENCH
 ${benchLines}
 
 FACKTS Hoops. Kenyan basketball, documented.`;
@@ -160,7 +159,7 @@ export default async function PublicRostersHubPage() {
             href="/games"
             className="inline-flex rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-2 text-sm font-bold text-slate-300 backdrop-blur transition hover:bg-slate-800"
           >
-            ← Back to Games
+            â† Back to Games
           </Link>
 
           <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr,0.9fr] lg:items-end">
@@ -252,7 +251,7 @@ export default async function PublicRostersHubPage() {
                   <div className="p-3 md:p-5">
                     <div className="grid gap-2">
                       <GameInfoLine
-                        icon="📅"
+                        icon="ðŸ“…"
                         label="Date"
                         value={formatGameDate(game.game_date)}
                         glow="orange"
@@ -260,7 +259,7 @@ export default async function PublicRostersHubPage() {
 
                       {gameTime ? (
                         <GameInfoLine
-                          icon="⏰"
+                          icon="â°"
                           label="Tip-off"
                           value={gameTime}
                           glow="emerald"
@@ -268,14 +267,14 @@ export default async function PublicRostersHubPage() {
                       ) : null}
 
                       <GameInfoLine
-                        icon="📍"
+                        icon="ðŸ“"
                         label="Venue"
                         value={game.venue ?? "Venue TBA"}
                         glow="rose"
                       />
 
                       <GameInfoLine
-                        icon="🏀"
+                        icon="ðŸ€"
                         label="Match"
                         value={game.match_type ?? "Game"}
                         glow="sky"

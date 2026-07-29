@@ -1,5 +1,4 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
@@ -207,7 +206,7 @@ function formatDate(value?: string | null) {
 
 function getLocation(game: GameRow) {
   return (
-    [game.venue, game.location].filter(Boolean).join(" • ") ||
+    [game.venue, game.location].filter(Boolean).join(" â€¢ ") ||
     "Venue not added"
   );
 }

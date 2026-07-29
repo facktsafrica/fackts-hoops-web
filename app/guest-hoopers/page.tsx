@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 type GuestHooper = {
   id: string;
@@ -263,7 +262,7 @@ function GuestCard({ guest }: { guest: GuestHooper }) {
 
         {hasValue(guest.nickname) ? (
           <p className="mt-1 line-clamp-1 text-sm font-bold text-orange-300">
-            “{guest.nickname}”
+            â€œ{guest.nickname}â€
           </p>
         ) : null}
 

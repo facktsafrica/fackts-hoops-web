@@ -5,8 +5,7 @@ import {
 } from "@/lib/hoops/careerStats";
 import { supabase } from "@/lib/supabase";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 type GuestLeader = {
   id: string;
@@ -533,7 +532,7 @@ function GuestLeaderboardTableCard({
 
               <div className="mt-0.5 truncate text-[10px] leading-tight text-slate-400">
                 {guest.position ?? "Guest Hooper"}
-                {guest.nickname ? ` • ${guest.nickname}` : ""}
+                {guest.nickname ? ` â€¢ ${guest.nickname}` : ""}
               </div>
             </div>
 
