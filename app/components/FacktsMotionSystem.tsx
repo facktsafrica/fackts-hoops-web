@@ -19,7 +19,6 @@ const NUMBER_SELECTOR = [
   "main .text-4xl",
   "main .text-5xl",
   "main .text-6xl",
-  "main td",
 ].join(",");
 
 const pureNumber = /^(-?)(\d{1,6})(\.\d+)?(%|\+)?$/;
@@ -100,10 +99,24 @@ export default function FacktsMotionSystem() {
     };
 
     scan();
+    let scanFrame: number | null = null;
+    const pendingRoots = new Set<ParentNode>();
+
+    const scheduleScan = (root: ParentNode) => {
+      pendingRoots.add(root);
+      if (scanFrame !== null) return;
+
+      scanFrame = requestAnimationFrame(() => {
+        pendingRoots.forEach((pendingRoot) => scan(pendingRoot));
+        pendingRoots.clear();
+        scanFrame = null;
+      });
+    };
+
     const mutationObserver = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
-          if (node instanceof HTMLElement) scan(node);
+          if (node instanceof HTMLElement) scheduleScan(node);
         });
       });
     });
@@ -112,6 +125,7 @@ export default function FacktsMotionSystem() {
 
     return () => {
       mutationObserver.disconnect();
+      if (scanFrame !== null) cancelAnimationFrame(scanFrame);
       revealObserver.disconnect();
       numberObserver.disconnect();
     };

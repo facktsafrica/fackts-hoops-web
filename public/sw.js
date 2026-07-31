@@ -1,4 +1,5 @@
-const CACHE_NAME = "fackts-hoops-pwa-v4-20260722";
+const CACHE_NAME = "fackts-hoops-pwa-v6-20260731";
+const NETWORK_TIMEOUT_MS = 8000;
 const PRECACHE_URLS = [
   "/offline.html",
   "/fackts-hoops-logo.png?v=20260722",
@@ -44,7 +45,10 @@ function isPrivateRequest(url) {
 
 async function publicNavigation(request) {
   try {
-    const response = await fetch(request, { cache: "no-store" });
+    const response = await fetch(request, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+    });
 
     if (response.ok && response.type === "basic") {
       const cache = await caches.open(CACHE_NAME);
@@ -57,11 +61,32 @@ async function publicNavigation(request) {
   }
 }
 
+async function nextDataRequest(request) {
+  try {
+    return await fetch(request, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+    });
+  } catch {
+    return new Response("Navigation request timed out.", {
+      status: 504,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+}
+
 async function staticAsset(request) {
   const cached = await caches.match(request);
 
+  // Previously every JS/CSS request waited for the network. A weak connection
+  // could therefore leave Next.js navigation spinning forever even when the
+  // required chunk was already cached.
+  if (cached) return cached;
+
   try {
-    const response = await fetch(request, { cache: "no-store" });
+    const response = await fetch(request, {
+      signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+    });
     if (response.ok && response.type === "basic") {
       const cache = await caches.open(CACHE_NAME);
       await cache.put(request, response.clone());
@@ -93,6 +118,15 @@ self.addEventListener("fetch", (event) => {
 
   if (event.request.mode === "navigate") {
     event.respondWith(publicNavigation(event.request));
+    return;
+  }
+
+
+  // App Router link clicks fetch React Server Component data rather than a
+  // full document. Bound those requests too, so a weak network cannot leave
+  // the navigation pending forever.
+  if (event.request.headers.get("RSC") === "1") {
+    event.respondWith(nextDataRequest(event.request));
     return;
   }
 
