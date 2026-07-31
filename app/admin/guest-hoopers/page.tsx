@@ -81,6 +81,7 @@ export default function AdminGuestHoopersPage() {
   const [editingGuestId, setEditingGuestId] = useState<string | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [promotingGuestId, setPromotingGuestId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -338,6 +339,40 @@ export default function AdminGuestHoopersPage() {
 
     setMessage("Guest hooper deleted.");
     await loadGuestHoopers();
+  }
+
+  async function handlePromoteGuestHooper(guest: AdminGuestHooper) {
+    if (guest.source !== "guest_hoopers") return;
+
+    const confirmed = window.confirm(
+      `Promote ${guest.full_name} to an official FACKTS player? They will move to Admin Players and become available in Player Accounts.`
+    );
+    if (!confirmed) return;
+
+    setPromotingGuestId(guest.source_id);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/admin/guest-hoopers/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guest_id: guest.source_id }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Promotion could not be completed.");
+      }
+
+      await loadGuestHoopers();
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Promotion could not be completed."
+      );
+    } finally {
+      setPromotingGuestId(null);
+    }
   }
 
   return (
@@ -618,6 +653,17 @@ export default function AdminGuestHoopersPage() {
                         <div className="flex flex-wrap gap-2">
                           {guest.source === "guest_hoopers" ? (
                             <>
+                              <button
+                                type="button"
+                                onClick={() => handlePromoteGuestHooper(guest)}
+                                disabled={promotingGuestId === guest.source_id}
+                                className="rounded-2xl bg-emerald-500 px-4 py-2 text-sm font-black text-slate-950 hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                              >
+                                {promotingGuestId === guest.source_id
+                                  ? "Promoting..."
+                                  : "Promote to Official Player"}
+                              </button>
+
                               <button
                                 type="button"
                                 onClick={() => startEdit(guest)}
