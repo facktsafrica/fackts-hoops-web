@@ -262,7 +262,7 @@ function GuestCard({ guest }: { guest: GuestHooper }) {
 
         {hasValue(guest.nickname) ? (
           <p className="mt-1 line-clamp-1 text-sm font-bold text-orange-300">
-            â€œ{guest.nickname}â€
+            “{guest.nickname}”
           </p>
         ) : null}
 

@@ -200,7 +200,7 @@ function getGameStatus(game: GameRow) {
 }
 
 function getGameLocation(game: GameRow) {
-  return [game.venue, game.location].filter(Boolean).join(" â€¢ ") || "Venue TBA";
+  return [game.venue, game.location].filter(Boolean).join(" • ") || "Venue TBA";
 }
 
 function getOneTitle(row: OneOnOneRow) {
@@ -215,7 +215,7 @@ function getOneDate(row: OneOnOneRow) {
 }
 
 function getOneLocation(row: OneOnOneRow) {
-  return [row.venue, row.location, row.court].filter(Boolean).join(" â€¢ ") || "Court TBA";
+  return [row.venue, row.location, row.court].filter(Boolean).join(" • ") || "Court TBA";
 }
 
 function getOneScore1(row: OneOnOneRow) {
@@ -588,7 +588,7 @@ function FeaturedEventCard({ event }: { event: CalendarEvent }) {
 
         <p className="mt-4 text-lg font-black text-orange-300">
           {event.event_format || "Basketball Event"}
-          {event.opponent_or_partner ? ` â€¢ ${event.opponent_or_partner}` : ""}
+          {event.opponent_or_partner ? ` • ${event.opponent_or_partner}` : ""}
         </p>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">

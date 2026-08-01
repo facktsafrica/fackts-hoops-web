@@ -30,7 +30,7 @@ function getPlayerName(row: any) {
 }
 
 function getJersey(row: any) {
-  return row.player?.jersey_number ?? "â€”";
+  return row.player?.jersey_number ?? "—";
 }
 
 function getRoleLabel(value: string | null | undefined) {
@@ -90,7 +90,7 @@ function buildWhatsAppText(game: any, roster: any[]) {
   const venue = game?.venue ?? "Venue TBA";
   const matchType = game?.match_type ?? "Game";
 
-  return `ðŸ€ FACKTS GAME ROSTER%0A%0AFACKTS vs ${opponent}%0A${matchType}%0AðŸ“ ${venue}%0AðŸ“… ${date}%0A%0AðŸ”¥ STARTERS%0A${starterLines}%0A%0AðŸ’ª BENCH%0A${benchLines}%0A%0AFACKTS Hoops. Kenyan basketball, documented.`;
+  return `🏀 FACKTS GAME ROSTER%0A%0AFACKTS vs ${opponent}%0A${matchType}%0A📍 ${venue}%0A📅 ${date}%0A%0A🔥 STARTERS%0A${starterLines}%0A%0A💪 BENCH%0A${benchLines}%0A%0AFACKTS Hoops. Kenyan basketball, documented.`;
 }
 
 async function getGame(gameId: string) {
@@ -435,13 +435,13 @@ function RosterSection({ title, rows }: { title: string; rows: any[] }) {
                     />
                   ) : (
                     <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-800 text-2xl">
-                      ðŸ€
+                      🏀
                     </div>
                   )}
 
                   <div className="min-w-0 flex-1">
                     <div className="text-lg font-black leading-tight">
-                      #{player?.jersey_number ?? "â€”"}{" "}
+                      #{player?.jersey_number ?? "—"}{" "}
                       {player?.full_name ?? "Unknown Player"}
                     </div>
 
@@ -452,7 +452,7 @@ function RosterSection({ title, rows }: { title: string; rows: any[] }) {
                     ) : null}
 
                     <div className="mt-1 text-xs text-slate-400">
-                      {player?.position ?? "Position TBA"} â€¢{" "}
+                      {player?.position ?? "Position TBA"} •{" "}
                       {getRoleLabel(row.roster_role)}
                     </div>
                   </div>

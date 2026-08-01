@@ -186,7 +186,7 @@ function formatDate(value?: string | null) {
 
 function getLocation(game: GameRow) {
   return (
-    [game.venue, game.location].filter(Boolean).join(" â€¢ ") ||
+    [game.venue, game.location].filter(Boolean).join(" • ") ||
     "Venue not added"
   );
 }
@@ -617,7 +617,7 @@ export default async function GameDetailsPage({
               </h2>
 
               <p className="mt-2 text-sm font-bold text-zinc-400">
-                #{playerOfGame.player?.jersey_number ?? "-"} â€¢{" "}
+                #{playerOfGame.player?.jersey_number ?? "-"} •{" "}
                 {playerOfGame.player?.position || "FACKTS Player"}
               </p>
 
@@ -770,7 +770,7 @@ function PlayerStatRowCard({ row }: { row: FullStatRow }) {
           </p>
 
           <p className="text-xs text-zinc-500">
-            #{player?.jersey_number ?? "-"} â€¢ {player?.position || "Player"}
+            #{player?.jersey_number ?? "-"} • {player?.position || "Player"}
           </p>
         </div>
       </div>

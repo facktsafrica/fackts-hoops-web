@@ -20,7 +20,9 @@ async function getPlayer(id: string) {
 async function getPlayerStats(playerId: string) {
   const { data, error } = await supabase
     .from("player_game_stats")
-    .select("*")
+    .select(
+      "id, player_id, game_id, points, rebounds, assists, steals, blocks, plus_minus, minutes_played, highlight_url, created_at"
+    )
     .eq("player_id", playerId)
     .order("created_at", { ascending: false });
 
@@ -37,7 +39,7 @@ async function getGamesForStats(stats: any[]) {
 
   const { data, error } = await supabase
     .from("games")
-    .select("*")
+    .select("id, opponent, game_date, location, result, team_score, opponent_score")
     .in("id", gameIds);
 
   if (error) return {};
@@ -185,14 +187,14 @@ export default async function PlayerProfilePage({
                 />
               ) : (
                 <div className="flex h-[520px] w-full items-center justify-center bg-slate-900 text-7xl">
-                  ðŸ€
+                  🏀
                 </div>
               )}
             </div>
 
             <div>
               <div className="inline-flex rounded-full bg-orange-500 px-4 py-2 text-sm font-black text-slate-950">
-                #{player.jersey_number ?? "â€”"}
+                #{player.jersey_number ?? "—"}
               </div>
 
               {player.is_featured ? (
@@ -210,19 +212,19 @@ export default async function PlayerProfilePage({
               </div>
 
               <div className="mt-5 text-lg text-slate-300">
-                {player.position ?? "Position TBA"} â€¢ {player.role ?? "Role TBA"}
+                {player.position ?? "Position TBA"} • {player.role ?? "Role TBA"}
               </div>
 
               <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                <ProfileInfo label="Height" value={player.height ?? "â€”"} />
-                <ProfileInfo label="Age" value={player.age?.toString() ?? "â€”"} />
-                <ProfileInfo label="Hand" value={player.dominant_hand ?? "â€”"} />
-                <ProfileInfo label="Level" value={player.highest_level ?? "â€”"} />
+                <ProfileInfo label="Height" value={player.height ?? "—"} />
+                <ProfileInfo label="Age" value={player.age?.toString() ?? "—"} />
+                <ProfileInfo label="Hand" value={player.dominant_hand ?? "—"} />
+                <ProfileInfo label="Level" value={player.highest_level ?? "—"} />
                 <ProfileInfo
                   label="Years Played"
-                  value={player.years_played?.toString() ?? "â€”"}
+                  value={player.years_played?.toString() ?? "—"}
                 />
-                <ProfileInfo label="Current Team" value={player.current_team ?? "â€”"} />
+                <ProfileInfo label="Current Team" value={player.current_team ?? "—"} />
               </div>
             </div>
           </div>
@@ -294,7 +296,7 @@ export default async function PlayerProfilePage({
                       </div>
 
                       <div className="mt-2 text-sm text-slate-400">
-                        {game?.game_date ?? "Date TBA"} â€¢ {game?.venue ?? "Venue TBA"}
+                        {game?.game_date ?? "Date TBA"} • {game?.venue ?? "Venue TBA"}
                       </div>
                     </div>
 

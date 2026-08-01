@@ -93,11 +93,11 @@ async function getRosters() {
 }
 
 function playerLine(row: any) {
-  const number = row.player?.jersey_number ?? "â€”";
+  const number = row.player?.jersey_number ?? "—";
   const name = row.player?.full_name ?? "Unknown Player";
   const position = row.player?.position ?? "Player";
 
-  return `#${number} ${name} â€” ${position}`;
+  return `#${number} ${name} — ${position}`;
 }
 
 function buildCopyText(game: any, roster: any[]) {
@@ -121,17 +121,17 @@ function buildCopyText(game: any, roster: any[]) {
 
   const time = formatGameTime(game);
 
-  return `ðŸ€ FACKTS GAME ROSTER
+  return `🏀 FACKTS GAME ROSTER
 
 FACKTS vs ${game.opponent ?? "Opponent"}
 ${game.match_type ?? "Game"}
-ðŸ“ ${game.venue ?? "Venue TBA"}
-ðŸ“… ${formatGameDate(game.game_date)}${time ? `\nâ° ${time}` : ""}
+📍 ${game.venue ?? "Venue TBA"}
+📅 ${formatGameDate(game.game_date)}${time ? `\n⏰ ${time}` : ""}
 
-ðŸ”¥ STARTERS
+🔥 STARTERS
 ${starterLines}
 
-ðŸ’ª BENCH
+💪 BENCH
 ${benchLines}
 
 FACKTS Hoops. Kenyan basketball, documented.`;
@@ -251,7 +251,7 @@ export default async function PublicRostersHubPage() {
                   <div className="p-3 md:p-5">
                     <div className="grid gap-2">
                       <GameInfoLine
-                        icon="ðŸ“…"
+                        icon="📅"
                         label="Date"
                         value={formatGameDate(game.game_date)}
                         glow="orange"
@@ -267,14 +267,14 @@ export default async function PublicRostersHubPage() {
                       ) : null}
 
                       <GameInfoLine
-                        icon="ðŸ“"
+                        icon="📍"
                         label="Venue"
                         value={game.venue ?? "Venue TBA"}
                         glow="rose"
                       />
 
                       <GameInfoLine
-                        icon="ðŸ€"
+                        icon="🏀"
                         label="Match"
                         value={game.match_type ?? "Game"}
                         glow="sky"

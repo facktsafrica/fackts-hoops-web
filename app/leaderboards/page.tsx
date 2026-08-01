@@ -302,19 +302,19 @@ function LeaderboardTableCard({
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-base">
-                  ðŸ€
+                  🏀
                 </div>
               )}
             </div>
 
             <div className="min-w-0">
               <div className="truncate text-[11px] font-black leading-tight text-white md:text-xs">
-                #{player.jersey_number ?? "â€”"} {player.full_name}
+                #{player.jersey_number ?? "—"} {player.full_name}
               </div>
 
               <div className="mt-0.5 truncate text-[9px] leading-tight text-slate-400 md:text-[10px]">
                 {player.position ?? "Position TBA"}
-                {player.nickname ? ` â€¢ ${player.nickname}` : ""}
+                {player.nickname ? ` • ${player.nickname}` : ""}
               </div>
             </div>
 

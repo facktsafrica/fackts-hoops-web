@@ -225,7 +225,7 @@ function formatDate(value?: string | null) {
 function getLocation(game?: GameRow | null) {
   if (!game) return "Venue TBA";
 
-  return [game.venue, game.location].filter(Boolean).join(" â€¢ ") || "Venue TBA";
+  return [game.venue, game.location].filter(Boolean).join(" • ") || "Venue TBA";
 }
 
 function getWinner(game?: GameRow | null) {

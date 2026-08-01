@@ -206,7 +206,7 @@ function formatDate(value?: string | null) {
 
 function getLocation(game: GameRow) {
   return (
-    [game.venue, game.location].filter(Boolean).join(" â€¢ ") ||
+    [game.venue, game.location].filter(Boolean).join(" • ") ||
     "Venue not added"
   );
 }

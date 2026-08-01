@@ -532,7 +532,7 @@ function GuestLeaderboardTableCard({
 
               <div className="mt-0.5 truncate text-[10px] leading-tight text-slate-400">
                 {guest.position ?? "Guest Hooper"}
-                {guest.nickname ? ` â€¢ ${guest.nickname}` : ""}
+                {guest.nickname ? ` • ${guest.nickname}` : ""}
               </div>
             </div>
 

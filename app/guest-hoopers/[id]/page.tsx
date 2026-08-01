@@ -534,7 +534,7 @@ export default async function GuestHooperProfilePage({
               </div>
 
               <div className="mt-4 text-base text-slate-300 md:text-lg">
-                {guest.position || "Position TBA"} â€¢ {role}
+                {guest.position || "Position TBA"} • {role}
               </div>
 
               <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -618,7 +618,7 @@ export default async function GuestHooperProfilePage({
                         FACKTS vs {getGameOpponent(game)}
                       </div>
                       <div className="mt-1 text-xs text-slate-400 md:text-sm">
-                        {formatDate(getGameDate(game))} â€¢ {getGameLocation(game)}
+                        {formatDate(getGameDate(game))} • {getGameLocation(game)}
                       </div>
                     </div>
 
@@ -664,7 +664,7 @@ export default async function GuestHooperProfilePage({
                       {getName(guest)} vs {item.opponentName}
                     </div>
                     <div className="mt-1 text-xs text-slate-400 md:text-sm">
-                      {formatDate(item.row.match_date || item.row.created_at)} â€¢{" "}
+                      {formatDate(item.row.match_date || item.row.created_at)} •{" "}
                       {item.row.venue || item.row.location || "Venue TBA"}
                     </div>
                   </div>
