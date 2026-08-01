@@ -59,6 +59,11 @@ export default function FacktsMotionSystem() {
   const pathname = usePathname();
 
   useEffect(() => {
+    // Admin pages must remain immediately usable on every device. Some mobile
+    // browsers delay or skip IntersectionObserver callbacks on long forms,
+    // which previously left the admin content at opacity: 0 (a black page).
+    if (pathname.startsWith("/admin")) return;
+
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const revealed = new WeakSet<Element>();
