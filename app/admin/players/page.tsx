@@ -247,20 +247,27 @@ export default function AdminPlayersPage() {
     setLoading(true);
     setErrorMessage("");
 
-    const { data, error } = await supabase
-      .from("players")
-      .select("*")
-      .order("jersey_number", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("players")
+        .select("*")
+        .order("jersey_number", { ascending: true });
 
-    if (error) {
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setPlayers((data || []) as PlayerRow[]);
+    } catch (error) {
       setPlayers([]);
-      setErrorMessage(error.message);
+      setErrorMessage(
+        error instanceof Error && error.name !== "TimeoutError"
+          ? error.message
+          : "Players could not be loaded. Check your connection and try again."
+      );
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setPlayers((data || []) as PlayerRow[]);
-    setLoading(false);
   }
 
   function handleChange(
