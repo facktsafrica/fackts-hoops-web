@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const LOGO_SRC = "/fackts-hoops-logo.png";
 
@@ -11,6 +11,14 @@ type NavItem = {
   href: string;
   activePaths?: string[];
   highlight?: boolean;
+};
+
+type ContentResult = {
+  id: string;
+  type: string;
+  title: string;
+  subtitle: string;
+  href: string;
 };
 
 const mainItems: NavItem[] = [
@@ -49,7 +57,52 @@ const workWithUsItems: NavItem[] = [
 export default function PublicHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [contentResults, setContentResults] = useState<ContentResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const isAdminPage = pathname.startsWith("/admin");
+  const allItems = [...mainItems, ...courtTakeoverItems, ...workWithUsItems];
+  const pageResults = search.trim()
+    ? allItems.filter((item) =>
+        `${item.label} ${item.href}`.toLowerCase().includes(search.trim().toLowerCase())
+      )
+    : [];
+
+  useEffect(() => {
+    const query = search.trim();
+    if (query.length < 2) {
+      setContentResults([]);
+      setSearching(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        const payload = response.ok ? await response.json() : { results: [] };
+        setContentResults(Array.isArray(payload.results) ? payload.results : []);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") setContentResults([]);
+      } finally {
+        if (!controller.signal.aborted) setSearching(false);
+      }
+    }, 220);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [search]);
+
+  function clearSearch() {
+    setSearch("");
+    setContentResults([]);
+    setSearching(false);
+    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+  }
 
   function isActive(item: NavItem) {
     if (item.href === "/") return pathname === "/";
@@ -200,6 +253,63 @@ export default function PublicHeader() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
+              <div className="sticky -top-5 z-10 -mx-1 mb-5 bg-slate-950 px-1 pb-3 pt-1">
+                <label htmlFor="site-search" className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
+                  Search the app
+                </label>
+                <div className="mt-2 flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-3 focus-within:border-orange-400">
+                  <span aria-hidden="true" className="text-slate-500">⌕</span>
+                  <input
+                    ref={searchInputRef}
+                    id="site-search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Players, games, events, media…"
+                    className="min-w-0 flex-1 bg-transparent py-3 text-sm font-bold text-white outline-none placeholder:text-slate-600"
+                  />
+                  {search ? (
+                    <button type="button" onClick={clearSearch} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-800 text-base font-black text-slate-300 transition hover:bg-orange-500 hover:text-black" aria-label="Clear search">×</button>
+                  ) : null}
+                </div>
+              </div>
+
+              {search.trim() ? (
+                <section>
+                  <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
+                    Quick results
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {pageResults.map((item) => (
+                      <Link
+                        key={`page-${item.href}`}
+                        href={item.href}
+                        onClick={() => { setOpen(false); setSearch(""); }}
+                        className={linkClass(item)}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                    {contentResults.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        onClick={() => { setOpen(false); clearSearch(); }}
+                        className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-left transition hover:border-orange-400"
+                      >
+                        <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">{item.type}</span>
+                        <span className="mt-1 block text-sm font-black text-white">{item.title}</span>
+                        {item.subtitle ? <span className="mt-0.5 block text-xs text-slate-400">{item.subtitle}</span> : null}
+                      </Link>
+                    ))}
+                    {searching ? <div className="px-4 py-3 text-center text-xs font-bold text-slate-500">Searching players, games, 1v1s and events…</div> : null}
+                    {!searching && !pageResults.length && !contentResults.length ? (
+                      <div className="rounded-2xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-500">
+                        No match found. Try a player, nickname, team, event, game or partner.
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+              ) : <>
               <section>
                 <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
                   Main
@@ -256,6 +366,7 @@ export default function PublicHeader() {
                   ))}
                 </div>
               </section>
+              </>}
             </div>
           </aside>
         </div>

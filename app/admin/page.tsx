@@ -66,10 +66,18 @@ const coreCards: AdminCard[] = [
 
 const eventCards: AdminCard[] = [
   {
-    title: "Calendar / Events",
+    title: "Scheduling",
     description:
-      "Add and edit event cards, dates, venues, formats, posters, and featured events.",
+      "Schedule upcoming games, 1-on-1 matchups, dates, venues, and availability.",
     href: "/admin/calendar",
+    badge: "Schedule",
+    featured: true,
+  },
+  {
+    title: "Events",
+    description:
+      "Create and manage full tournaments, results, teams, standings, awards, media, partners, and reports.",
+    href: "/admin/events",
     badge: "Events",
     featured: true,
   },
