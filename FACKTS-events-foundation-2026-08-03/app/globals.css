@@ -1,0 +1,398 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}/* FACKTS global polish layer */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Shared public-page art direction, based on the FACKTS 1-on-1 visual system. */
+.fackts-public-bg {
+  background-color: #020617;
+  background-image:
+    linear-gradient(rgba(2, 6, 23, 0.82), rgba(2, 6, 23, 0.97)),
+    url("/images/one-on-one-bg.png");
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+@media (max-width: 767px) {
+  .fackts-public-bg {
+    background-position: center top;
+    background-size: auto 100vh;
+    background-attachment: scroll;
+  }
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(249, 115, 22, 0.08), transparent 28rem),
+    radial-gradient(circle at bottom right, rgba(249, 115, 22, 0.06), transparent 26rem),
+    #020617;
+}
+
+/* Very light court / dotted texture */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.045;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.16) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+/* Better tap and hover feel */
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Premium card motion */
+.fackts-card-motion {
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease,
+    background-color 220ms ease;
+}
+
+.fackts-card-motion:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+/* Soft orange glow for important UI */
+.fackts-orange-glow {
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.18),
+    0 14px 35px rgba(249, 115, 22, 0.12);
+}
+
+/* Cleaner horizontal scrolling on mobile tabs */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Slight sports-broadcast shine */
+.fackts-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.fackts-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 255, 255, 0.09),
+    transparent
+  );
+  transition: transform 650ms ease;
+}
+
+.fackts-shine:hover::after {
+  transform: translateX(120%);
+}/* ================================
+   FACKTS Hoops Animation Layer
+   Premium sports-broadcast motion
+================================ */
+
+/* Smooth app feel */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(249, 115, 22, 0.08), transparent 28rem),
+    radial-gradient(circle at bottom right, rgba(249, 115, 22, 0.06), transparent 26rem),
+    #020617;
+}
+
+/* Subtle moving court-like texture */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.045;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.16) 1px, transparent 1px);
+  background-size: 34px 34px;
+  animation: facktsCourtDrift 18s linear infinite;
+}
+
+@keyframes facktsCourtDrift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 34px 34px;
+  }
+}
+
+/* Hide mobile scrollbars without breaking scroll */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Better tap feel on phone */
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a:active,
+button:active {
+  transform: scale(0.98);
+}
+
+/* General premium card motion */
+main a[class*="rounded"],
+main article,
+main section a,
+button {
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease,
+    background-color 220ms ease,
+    color 220ms ease;
+}
+
+/* Card hover lift */
+main a[class*="border"][class*="bg-slate-9"]:hover,
+main article[class*="border"]:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(249, 115, 22, 0.12);
+}
+
+/* Image hover zoom inside cards */
+main a:hover img,
+main article:hover img {
+  transform: scale(1.04);
+}
+
+main img {
+  transition: transform 520ms ease;
+}
+
+/* Soft orange glow for active / important buttons */
+a[class*="bg-orange-500"],
+button[class*="bg-orange-500"] {
+  box-shadow: 0 10px 26px rgba(249, 115, 22, 0.14);
+}
+
+/* Sports TV shine effect */
+.fackts-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.fackts-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  transition: transform 700ms ease;
+}
+
+.fackts-shine:hover::after {
+  transform: translateX(120%);
+}
+
+/* Page entrance feel */
+main > section {
+  animation: facktsFadeUp 420ms ease both;
+}
+
+@keyframes facktsFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Gentle stat pop on hover */
+main a:hover .text-orange-300,
+main article:hover .text-orange-300 {
+  text-shadow: 0 0 18px rgba(249, 115, 22, 0.22);
+}
+
+/* Live ticker motion helper */
+.fackts-live-ticker {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.fackts-live-ticker-inner {
+  display: inline-flex;
+  min-width: max-content;
+  animation: facktsTicker 18s linear infinite;
+}
+
+@keyframes facktsTicker {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}/* ================================
+   FACKTS Mobile Motion Layer
+   Touch-first animations
+================================ */
+
+@media (max-width: 767px) {
+  /* Make taps feel alive */
+  a:active,
+  button:active {
+    transform: scale(0.965);
+  }
+
+  /* Cards feel more responsive on touch */
+  main a[class*="border"][class*="bg-slate-9"]:active,
+  main article[class*="border"]:active {
+    transform: scale(0.985);
+    box-shadow:
+      0 14px 32px rgba(0, 0, 0, 0.35),
+      0 0 0 1px rgba(249, 115, 22, 0.18);
+  }
+
+  /* Soft entrance for mobile cards */
+  main a[class*="rounded"],
+  main article[class*="rounded"] {
+    animation: facktsMobileRise 360ms ease both;
+  }
+
+  @keyframes facktsMobileRise {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.99);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Give player/game photos a gentle alive feeling on mobile */
+  main img {
+    animation: facktsMobileImageSettle 650ms ease both;
+  }
+
+  @keyframes facktsMobileImageSettle {
+    from {
+      opacity: 0.85;
+      transform: scale(1.035);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /* Mobile tabs feel clickable */
+  nav a:active {
+    transform: scale(0.94);
+  }
+
+  /* Orange numbers feel slightly more alive */
+  .text-orange-300 {
+    text-shadow: 0 0 14px rgba(249, 115, 22, 0.16);
+  }
+
+  /* Slight moving glow behind mobile pages */
+  main::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(249, 115, 22, 0.12), transparent 16rem),
+      radial-gradient(circle at 80% 80%, rgba(249, 115, 22, 0.08), transparent 18rem);
+    animation: facktsMobileGlow 8s ease-in-out infinite alternate;
+  }
+
+  @keyframes facktsMobileGlow {
+    from {
+      opacity: 0.55;
+      transform: translateY(0);
+    }
+
+    to {
+      opacity: 0.9;
+      transform: translateY(-10px);
+    }
+  }
+}

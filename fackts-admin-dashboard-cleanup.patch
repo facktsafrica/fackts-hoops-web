@@ -1,0 +1,143 @@
+diff --git a/app/admin/page.tsx b/app/admin/page.tsx
+index 69d12ca..c1896ea 100644
+--- a/app/admin/page.tsx
++++ b/app/admin/page.tsx
+@@ -1,7 +1,5 @@
+ import Link from "next/link";
+ import AdminLogoutButton from "@/app/components/AdminLogoutButton";
+-import NotificationBell from "@/app/components/NotificationBell";
+-import PushNotificationManager from "@/app/components/PushNotificationManager";
+ 
+ export const dynamic = "force-dynamic";
+ export const revalidate = 0;
+@@ -192,8 +190,6 @@ export default function AdminPage() {
+             </div>
+ 
+             <div className="flex flex-wrap gap-2">
+-              <NotificationBell />
+-
+               <Link
+                 href="/"
+                 className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
+@@ -201,20 +197,6 @@ export default function AdminPage() {
+                 View Site
+               </Link>
+ 
+-              <Link
+-                href="/events"
+-                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
+-              >
+-                Public Events
+-              </Link>
+-
+-              <Link
+-                href="/partners"
+-                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
+-              >
+-                Public Partners
+-              </Link>
+-
+               <AdminLogoutButton />
+             </div>
+           </div>
+@@ -225,10 +207,6 @@ export default function AdminPage() {
+             <AdminStat label="Guests" value={guestCards.length} />
+             <AdminStat label="Business Tools" value={businessCards.length} />
+           </div>
+-
+-          <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+-            <PushNotificationManager compact />
+-          </div>
+         </div>
+       </section>
+ 
+@@ -290,10 +268,6 @@ function AdminCardItem({ card }: { card: AdminCard }) {
+         >
+           {card.badge}
+         </span>
+-
+-        <span className="text-xs font-black uppercase tracking-[0.14em] text-orange-300">
+-          Open
+-        </span>
+       </div>
+ 
+       <h2 className="text-2xl font-black text-white group-hover:text-orange-200">
+diff --git a/app/components/PublicHeader.tsx b/app/components/PublicHeader.tsx
+index a804a57..b33a760 100644
+--- a/app/components/PublicHeader.tsx
++++ b/app/components/PublicHeader.tsx
+@@ -49,6 +49,7 @@ const workWithUsItems: NavItem[] = [
+ export default function PublicHeader() {
+   const pathname = usePathname();
+   const [open, setOpen] = useState(false);
++  const isAdminPage = pathname.startsWith("/admin");
+ 
+   function isActive(item: NavItem) {
+     if (item.href === "/") return pathname === "/";
+@@ -78,6 +79,10 @@ export default function PublicHeader() {
+     return "rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-center text-sm font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300";
+   }
+ 
++  if (isAdminPage) {
++    return null;
++  }
++
+   return (
+     <>
+       <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 backdrop-blur">
+diff --git a/app/components/PushNotificationManager.tsx b/app/components/PushNotificationManager.tsx
+index 24c9fbb..93e4486 100644
+--- a/app/components/PushNotificationManager.tsx
++++ b/app/components/PushNotificationManager.tsx
+@@ -129,7 +129,21 @@ export default function PushNotificationManager({ compact = false }: { compact?:
+   }
+ 
+   if (status === "unconfigured") {
+-    return <span className="text-xs font-bold text-amber-300">Push setup is waiting for the VAPID keys.</span>;
++    if (compact) {
++      return null;
++    }
++
++    return (
++      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
++        <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
++          Device Alerts
++        </p>
++        <h2 className="mt-2 text-xl font-black">Push notifications unavailable</h2>
++        <p className="mt-2 text-sm leading-6 text-slate-400">
++          This feature is not connected right now. In-app alerts will continue to work.
++        </p>
++      </div>
++    );
+   }
+ 
+   return (
+diff --git a/app/components/PwaInstallButton.tsx b/app/components/PwaInstallButton.tsx
+index 71981d1..7a6358d 100644
+--- a/app/components/PwaInstallButton.tsx
++++ b/app/components/PwaInstallButton.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { useEffect, useState } from "react";
++import { usePathname } from "next/navigation";
+ 
+ type BeforeInstallPromptEvent = Event & {
+   prompt: () => Promise<void>;
+@@ -8,6 +9,7 @@ type BeforeInstallPromptEvent = Event & {
+ };
+ 
+ export default function PwaInstallButton() {
++  const pathname = usePathname();
+   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+   const [isInstalled, setIsInstalled] = useState(false);
+   const [showIosInstructions, setShowIosInstructions] = useState(false);
+@@ -60,7 +62,7 @@ export default function PwaInstallButton() {
+     }
+   };
+ 
+-  if (!installSupported) {
++  if (pathname.startsWith("/admin") || !installSupported) {
+     return null;
+   }
+ 

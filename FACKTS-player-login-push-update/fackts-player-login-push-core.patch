@@ -1,0 +1,2953 @@
+diff --git a/.env.example b/.env.example
+index c46a099..bd0db1d 100644
+--- a/.env.example
++++ b/.env.example
+@@ -3,6 +3,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+ SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
+ NEXT_PUBLIC_SITE_URL=https://fackts-hoops-web.vercel.app
+ 
++NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-public-vapid-key
++VAPID_PRIVATE_KEY=your-private-vapid-key
++VAPID_SUBJECT=mailto:facktsafrica@gmail.com
++
+ RESEND_API_KEY=re_your_send_only_api_key
+ EMAIL_FROM=FACKTS Hoops <notifications@your-verified-domain.com>
+ FACKTS_ADMIN_EMAIL=facktsafrica@gmail.com
+diff --git a/README.md b/README.md
+index 2875c91..39ea076 100644
+--- a/README.md
++++ b/README.md
+@@ -2,7 +2,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
+ 
+ ## FACKTS account setup
+ 
+-Admin login, player login, player invitations, password recovery, and Resend notifications are documented in [`docs/AUTH_AND_EMAIL_SETUP.md`](docs/AUTH_AND_EMAIL_SETUP.md).
++Admin login, player login, temporary player access, app push notifications, and optional Resend email are documented in [`docs/AUTH_AND_EMAIL_SETUP.md`](docs/AUTH_AND_EMAIL_SETUP.md).
+ 
+ ## Getting Started
+ 
+diff --git a/app/admin/games/page.tsx b/app/admin/games/page.tsx
+index 6187d1b..3883daf 100644
+--- a/app/admin/games/page.tsx
++++ b/app/admin/games/page.tsx
+@@ -336,6 +336,8 @@ export default function AdminGamesPage() {
+         updated_at: new Date().toISOString(),
+       };
+ 
++      let savedGameId = editingId || "";
++
+       if (editingId) {
+         const { error } = await supabase
+           .from("games")
+@@ -348,18 +350,35 @@ export default function AdminGamesPage() {
+ 
+         setMessage("Game updated successfully.");
+       } else {
+-        const { error } = await supabase.from("games").insert({
+-          ...payload,
+-          created_at: new Date().toISOString(),
+-        });
++        const { data: createdGame, error } = await supabase
++          .from("games")
++          .insert({
++            ...payload,
++            created_at: new Date().toISOString(),
++          })
++          .select("id")
++          .single();
+ 
+         if (error) {
+           throw new Error(error.message);
+         }
+ 
++        savedGameId = createdGame.id;
++
+         setMessage("Game added successfully.");
+       }
+ 
++      if (isUpcoming && savedGameId) {
++        await fetch("/api/notification-events", {
++          method: "POST",
++          headers: { "Content-Type": "application/json" },
++          body: JSON.stringify({
++            event: "admin.game_changed",
++            game_id: savedGameId,
++          }),
++        }).catch(() => undefined);
++      }
++
+       resetForm();
+       await loadGames();
+     } catch (error) {
+@@ -817,4 +836,4 @@ function Field({
+       {children}
+     </label>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/admin/notifications/page.tsx b/app/admin/notifications/page.tsx
+new file mode 100644
+index 0000000..fff7163
+--- /dev/null
++++ b/app/admin/notifications/page.tsx
+@@ -0,0 +1,133 @@
++"use client";
++
++import Link from "next/link";
++import { FormEvent, useState } from "react";
++import NotificationBell from "@/app/components/NotificationBell";
++import PushNotificationManager from "@/app/components/PushNotificationManager";
++
++export default function AdminNotificationsPage() {
++  const [title, setTitle] = useState("");
++  const [body, setBody] = useState("");
++  const [linkUrl, setLinkUrl] = useState("/player");
++  const [message, setMessage] = useState("");
++  const [sending, setSending] = useState(false);
++
++  async function sendAnnouncement(event: FormEvent) {
++    event.preventDefault();
++    setSending(true);
++    setMessage("");
++
++    const response = await fetch("/api/notification-events", {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({
++        event: "admin.broadcast",
++        title,
++        body,
++        link_url: linkUrl,
++      }),
++    });
++    const result = await response.json().catch(() => ({}));
++
++    if (response.ok && result.ok) {
++      setMessage(
++        `Announcement saved for ${result.created ?? 0} players and pushed to ${
++          result.delivered ?? 0
++        } subscribed devices.`
++      );
++      setTitle("");
++      setBody("");
++      setLinkUrl("/player");
++    } else {
++      setMessage(result.error || "Could not send the announcement.");
++    }
++
++    setSending(false);
++  }
++
++  return (
++    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
++      <div className="mx-auto max-w-6xl">
++        <div className="flex flex-wrap items-end justify-between gap-4">
++          <div>
++            <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
++              FACKTS Admin
++            </p>
++            <h1 className="mt-2 text-4xl font-black">App Notifications</h1>
++            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
++              Automatic alerts handle player responses, match decisions, games and rosters. Use this page for a direct announcement to every active player account.
++            </p>
++          </div>
++
++          <div className="flex items-center gap-2">
++            <NotificationBell />
++            <Link href="/admin" className="rounded-full border border-slate-700 px-4 py-2 text-sm font-black">
++              Back to Admin
++            </Link>
++          </div>
++        </div>
++
++        {message ? (
++          <div className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 text-sm text-orange-100">
++            {message}
++          </div>
++        ) : null}
++
++        <div className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
++          <PushNotificationManager />
++
++          <form onSubmit={sendAnnouncement} className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
++            <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Admin Broadcast</p>
++            <h2 className="mt-2 text-2xl font-black">Notify All Players</h2>
++
++            <div className="mt-5 space-y-4">
++              <label className="block">
++                <span className="mb-2 block text-sm font-bold text-slate-300">Title</span>
++                <input
++                  required
++                  maxLength={80}
++                  value={title}
++                  onChange={(event) => setTitle(event.target.value)}
++                  placeholder="Example: Training time changed"
++                  className="w-full rounded-2xl border border-slate-700 bg-black px-4 py-3 outline-none focus:border-orange-400"
++                />
++              </label>
++
++              <label className="block">
++                <span className="mb-2 block text-sm font-bold text-slate-300">Message</span>
++                <textarea
++                  required
++                  maxLength={300}
++                  rows={4}
++                  value={body}
++                  onChange={(event) => setBody(event.target.value)}
++                  placeholder="Write the update players should receive."
++                  className="w-full resize-none rounded-2xl border border-slate-700 bg-black px-4 py-3 outline-none focus:border-orange-400"
++                />
++              </label>
++
++              <label className="block">
++                <span className="mb-2 block text-sm font-bold text-slate-300">Open this app page</span>
++                <input
++                  required
++                  value={linkUrl}
++                  onChange={(event) => setLinkUrl(event.target.value)}
++                  placeholder="/player"
++                  className="w-full rounded-2xl border border-slate-700 bg-black px-4 py-3 outline-none focus:border-orange-400"
++                />
++              </label>
++
++              <button
++                type="submit"
++                disabled={sending}
++                className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400 disabled:opacity-60"
++              >
++                {sending ? "Sending…" : "Send App Notification"}
++              </button>
++            </div>
++          </form>
++        </div>
++      </div>
++    </main>
++  );
++}
+diff --git a/app/admin/page.tsx b/app/admin/page.tsx
+index 84c623e..69d12ca 100644
+--- a/app/admin/page.tsx
++++ b/app/admin/page.tsx
+@@ -1,5 +1,7 @@
+ import Link from "next/link";
+ import AdminLogoutButton from "@/app/components/AdminLogoutButton";
++import NotificationBell from "@/app/components/NotificationBell";
++import PushNotificationManager from "@/app/components/PushNotificationManager";
+ 
+ export const dynamic = "force-dynamic";
+ export const revalidate = 0;
+@@ -142,6 +144,14 @@ const rosterCards: AdminCard[] = [
+ ];
+ 
+ const businessCards: AdminCard[] = [
++  {
++    title: "App Notifications",
++    description:
++      "See alerts, enable device push, and send announcements to active player accounts.",
++    href: "/admin/notifications",
++    badge: "Push",
++    featured: true,
++  },
+   {
+     title: "Partners",
+     description:
+@@ -182,6 +192,8 @@ export default function AdminPage() {
+             </div>
+ 
+             <div className="flex flex-wrap gap-2">
++              <NotificationBell />
++
+               <Link
+                 href="/"
+                 className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
+@@ -213,6 +225,10 @@ export default function AdminPage() {
+             <AdminStat label="Guests" value={guestCards.length} />
+             <AdminStat label="Business Tools" value={businessCards.length} />
+           </div>
++
++          <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
++            <PushNotificationManager compact />
++          </div>
+         </div>
+       </section>
+ 
+diff --git a/app/admin/player-access/page.tsx b/app/admin/player-access/page.tsx
+index c44f5fa..ef1b764 100644
+--- a/app/admin/player-access/page.tsx
++++ b/app/admin/player-access/page.tsx
+@@ -15,6 +15,12 @@ type PlayerRow = {
+   is_active?: boolean | null;
+ };
+ 
++type PlayerCredentials = {
++  email: string;
++  temporary_password: string;
++  login_url: string;
++};
++
+ function playerName(player: PlayerRow) {
+   return player.full_name || player.name || player.nickname || "Unnamed Player";
+ }
+@@ -30,6 +36,7 @@ export default function AdminPlayerAccessPage() {
+   const [loading, setLoading] = useState(true);
+   const [busyId, setBusyId] = useState("");
+   const [message, setMessage] = useState("");
++  const [credentials, setCredentials] = useState<PlayerCredentials | null>(null);
+ 
+   const officialPlayers = useMemo(
+     () => players.filter(officialPlayer).sort((a, b) => playerName(a).localeCompare(playerName(b))),
+@@ -71,9 +78,18 @@ export default function AdminPlayerAccessPage() {
+     });
+   }, []);
+ 
+-  async function updateAccess(player: PlayerRow, action: "invite" | "unlink") {
++  async function updateAccess(player: PlayerRow, action: "issue" | "unlink") {
++    if (
++      action === "issue" &&
++      player.user_id &&
++      !window.confirm("This will replace the player's current password. Continue?")
++    ) {
++      return;
++    }
++
+     setBusyId(player.id);
+     setMessage("");
++    setCredentials(null);
+ 
+     const response = await fetch("/api/admin/player-access", {
+       method: "POST",
+@@ -91,10 +107,24 @@ export default function AdminPlayerAccessPage() {
+     }));
+ 
+     setMessage(result.message || result.error || "Player access request finished.");
++    setCredentials(result.credentials || null);
+     setBusyId("");
+     if (result.ok) await loadPlayers();
+   }
+ 
++  async function copyCredentials() {
++    if (!credentials) return;
++
++    const text = `FACKTS Hoops Player Login\n${credentials.login_url}\nEmail: ${credentials.email}\nTemporary password: ${credentials.temporary_password}\nPlease change the password after logging in.`;
++
++    try {
++      await navigator.clipboard.writeText(text);
++      setMessage("Player login details copied. You can paste them on WhatsApp.");
++    } catch {
++      setMessage("Copy failed. Select the details below and copy them manually.");
++    }
++  }
++
+   return (
+     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+       <div className="mx-auto max-w-6xl">
+@@ -105,7 +135,7 @@ export default function AdminPlayerAccessPage() {
+             </p>
+             <h1 className="mt-2 text-4xl font-black">Player Accounts</h1>
+             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+-              Issue secure access only to active official players. Guests and prospects remain separate.
++              Create a login for each active official player. Copy the temporary details to WhatsApp; email is optional. Guests and prospects remain separate.
+             </p>
+           </div>
+           <Link href="/admin" className="rounded-full border border-slate-700 px-4 py-2 text-sm font-black">
+@@ -119,6 +149,26 @@ export default function AdminPlayerAccessPage() {
+           </div>
+         ) : null}
+ 
++        {credentials ? (
++          <div className="mt-6 rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-5">
++            <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
++              Copy These Details Now
++            </p>
++            <div className="mt-3 space-y-1 text-sm text-emerald-50">
++              <p><strong>Login:</strong> {credentials.login_url}</p>
++              <p><strong>Email:</strong> {credentials.email}</p>
++              <p><strong>Temporary password:</strong> {credentials.temporary_password}</p>
++            </div>
++            <button
++              type="button"
++              onClick={copyCredentials}
++              className="mt-4 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950"
++            >
++              Copy for WhatsApp
++            </button>
++          </div>
++        ) : null}
++
+         {loading ? (
+           <div className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
+             Loading players...
+@@ -155,15 +205,15 @@ export default function AdminPlayerAccessPage() {
+                 <div className="mt-4 grid grid-cols-2 gap-2">
+                   <button
+                     type="button"
+-                    onClick={() => updateAccess(player, "invite")}
++                    onClick={() => updateAccess(player, "issue")}
+                     disabled={busyId === player.id}
+                     className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-black disabled:opacity-60"
+                   >
+                     {busyId === player.id
+                       ? "Working..."
+                       : player.user_id
+-                        ? "Resend Access"
+-                        : "Invite Player"}
++                        ? "Reset Login"
++                        : "Create Login"}
+                   </button>
+                   <button
+                     type="button"
+diff --git a/app/admin/roster-announcements/page.tsx b/app/admin/roster-announcements/page.tsx
+index 7745326..ade2058 100644
+--- a/app/admin/roster-announcements/page.tsx
++++ b/app/admin/roster-announcements/page.tsx
+@@ -95,6 +95,7 @@ export default function AdminRosterAnnouncementsPage() {
+   const [rosters, setRosters] = useState<RosterRow[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [message, setMessage] = useState("");
++  const [publishingId, setPublishingId] = useState("");
+ 
+   async function loadData() {
+     setLoading(true);
+@@ -146,7 +147,9 @@ export default function AdminRosterAnnouncementsPage() {
+   }
+ 
+   useEffect(() => {
+-    loadData();
++    queueMicrotask(() => {
++      void loadData();
++    });
+   }, []);
+ 
+   const rosterByGame = useMemo(() => {
+@@ -173,6 +176,30 @@ export default function AdminRosterAnnouncementsPage() {
+     }
+   }
+ 
++  async function publishRosterNotification(game: Game) {
++    setPublishingId(game.id);
++    setMessage("");
++
++    const response = await fetch("/api/notification-events", {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({
++        event: "admin.roster_published",
++        game_id: game.id,
++      }),
++    });
++    const result = await response.json().catch(() => ({}));
++
++    setMessage(
++      response.ok && result.ok
++        ? `Roster alert created for ${result.created ?? 0} players and delivered to ${
++            result.delivered ?? 0
++          } subscribed devices.`
++        : result.error || "Could not publish the roster alert."
++    );
++    setPublishingId("");
++  }
++
+   return (
+     <main className="min-h-screen bg-slate-950 text-white">
+       <section className="border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950/20">
+@@ -293,6 +320,17 @@ export default function AdminRosterAnnouncementsPage() {
+                   </div>
+ 
+                   <div className="mt-4 grid gap-2">
++                    <button
++                      type="button"
++                      onClick={() => publishRosterNotification(game)}
++                      disabled={publishingId === game.id || gameRoster.length === 0}
++                      className="rounded-2xl bg-blue-500 px-4 py-3 text-center text-sm font-black text-white transition hover:bg-blue-400 disabled:opacity-40"
++                    >
++                      {publishingId === game.id
++                        ? "Sending App Alert…"
++                        : "Publish Roster + Notify Players"}
++                    </button>
++
+                     <Link
+                       href={`/rosters/${game.id}`}
+                       target="_blank"
+@@ -317,4 +355,4 @@ export default function AdminRosterAnnouncementsPage() {
+       </section>
+     </main>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/api/admin/player-access/route.ts b/app/api/admin/player-access/route.ts
+index 4025a59..fcf760f 100644
+--- a/app/api/admin/player-access/route.ts
++++ b/app/api/admin/player-access/route.ts
+@@ -1,6 +1,8 @@
++import { randomBytes } from "node:crypto";
+ import { NextRequest, NextResponse } from "next/server";
+ import { getAdminAccess } from "@/lib/auth/server";
+-import { escapeHtml, sendResendEmail } from "@/lib/email/resend";
++import { escapeHtml, getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
++import { notifyPlayers } from "@/lib/notifications/server";
+ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+ 
+ export const runtime = "nodejs";
+@@ -10,27 +12,25 @@ function officialPlayerRole(role?: string | null) {
+   return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
+ }
+ 
++function temporaryPassword() {
++  return `Fackts!${randomBytes(8).toString("base64url")}`;
++}
++
+ export async function POST(request: NextRequest) {
+   try {
+     const { user, profile } = await getAdminAccess();
+ 
+     if (!user || !profile) {
+-      return NextResponse.json(
+-        { ok: false, error: "Admin login required." },
+-        { status: 403 }
+-      );
++      return NextResponse.json({ ok: false, error: "Admin login required." }, { status: 403 });
+     }
+ 
+     const body = await request.json();
+-    const action = body.action === "unlink" ? "unlink" : "invite";
++    const action = body.action === "unlink" ? "unlink" : "issue";
+     const playerId = String(body.player_id ?? "").trim();
+     const requestedEmail = String(body.email ?? "").trim().toLowerCase();
+ 
+     if (!playerId) {
+-      return NextResponse.json(
+-        { ok: false, error: "Choose a player first." },
+-        { status: 400 }
+-      );
++      return NextResponse.json({ ok: false, error: "Choose a player first." }, { status: 400 });
+     }
+ 
+     const admin = createSupabaseAdminClient();
+@@ -41,13 +41,7 @@ export async function POST(request: NextRequest) {
+       .maybeSingle();
+ 
+     if (playerError) {
+-      const migrationHint = playerError.message.includes("user_id")
+-        ? " Run the supplied player-auth migration in Supabase first."
+-        : "";
+-      return NextResponse.json(
+-        { ok: false, error: `${playerError.message}${migrationHint}` },
+-        { status: 400 }
+-      );
++      return NextResponse.json({ ok: false, error: playerError.message }, { status: 400 });
+     }
+ 
+     if (!player || !player.is_active || !officialPlayerRole(player.role)) {
+@@ -58,10 +52,7 @@ export async function POST(request: NextRequest) {
+     }
+ 
+     if (action === "unlink") {
+-      const { error } = await admin
+-        .from("players")
+-        .update({ user_id: null })
+-        .eq("id", playerId);
++      const { error } = await admin.from("players").update({ user_id: null }).eq("id", playerId);
+ 
+       if (error) {
+         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+@@ -71,21 +62,17 @@ export async function POST(request: NextRequest) {
+     }
+ 
+     if (!requestedEmail.includes("@")) {
+-      return NextResponse.json(
+-        { ok: false, error: "Add a valid player email." },
+-        { status: 400 }
+-      );
++      return NextResponse.json({ ok: false, error: "Add a valid player email." }, { status: 400 });
+     }
+ 
+-    const playerName =
+-      player.full_name || player.name || player.nickname || "FACKTS Player";
++    const playerName = player.full_name || player.name || player.nickname || "FACKTS Player";
++    const password = temporaryPassword();
+     let authUserId = player.user_id as string | null;
+     let accountEmail = requestedEmail;
+-    let linkType: "invite" | "recovery" = "invite";
++    let accountCreated = false;
+ 
+     if (authUserId) {
+-      const { data: linkedUser, error: linkedError } =
+-        await admin.auth.admin.getUserById(authUserId);
++      const { data: linkedUser, error: linkedError } = await admin.auth.admin.getUserById(authUserId);
+ 
+       if (linkedError || !linkedUser.user?.email) {
+         return NextResponse.json(
+@@ -95,16 +82,23 @@ export async function POST(request: NextRequest) {
+       }
+ 
+       accountEmail = linkedUser.user.email.toLowerCase();
+-      linkType = "recovery";
++      const { error: passwordError } = await admin.auth.admin.updateUserById(authUserId, {
++        password,
++        email_confirm: true,
++        user_metadata: { role: "player", player_id: player.id, name: playerName },
++      });
++
++      if (passwordError) {
++        return NextResponse.json({ ok: false, error: passwordError.message }, { status: 400 });
++      }
+     } else {
+-      const { data: usersData, error: usersError } =
+-        await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
++      const { data: usersData, error: usersError } = await admin.auth.admin.listUsers({
++        page: 1,
++        perPage: 1000,
++      });
+ 
+       if (usersError) {
+-        return NextResponse.json(
+-          { ok: false, error: usersError.message },
+-          { status: 400 }
+-        );
++        return NextResponse.json({ ok: false, error: usersError.message }, { status: 400 });
+       }
+ 
+       const existingUser = usersData.users.find(
+@@ -113,94 +107,97 @@ export async function POST(request: NextRequest) {
+ 
+       if (existingUser) {
+         const [{ data: adminProfile }, { data: otherPlayer }] = await Promise.all([
+-          admin
+-            .from("admin_profiles")
+-            .select("id")
+-            .eq("user_id", existingUser.id)
+-            .maybeSingle(),
+-          admin
+-            .from("players")
+-            .select("id")
+-            .eq("user_id", existingUser.id)
+-            .neq("id", playerId)
+-            .maybeSingle(),
++          admin.from("admin_profiles").select("id").eq("user_id", existingUser.id).maybeSingle(),
++          admin.from("players").select("id").eq("user_id", existingUser.id).neq("id", playerId).maybeSingle(),
+         ]);
+ 
+         if (adminProfile || otherPlayer) {
+           return NextResponse.json(
+             {
+               ok: false,
+-              error:
+-                "That email already belongs to another FACKTS account. Use a separate player email.",
++              error: "That email already belongs to another FACKTS account. Use a separate player email.",
+             },
+             { status: 400 }
+           );
+         }
+ 
+         authUserId = existingUser.id;
+-        linkType = "recovery";
+-      }
+-    }
+-
+-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
+-    const redirectTo = `${siteUrl}/account/update-password?next=${encodeURIComponent("/player")}`;
+-
+-    const { data: linkData, error: linkError } =
+-      await admin.auth.admin.generateLink(
+-        linkType === "invite"
+-          ? {
+-              type: "invite",
+-              email: accountEmail,
+-              options: {
+-                redirectTo,
+-                data: { role: "player", player_id: player.id, name: playerName },
+-              },
+-            }
+-          : {
+-              type: "recovery",
+-              email: accountEmail,
+-              options: { redirectTo },
+-            }
+-      );
++        const { error: updateError } = await admin.auth.admin.updateUserById(existingUser.id, {
++          password,
++          email_confirm: true,
++          user_metadata: { role: "player", player_id: player.id, name: playerName },
++        });
++
++        if (updateError) {
++          return NextResponse.json({ ok: false, error: updateError.message }, { status: 400 });
++        }
++      } else {
++        const { data: createdUser, error: createError } = await admin.auth.admin.createUser({
++          email: requestedEmail,
++          password,
++          email_confirm: true,
++          user_metadata: { role: "player", player_id: player.id, name: playerName },
++        });
++
++        if (createError || !createdUser.user) {
++          return NextResponse.json(
++            { ok: false, error: createError?.message || "Could not create the player login." },
++            { status: 400 }
++          );
++        }
+ 
+-    if (linkError || !linkData.user || !linkData.properties?.action_link) {
+-      return NextResponse.json(
+-        { ok: false, error: linkError?.message || "Could not create access link." },
+-        { status: 400 }
+-      );
++        authUserId = createdUser.user.id;
++        accountCreated = true;
++      }
+     }
+ 
+-    authUserId = authUserId || linkData.user.id;
+-
+     const { error: linkPlayerError } = await admin
+       .from("players")
+       .update({ user_id: authUserId, email: accountEmail })
+       .eq("id", playerId);
+ 
+     if (linkPlayerError) {
+-      return NextResponse.json(
+-        { ok: false, error: linkPlayerError.message },
+-        { status: 400 }
+-      );
++      return NextResponse.json({ ok: false, error: linkPlayerError.message }, { status: 400 });
+     }
+ 
+-    const actionLink = linkData.properties.action_link;
+-    await sendResendEmail({
+-      to: accountEmail,
+-      subject:
+-        linkType === "invite"
+-          ? "Your FACKTS Hoops player account"
+-          : "Your FACKTS Hoops access link",
+-      text: `Hi ${playerName}. Use this secure link to set your password and access the FACKTS Hoops player portal: ${actionLink}`,
+-      html: `<div style="font-family:Arial,sans-serif;background:#09090b;color:#fff;padding:28px;border-radius:18px"><p style="color:#fb923c;font-weight:800;letter-spacing:.12em">FACKTS HOOPS</p><h1>Welcome, ${escapeHtml(playerName)}</h1><p style="color:#d4d4d8;line-height:1.6">Your official player portal is ready. Set your password to access your profile, stats, game calls, availability, challenges, and alerts.</p><p><a href="${escapeHtml(actionLink)}" style="display:inline-block;background:#f97316;color:#000;padding:13px 20px;border-radius:12px;font-weight:800;text-decoration:none">Activate Player Account</a></p><p style="color:#71717a;font-size:12px">This secure link is for ${escapeHtml(accountEmail)}.</p></div>`,
+-    });
++    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
++    const loginUrl = `${siteUrl}/player/login`;
++    let emailSent = false;
++
++    const emailConfiguration = getEmailConfiguration();
++    if (emailConfiguration.apiKey && emailConfiguration.from) {
++      try {
++        await sendResendEmail({
++          to: accountEmail,
++          subject: "Your FACKTS Hoops player login",
++          text: `Hi ${playerName}. Your FACKTS player login is ready. Login: ${loginUrl} Email: ${accountEmail} Temporary password: ${password}. Change the password after signing in.`,
++          html: `<div style="font-family:Arial,sans-serif;background:#09090b;color:#fff;padding:28px;border-radius:18px"><p style="color:#fb923c;font-weight:800;letter-spacing:.12em">FACKTS HOOPS</p><h1>Welcome, ${escapeHtml(playerName)}</h1><p>Your player account is ready.</p><p><strong>Email:</strong> ${escapeHtml(accountEmail)}</p><p><strong>Temporary password:</strong> ${escapeHtml(password)}</p><p><a href="${escapeHtml(loginUrl)}" style="display:inline-block;background:#f97316;color:#000;padding:13px 20px;border-radius:12px;font-weight:800;text-decoration:none">Open Player Login</a></p><p style="color:#a1a1aa">Change the temporary password after signing in.</p></div>`,
++        });
++        emailSent = true;
++      } catch {
++        emailSent = false;
++      }
++    }
++
++    await notifyPlayers([player.id], {
++      title: accountCreated ? "Player account activated" : "Player login reset",
++      body: "Your FACKTS player portal is ready. Change your temporary password after signing in.",
++      notificationType: accountCreated ? "player_account_activated" : "player_login_reset",
++      linkUrl: "/player/settings",
++      tag: `player-account-${player.id}`,
++    }).catch(() => undefined);
+ 
+     return NextResponse.json({
+       ok: true,
+-      message:
+-        linkType === "invite"
+-          ? `Player invitation sent to ${accountEmail}.`
+-          : `Fresh access link sent to ${accountEmail}.`,
++      message: accountCreated
++        ? "Player login created. Copy and send the temporary details to the player."
++        : "Player password reset. Copy and send the new temporary details to the player.",
++      credentials: {
++        email: accountEmail,
++        temporary_password: password,
++        login_url: loginUrl,
++      },
++      email_sent: emailSent,
+     });
+   } catch (error) {
+     return NextResponse.json(
+diff --git a/app/api/notification-events/route.ts b/app/api/notification-events/route.ts
+new file mode 100644
+index 0000000..56abed9
+--- /dev/null
++++ b/app/api/notification-events/route.ts
+@@ -0,0 +1,255 @@
++import { NextResponse, type NextRequest } from "next/server";
++import { getAdminAccess, getPlayerAccess } from "@/lib/auth/server";
++import { notifyAdmins, notifyAllPlayers, notifyPlayers } from "@/lib/notifications/server";
++import { createSupabaseAdminClient } from "@/lib/supabase/admin";
++
++export const runtime = "nodejs";
++
++function text(value: unknown, max = 160) {
++  return String(value ?? "").trim().slice(0, max);
++}
++
++function dateLabel(value: unknown) {
++  const clean = text(value, 10);
++  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return "date TBA";
++
++  const date = new Date(`${clean}T12:00:00+03:00`);
++  return date.toLocaleDateString("en-KE", {
++    weekday: "short",
++    day: "numeric",
++    month: "short",
++    year: "numeric",
++    timeZone: "Africa/Nairobi",
++  });
++}
++
++export async function POST(request: NextRequest) {
++  try {
++    const body = await request.json();
++    const event = text(body.event, 80);
++    const admin = createSupabaseAdminClient();
++
++    if (event.startsWith("player.")) {
++      const { user, player } = await getPlayerAccess();
++
++      if (!user || !player) {
++        return NextResponse.json({ ok: false, error: "Player login required." }, { status: 403 });
++      }
++
++      const name = player.full_name || player.name || player.nickname || "A FACKTS player";
++
++      if (event === "player.availability") {
++        const date = dateLabel(body.date);
++        const time = text(body.time, 80) || "time TBA";
++        const court = text(body.court, 120) || "court TBA";
++
++        const result = await notifyAdmins({
++          title: `${name} is available`,
++          body: `${name} submitted availability for ${date}, ${time}, at ${court}.`,
++          notificationType: "player_availability",
++          linkUrl: "/admin/calendar",
++          tag: `availability-${player.id}`,
++        });
++
++        return NextResponse.json({ ok: true, ...result });
++      }
++
++      if (event === "player.challenge") {
++        const opponentId = text(body.opponent_id, 80);
++        const { data: opponent } = await admin
++          .from("players")
++          .select("id, full_name, name, nickname")
++          .eq("id", opponentId)
++          .eq("is_active", true)
++          .maybeSingle();
++
++        const opponentName =
++          opponent?.full_name || opponent?.name || opponent?.nickname || "an opponent";
++        const date = dateLabel(body.date);
++
++        const result = await notifyAdmins({
++          title: "New 1v1 request",
++          body: `${name} requested ${opponentName} for ${date}. Admin approval is required.`,
++          notificationType: "challenge_requested",
++          linkUrl: "/admin/calendar",
++          tag: `challenge-${player.id}-${opponentId}`,
++        });
++
++        if (opponent?.id) {
++          await notifyPlayers([opponent.id], {
++            title: `${name} challenged you`,
++            body: `A 1v1 request was submitted for ${date}. It will become official after admin approval.`,
++            notificationType: "challenge_received",
++            linkUrl: "/calendar",
++            tag: `challenge-${player.id}-${opponent.id}`,
++          });
++        }
++
++        return NextResponse.json({ ok: true, ...result });
++      }
++
++      if (event === "player.game_response") {
++        const gameId = text(body.game_id, 80);
++        const status = body.status === "not_available" ? "not available" : "available";
++        const { data: game } = await admin
++          .from("games")
++          .select("id, opponent, opponent_name, game_date, date")
++          .eq("id", gameId)
++          .maybeSingle();
++
++        const opponent = game?.opponent || game?.opponent_name || "the upcoming game";
++        const result = await notifyAdmins({
++          title: "Game availability response",
++          body: `${name} is ${status} for FACKTS vs ${opponent}.`,
++          notificationType: "game_availability",
++          linkUrl: "/admin/calendar",
++          tag: `game-response-${gameId}-${player.id}`,
++        });
++
++        return NextResponse.json({ ok: true, ...result });
++      }
++
++      if (event === "player.event_response") {
++        const eventId = text(body.event_id, 80);
++        const status = body.status === "not_available" ? "not available" : "available";
++        const { data: calendarEvent } = await admin
++          .from("fackts_calendar_events")
++          .select("id, title")
++          .eq("id", eventId)
++          .maybeSingle();
++
++        const result = await notifyAdmins({
++          title: "Event availability response",
++          body: `${name} is ${status} for ${calendarEvent?.title || "the FACKTS event"}.`,
++          notificationType: "event_availability",
++          linkUrl: "/admin/calendar",
++          tag: `event-response-${eventId}-${player.id}`,
++        });
++
++        return NextResponse.json({ ok: true, ...result });
++      }
++
++      return NextResponse.json({ ok: false, error: "Unknown player event." }, { status: 400 });
++    }
++
++    const { user, profile } = await getAdminAccess();
++    if (!user || !profile) {
++      return NextResponse.json({ ok: false, error: "Admin login required." }, { status: 403 });
++    }
++
++    if (event === "admin.matchup_approved" || event === "admin.matchup_rejected") {
++      const matchupId = text(body.matchup_id, 80);
++      const { data: matchup, error } = await admin
++        .from("fackts_matchups")
++        .select(
++          "id, matchup_status, player_one_source, player_one_id, player_one_name, player_two_source, player_two_id, player_two_name, scheduled_date, scheduled_time, venue"
++        )
++        .eq("id", matchupId)
++        .maybeSingle();
++
++      if (error || !matchup) {
++        return NextResponse.json(
++          { ok: false, error: error?.message || "Matchup not found." },
++          { status: 404 }
++        );
++      }
++
++      const approved = event === "admin.matchup_approved";
++      const playerIds = [
++        matchup.player_one_source === "players" ? matchup.player_one_id : "",
++        matchup.player_two_source === "players" ? matchup.player_two_id : "",
++      ].filter(Boolean);
++
++      const result = await notifyPlayers(playerIds, {
++        title: approved ? "Match approved" : "Match request not approved",
++        body: approved
++          ? `${matchup.player_one_name} vs ${matchup.player_two_name} is approved. ${dateLabel(
++              matchup.scheduled_date?.slice(0, 10)
++            )}, ${matchup.scheduled_time || "time TBA"}, ${matchup.venue || "court TBA"}.`
++          : `${matchup.player_one_name} vs ${matchup.player_two_name} was not approved. Open the player calendar for updates.`,
++        notificationType: approved ? "matchup_approved" : "matchup_rejected",
++        linkUrl: "/calendar",
++        tag: `matchup-${matchup.id}`,
++      });
++
++      return NextResponse.json({ ok: true, ...result });
++    }
++
++    if (event === "admin.game_changed") {
++      const gameId = text(body.game_id, 80);
++      const { data: game, error } = await admin
++        .from("games")
++        .select("id, opponent, opponent_name, game_date, date, venue, location, status")
++        .eq("id", gameId)
++        .maybeSingle();
++
++      if (error || !game) {
++        return NextResponse.json({ ok: false, error: error?.message || "Game not found." }, { status: 404 });
++      }
++
++      const result = await notifyAllPlayers({
++        title: "FACKTS game update",
++        body: `FACKTS vs ${game.opponent || game.opponent_name || "Opponent TBA"}: ${dateLabel(
++          (game.game_date || game.date || "").slice(0, 10)
++        )}, ${game.venue || game.location || "venue TBA"}.`,
++        notificationType: "game_updated",
++        linkUrl: `/games/${game.id}`,
++        tag: `game-${game.id}`,
++      });
++
++      return NextResponse.json({ ok: true, ...result });
++    }
++
++    if (event === "admin.roster_published") {
++      const gameId = text(body.game_id, 80);
++      const [{ data: game }, { data: roster, error }] = await Promise.all([
++        admin.from("games").select("id, opponent, opponent_name").eq("id", gameId).maybeSingle(),
++        admin.from("game_rosters").select("player_id").eq("game_id", gameId),
++      ]);
++
++      if (error) {
++        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
++      }
++
++      const result = await notifyPlayers(
++        (roster ?? []).map((row) => String(row.player_id)),
++        {
++          title: "Game roster published",
++          body: `The roster for FACKTS vs ${game?.opponent || game?.opponent_name || "Opponent TBA"} is ready. Check your selection and role.`,
++          notificationType: "roster_published",
++          linkUrl: `/rosters/${gameId}`,
++          tag: `roster-${gameId}`,
++        }
++      );
++
++      return NextResponse.json({ ok: true, ...result });
++    }
++
++    if (event === "admin.broadcast") {
++      const title = text(body.title, 80);
++      const message = text(body.body, 300);
++      const linkUrl = text(body.link_url, 200) || "/player";
++
++      if (!title || !message || !linkUrl.startsWith("/")) {
++        return NextResponse.json({ ok: false, error: "Add a title, message and valid app link." }, { status: 400 });
++      }
++
++      const result = await notifyAllPlayers({
++        title,
++        body: message,
++        notificationType: "admin_announcement",
++        linkUrl,
++        tag: `announcement-${Date.now()}`,
++      });
++
++      return NextResponse.json({ ok: true, ...result });
++    }
++
++    return NextResponse.json({ ok: false, error: "Unknown notification event." }, { status: 400 });
++  } catch (error) {
++    return NextResponse.json(
++      { ok: false, error: error instanceof Error ? error.message : "Notification event failed." },
++      { status: 500 }
++    );
++  }
++}
+diff --git a/app/api/notifications/route.ts b/app/api/notifications/route.ts
+new file mode 100644
+index 0000000..7af0b08
+--- /dev/null
++++ b/app/api/notifications/route.ts
+@@ -0,0 +1,90 @@
++import { NextResponse, type NextRequest } from "next/server";
++import { getAdminAccess, getPlayerAccess } from "@/lib/auth/server";
++import { createSupabaseAdminClient } from "@/lib/supabase/admin";
++
++export const runtime = "nodejs";
++export const dynamic = "force-dynamic";
++
++async function accessContext() {
++  const adminAccess = await getAdminAccess();
++  if (adminAccess.user && adminAccess.profile) {
++    return { role: "admin" as const, id: adminAccess.profile.id };
++  }
++
++  const playerAccess = await getPlayerAccess();
++  if (playerAccess.user && playerAccess.player) {
++    return { role: "player" as const, id: playerAccess.player.id };
++  }
++
++  return null;
++}
++
++export async function GET() {
++  const access = await accessContext();
++
++  if (!access) {
++    return NextResponse.json({ ok: false, error: "Login required." }, { status: 401 });
++  }
++
++  const admin = createSupabaseAdminClient();
++  let query = admin
++    .from("fackts_notifications")
++    .select("id, title, body, notification_type, link_url, is_read, created_at")
++    .eq("recipient_role", access.role)
++    .order("created_at", { ascending: false })
++    .limit(40);
++
++  query = query.eq("recipient_id", access.id);
++
++  const { data, error } = await query;
++
++  if (error) {
++    return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
++  }
++
++  return NextResponse.json({ ok: true, notifications: data ?? [] });
++}
++
++export async function PATCH(request: NextRequest) {
++  const access = await accessContext();
++
++  if (!access) {
++    return NextResponse.json({ ok: false, error: "Login required." }, { status: 401 });
++  }
++
++  const body = await request.json();
++  const notificationId = String(body.id ?? "").trim();
++
++  if (!notificationId) {
++    return NextResponse.json(
++      { ok: false, error: "Notification id is required." },
++      { status: 400 }
++    );
++  }
++
++  const admin = createSupabaseAdminClient();
++  let ownershipQuery = admin
++    .from("fackts_notifications")
++    .select("id")
++    .eq("id", notificationId)
++    .eq("recipient_role", access.role);
++
++  ownershipQuery = ownershipQuery.eq("recipient_id", access.id);
++
++  const { data: owned } = await ownershipQuery.maybeSingle();
++
++  if (!owned) {
++    return NextResponse.json({ ok: false, error: "Notification not found." }, { status: 404 });
++  }
++
++  const { error } = await admin
++    .from("fackts_notifications")
++    .update({ is_read: true })
++    .eq("id", notificationId);
++
++  if (error) {
++    return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
++  }
++
++  return NextResponse.json({ ok: true });
++}
+diff --git a/app/api/push/subscribe/route.ts b/app/api/push/subscribe/route.ts
+new file mode 100644
+index 0000000..1cd4327
+--- /dev/null
++++ b/app/api/push/subscribe/route.ts
+@@ -0,0 +1,117 @@
++import { NextResponse, type NextRequest } from "next/server";
++import { getAuthenticatedUser } from "@/lib/auth/server";
++import { pushDeliveryConfigured } from "@/lib/notifications/server";
++import { createSupabaseAdminClient } from "@/lib/supabase/admin";
++
++export const runtime = "nodejs";
++export const dynamic = "force-dynamic";
++
++type SubscriptionBody = {
++  endpoint?: string;
++  keys?: {
++    p256dh?: string;
++    auth?: string;
++  };
++};
++
++export async function GET() {
++  const user = await getAuthenticatedUser();
++
++  if (!user) {
++    return NextResponse.json(
++      { ok: false, configured: pushDeliveryConfigured(), subscribed: false },
++      { status: 401 }
++    );
++  }
++
++  const admin = createSupabaseAdminClient();
++  const { count, error } = await admin
++    .from("push_subscriptions")
++    .select("id", { count: "exact", head: true })
++    .eq("user_id", user.id)
++    .eq("enabled", true);
++
++  if (error) {
++    return NextResponse.json(
++      { ok: false, configured: pushDeliveryConfigured(), subscribed: false, error: error.message },
++      { status: 400 }
++    );
++  }
++
++  return NextResponse.json({
++    ok: true,
++    configured: pushDeliveryConfigured(),
++    subscribed: Number(count ?? 0) > 0,
++    publicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "",
++  });
++}
++
++export async function POST(request: NextRequest) {
++  const user = await getAuthenticatedUser();
++
++  if (!user) {
++    return NextResponse.json({ ok: false, error: "Login required." }, { status: 401 });
++  }
++
++  if (!pushDeliveryConfigured()) {
++    return NextResponse.json(
++      { ok: false, error: "Push notifications are not configured yet." },
++      { status: 503 }
++    );
++  }
++
++  const body = (await request.json()) as SubscriptionBody;
++  const endpoint = String(body.endpoint ?? "").trim();
++  const p256dh = String(body.keys?.p256dh ?? "").trim();
++  const auth = String(body.keys?.auth ?? "").trim();
++
++  if (!endpoint.startsWith("https://") || !p256dh || !auth) {
++    return NextResponse.json(
++      { ok: false, error: "The device returned an invalid push subscription." },
++      { status: 400 }
++    );
++  }
++
++  const admin = createSupabaseAdminClient();
++  const { error } = await admin.from("push_subscriptions").upsert(
++    {
++      user_id: user.id,
++      endpoint,
++      p256dh,
++      auth,
++      user_agent: request.headers.get("user-agent") || null,
++      enabled: true,
++      updated_at: new Date().toISOString(),
++    },
++    { onConflict: "endpoint" }
++  );
++
++  if (error) {
++    return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
++  }
++
++  return NextResponse.json({ ok: true, message: "Notifications enabled on this device." });
++}
++
++export async function DELETE(request: NextRequest) {
++  const user = await getAuthenticatedUser();
++
++  if (!user) {
++    return NextResponse.json({ ok: false, error: "Login required." }, { status: 401 });
++  }
++
++  const body = (await request.json().catch(() => ({}))) as SubscriptionBody;
++  const endpoint = String(body.endpoint ?? "").trim();
++  const admin = createSupabaseAdminClient();
++
++  let query = admin.from("push_subscriptions").delete().eq("user_id", user.id);
++  if (endpoint) query = query.eq("endpoint", endpoint);
++
++  const { error } = await query;
++
++  if (error) {
++    return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
++  }
++
++  return NextResponse.json({ ok: true, message: "Notifications disabled on this device." });
++}
+diff --git a/app/components/NotificationBell.tsx b/app/components/NotificationBell.tsx
+new file mode 100644
+index 0000000..355da39
+--- /dev/null
++++ b/app/components/NotificationBell.tsx
+@@ -0,0 +1,98 @@
++"use client";
++
++import Link from "next/link";
++import { useEffect, useMemo, useState } from "react";
++
++type NotificationItem = {
++  id: string;
++  title: string;
++  body?: string | null;
++  notification_type: string;
++  link_url?: string | null;
++  is_read: boolean;
++  created_at: string;
++};
++
++export default function NotificationBell() {
++  const [items, setItems] = useState<NotificationItem[]>([]);
++  const [open, setOpen] = useState(false);
++
++  async function loadNotifications() {
++    const response = await fetch("/api/notifications", { cache: "no-store" });
++    const result = await response.json().catch(() => ({}));
++    if (response.ok && result.ok) setItems(result.notifications ?? []);
++  }
++
++  useEffect(() => {
++    queueMicrotask(() => {
++      void loadNotifications();
++    });
++  }, []);
++
++  const unread = useMemo(() => items.filter((item) => !item.is_read).length, [items]);
++
++  async function markRead(id: string) {
++    await fetch("/api/notifications", {
++      method: "PATCH",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ id }),
++    });
++    setItems((current) => current.map((item) => (item.id === id ? { ...item, is_read: true } : item)));
++  }
++
++  return (
++    <div className="relative">
++      <button
++        type="button"
++        onClick={() => setOpen((current) => !current)}
++        className="relative rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400"
++        aria-label={`${unread} unread notifications`}
++      >
++        Alerts
++        {unread > 0 ? (
++          <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-black text-black">
++            {unread > 99 ? "99+" : unread}
++          </span>
++        ) : null}
++      </button>
++
++      {open ? (
++        <div className="absolute right-0 z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-2xl shadow-black">
++          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
++            <p className="font-black">Notifications</p>
++            <button type="button" onClick={() => setOpen(false)} className="text-xs font-bold text-slate-400">
++              Close
++            </button>
++          </div>
++
++          <div className="max-h-96 overflow-y-auto p-3">
++            {items.length === 0 ? (
++              <p className="rounded-2xl bg-slate-900 p-4 text-sm text-slate-500">No alerts yet.</p>
++            ) : (
++              <div className="space-y-2">
++                {items.slice(0, 12).map((item) => (
++                  <Link
++                    key={item.id}
++                    href={item.link_url || "#"}
++                    onClick={() => {
++                      void markRead(item.id);
++                      setOpen(false);
++                    }}
++                    className={`block rounded-2xl border p-4 ${
++                      item.is_read
++                        ? "border-slate-800 bg-slate-900/60"
++                        : "border-orange-500/30 bg-orange-500/10"
++                    }`}
++                  >
++                    <p className="font-black text-white">{item.title}</p>
++                    {item.body ? <p className="mt-1 text-xs leading-5 text-slate-400">{item.body}</p> : null}
++                  </Link>
++                ))}
++              </div>
++            )}
++          </div>
++        </div>
++      ) : null}
++    </div>
++  );
++}
+diff --git a/app/components/PublicHeader.tsx b/app/components/PublicHeader.tsx
+index 36b9d2f..a804a57 100644
+--- a/app/components/PublicHeader.tsx
++++ b/app/components/PublicHeader.tsx
+@@ -15,7 +15,8 @@ type NavItem = {
+ 
+ const mainItems: NavItem[] = [
+   { label: "Home", href: "/" },
+-  { label: "Player Portal", href: "/player", highlight: true },
++  { label: "Player Login / Portal", href: "/player", highlight: true },
++  { label: "Admin Login", href: "/admin/login" },
+   { label: "Official Players", href: "/players" },
+   { label: "Events", href: "/events" },
+   { label: "Merch", href: "/merch" },
+@@ -103,21 +104,28 @@ export default function PublicHeader() {
+           <div className="flex shrink-0 items-center gap-2">
+             <Link
+               href="/player"
+-              className="hidden rounded-full border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm font-black text-blue-200 transition hover:bg-blue-500 hover:text-white lg:inline-flex"
++              className="hidden rounded-full border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-black text-blue-200 transition hover:bg-blue-500 hover:text-white sm:inline-flex md:px-4 md:text-sm"
+             >
+               Player Login
+             </Link>
+ 
++            <Link
++              href="/admin/login"
++              className="hidden rounded-full border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300 sm:inline-flex md:px-4 md:text-sm"
++            >
++              Admin Login
++            </Link>
++
+             <Link
+               href="/court-takeover"
+-              className="hidden rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-black md:inline-flex"
++              className="hidden rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-black xl:inline-flex"
+             >
+               Court Takeover
+             </Link>
+ 
+             <Link
+               href="/book-coverage"
+-              className="hidden rounded-full bg-orange-500 px-5 py-2 text-sm font-black text-black transition hover:bg-orange-400 sm:inline-flex"
++              className="hidden rounded-full bg-orange-500 px-5 py-2 text-sm font-black text-black transition hover:bg-orange-400 2xl:inline-flex"
+             >
+               Book Coverage
+             </Link>
+diff --git a/app/components/PushNotificationManager.tsx b/app/components/PushNotificationManager.tsx
+new file mode 100644
+index 0000000..24c9fbb
+--- /dev/null
++++ b/app/components/PushNotificationManager.tsx
+@@ -0,0 +1,163 @@
++"use client";
++
++import { useEffect, useState } from "react";
++
++type PushStatus = "checking" | "ready" | "active" | "blocked" | "unsupported" | "unconfigured";
++
++function urlBase64ToUint8Array(value: string) {
++  const padding = "=".repeat((4 - (value.length % 4)) % 4);
++  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
++  const raw = window.atob(base64);
++  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
++}
++
++export default function PushNotificationManager({ compact = false }: { compact?: boolean }) {
++  const [status, setStatus] = useState<PushStatus>("checking");
++  const [publicKey, setPublicKey] = useState("");
++  const [message, setMessage] = useState("");
++  const [busy, setBusy] = useState(false);
++
++  useEffect(() => {
++    let active = true;
++
++    async function checkStatus() {
++      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
++        if (active) setStatus("unsupported");
++        return;
++      }
++
++      if (Notification.permission === "denied") {
++        if (active) setStatus("blocked");
++        return;
++      }
++
++      const response = await fetch("/api/push/subscribe", { cache: "no-store" });
++      const result = await response.json().catch(() => ({}));
++
++      if (!active) return;
++      if (!result.configured || !result.publicKey) {
++        setStatus("unconfigured");
++        return;
++      }
++
++      setPublicKey(result.publicKey);
++      const registration = await navigator.serviceWorker.ready;
++      const deviceSubscription = await registration.pushManager.getSubscription();
++      setStatus(deviceSubscription && result.subscribed ? "active" : "ready");
++    }
++
++    void checkStatus();
++    return () => {
++      active = false;
++    };
++  }, []);
++
++  async function enableNotifications() {
++    if (!publicKey) return;
++
++    setBusy(true);
++    setMessage("");
++
++    try {
++      const permission = await Notification.requestPermission();
++      if (permission !== "granted") {
++        setStatus(permission === "denied" ? "blocked" : "ready");
++        setMessage("Notifications were not allowed on this device.");
++        return;
++      }
++
++      const registration = await navigator.serviceWorker.ready;
++      const subscription =
++        (await registration.pushManager.getSubscription()) ||
++        (await registration.pushManager.subscribe({
++          userVisibleOnly: true,
++          applicationServerKey: urlBase64ToUint8Array(publicKey),
++        }));
++
++      const response = await fetch("/api/push/subscribe", {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify(subscription.toJSON()),
++      });
++      const result = await response.json();
++
++      if (!response.ok || !result.ok) throw new Error(result.error || "Could not enable notifications.");
++
++      setStatus("active");
++      setMessage("Notifications are active on this device.");
++    } catch (error) {
++      setMessage(error instanceof Error ? error.message : "Could not enable notifications.");
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  async function disableNotifications() {
++    setBusy(true);
++    setMessage("");
++
++    try {
++      const registration = await navigator.serviceWorker.ready;
++      const subscription = await registration.pushManager.getSubscription();
++
++      await fetch("/api/push/subscribe", {
++        method: "DELETE",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ endpoint: subscription?.endpoint || "" }),
++      });
++
++      if (subscription) await subscription.unsubscribe();
++      setStatus("ready");
++      setMessage("Notifications are off on this device.");
++    } catch (error) {
++      setMessage(error instanceof Error ? error.message : "Could not disable notifications.");
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  if (status === "checking") {
++    return <span className="text-xs font-bold text-slate-500">Checking notifications…</span>;
++  }
++
++  if (status === "unsupported") {
++    return <span className="text-xs font-bold text-slate-500">Push is not supported in this browser.</span>;
++  }
++
++  if (status === "blocked") {
++    return <span className="text-xs font-bold text-red-300">Notifications are blocked in device settings.</span>;
++  }
++
++  if (status === "unconfigured") {
++    return <span className="text-xs font-bold text-amber-300">Push setup is waiting for the VAPID keys.</span>;
++  }
++
++  return (
++    <div className={compact ? "flex flex-wrap items-center gap-2" : "rounded-3xl border border-slate-800 bg-slate-900 p-5"}>
++      {!compact ? (
++        <div>
++          <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Device Alerts</p>
++          <h2 className="mt-2 text-xl font-black">Phone & Laptop Notifications</h2>
++          <p className="mt-2 text-sm leading-6 text-slate-400">
++            Receive match approvals, roster calls, game changes and player updates even when FACKTS is closed.
++          </p>
++        </div>
++      ) : null}
++
++      <button
++        type="button"
++        onClick={status === "active" ? disableNotifications : enableNotifications}
++        disabled={busy}
++        className={`${compact ? "" : "mt-4 w-full"} rounded-2xl px-4 py-3 text-sm font-black transition disabled:opacity-60 ${
++          status === "active"
++            ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
++            : "bg-orange-500 text-black hover:bg-orange-400"
++        }`}
++      >
++        {busy ? "Working…" : status === "active" ? "Notifications Active — Turn Off" : "Enable Notifications"}
++      </button>
++
++      {message ? <p className={`${compact ? "w-full" : "mt-3"} text-xs text-slate-400`}>{message}</p> : null}
++    </div>
++  );
++}
+diff --git a/app/player/page.tsx b/app/player/page.tsx
+index b327a64..40acf5e 100644
+--- a/app/player/page.tsx
++++ b/app/player/page.tsx
+@@ -1,6 +1,8 @@
+ import Link from "next/link";
+ import { redirect } from "next/navigation";
+ import PlayerLogoutButton from "@/app/components/PlayerLogoutButton";
++import NotificationBell from "@/app/components/NotificationBell";
++import PushNotificationManager from "@/app/components/PushNotificationManager";
+ import { getPlayerAccess } from "@/lib/auth/server";
+ 
+ export const dynamic = "force-dynamic";
+@@ -91,7 +93,10 @@ export default async function PlayerPortalPage() {
+                 </p>
+               </div>
+             </div>
+-            <PlayerLogoutButton />
++            <div className="flex flex-wrap items-center gap-2">
++              <NotificationBell />
++              <PlayerLogoutButton />
++            </div>
+           </div>
+ 
+           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+@@ -105,10 +110,11 @@ export default async function PlayerPortalPage() {
+ 
+       <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6">
+         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+-          <PortalLink href="/calendar" title="Player Calendar" text="Check in, respond to games, and request 1v1 matchups." featured />
++          <PortalLink href="/calendar" title="Schedule Games & Challenges" text="Set availability, respond to games and events, and request 1v1 matchups." featured />
+           <PortalLink href={`/players/${player.id}`} title="My Public Profile" text="View your player card, stats, bio, and game log." />
+           <PortalLink href="/games" title="Games" text="See fixtures, results, posters, coverage, and reports." />
+           <PortalLink href="/leaderboards" title="Leaderboards" text="Track FACKTS rankings and current performance." />
++          <PortalLink href="/player/settings" title="Account Settings" text="Change your password and control phone or laptop notifications." />
+         </div>
+       </section>
+ 
+@@ -166,6 +172,8 @@ export default async function PlayerPortalPage() {
+             Active matchup records: {matchups.length}
+           </p>
+         </div>
++
++        <PushNotificationManager />
+       </section>
+     </main>
+   );
+diff --git a/app/player/settings/page.tsx b/app/player/settings/page.tsx
+new file mode 100644
+index 0000000..e6ce8e3
+--- /dev/null
++++ b/app/player/settings/page.tsx
+@@ -0,0 +1,111 @@
++"use client";
++
++import Link from "next/link";
++import { FormEvent, useState } from "react";
++import PushNotificationManager from "@/app/components/PushNotificationManager";
++import { supabase } from "@/lib/supabase";
++
++export default function PlayerSettingsPage() {
++  const [password, setPassword] = useState("");
++  const [confirmPassword, setConfirmPassword] = useState("");
++  const [message, setMessage] = useState("");
++  const [saving, setSaving] = useState(false);
++
++  async function changePassword(event: FormEvent) {
++    event.preventDefault();
++    setMessage("");
++
++    if (password.length < 8) {
++      setMessage("Use at least 8 characters for the new password.");
++      return;
++    }
++
++    if (password !== confirmPassword) {
++      setMessage("The two passwords do not match.");
++      return;
++    }
++
++    setSaving(true);
++    const { error } = await supabase.auth.updateUser({ password });
++
++    if (error) {
++      setMessage(error.message);
++    } else {
++      setMessage("Password changed successfully.");
++      setPassword("");
++      setConfirmPassword("");
++    }
++
++    setSaving(false);
++  }
++
++  return (
++    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
++      <div className="mx-auto max-w-5xl">
++        <div className="flex flex-wrap items-end justify-between gap-4">
++          <div>
++            <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">Player Portal</p>
++            <h1 className="mt-2 text-4xl font-black">Account & Notifications</h1>
++          </div>
++          <Link href="/player" className="rounded-full border border-slate-700 px-4 py-2 text-sm font-black">
++            Back to My Player View
++          </Link>
++        </div>
++
++        {message ? (
++          <div className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 text-sm text-orange-100">
++            {message}
++          </div>
++        ) : null}
++
++        <div className="mt-6 grid gap-6 lg:grid-cols-2">
++          <form onSubmit={changePassword} className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
++            <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Security</p>
++            <h2 className="mt-2 text-2xl font-black">Change Password</h2>
++            <p className="mt-2 text-sm leading-6 text-slate-400">
++              Replace the temporary password admin gave you with your own private password.
++            </p>
++
++            <div className="mt-5 space-y-4">
++              <label className="block">
++                <span className="mb-2 block text-sm font-bold text-slate-300">New password</span>
++                <input
++                  required
++                  minLength={8}
++                  type="password"
++                  autoComplete="new-password"
++                  value={password}
++                  onChange={(event) => setPassword(event.target.value)}
++                  className="w-full rounded-2xl border border-slate-700 bg-black px-4 py-3 outline-none focus:border-orange-400"
++                />
++              </label>
++
++              <label className="block">
++                <span className="mb-2 block text-sm font-bold text-slate-300">Confirm password</span>
++                <input
++                  required
++                  minLength={8}
++                  type="password"
++                  autoComplete="new-password"
++                  value={confirmPassword}
++                  onChange={(event) => setConfirmPassword(event.target.value)}
++                  className="w-full rounded-2xl border border-slate-700 bg-black px-4 py-3 outline-none focus:border-orange-400"
++                />
++              </label>
++
++              <button
++                type="submit"
++                disabled={saving}
++                className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400 disabled:opacity-60"
++              >
++                {saving ? "Saving…" : "Save New Password"}
++              </button>
++            </div>
++          </form>
++
++          <PushNotificationManager />
++        </div>
++      </div>
++    </main>
++  );
++}
+diff --git a/docs/AUTH_AND_EMAIL_SETUP.md b/docs/AUTH_AND_EMAIL_SETUP.md
+index ce6b1f4..27d927c 100644
+--- a/docs/AUTH_AND_EMAIL_SETUP.md
++++ b/docs/AUTH_AND_EMAIL_SETUP.md
+@@ -1,67 +1,83 @@
+-# FACKTS Hoops authentication and email setup
++# FACKTS Hoops accounts and notifications
+ 
+-This release keeps the two account types separate:
++FACKTS keeps the two account types separate:
+ 
+ - Admins are Supabase Auth users approved in `admin_profiles`.
+ - Players are Supabase Auth users linked to one active official row in `players.user_id`.
+-- Guest hoopers and prospects are not eligible for player portal access.
++- Guest hoopers and prospects do not receive official player portal access.
++- Each signed-in player is locked to their own identity when scheduling availability, responding to games, or requesting a challenge.
+ 
+-## 1. Run the Supabase migration
++## 1. Database migrations
+ 
+-Open the Supabase SQL Editor for the FACKTS project and run:
++Run both files in the FACKTS Supabase SQL Editor:
+ 
+-`supabase/migrations/20260721_player_auth.sql`
++1. `supabase/migrations/20260721_player_auth.sql`
++2. `supabase/migrations/20260721_push_notifications.sql`
+ 
+-This adds the player-to-auth link and the focused access policies used by the login flow.
++The second migration creates device subscriptions and private notification policies. Both migrations are safe to rerun.
+ 
+-## 2. Add Vercel environment variables
++## 2. Required Vercel variables
+ 
+-Add these variables to Production, Preview, and Development where appropriate:
++Keep the existing Supabase variables:
+ 
+ - `NEXT_PUBLIC_SUPABASE_URL`
+ - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+ - `SUPABASE_SERVICE_ROLE_KEY`
+ - `NEXT_PUBLIC_SITE_URL=https://fackts-hoops-web.vercel.app`
+-- `RESEND_API_KEY`
+-- `EMAIL_FROM=FACKTS Hoops <notifications@your-verified-domain.com>`
+-- `FACKTS_ADMIN_EMAIL=facktsafrica@gmail.com`
+ 
+-Important:
++Never prefix the service-role key with `NEXT_PUBLIC_`.
++
++## 3. Generate push notification keys
++
++Run this once inside the project:
++
++```bash
++npx web-push generate-vapid-keys
++```
++
++Add the generated values to Vercel:
+ 
+-- Never prefix the service-role key or Resend key with `NEXT_PUBLIC_`.
+-- `EMAIL_FROM` must use the exact domain that Resend approved.
+-- Use a Resend API key restricted to sending if possible.
+-- Redeploy after changing Vercel environment variables.
++- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
++- `VAPID_PRIVATE_KEY`
++- `VAPID_SUBJECT=mailto:facktsafrica@gmail.com`
+ 
+-In Supabase **Authentication → URL Configuration**, add the live site URL and allow this redirect path:
++The private key is server-only. Never commit it or prefix it with `NEXT_PUBLIC_`.
+ 
+-`https://fackts-hoops-web.vercel.app/account/update-password`
++Redeploy after adding the variables.
+ 
+-For local testing, also allow:
++## 4. Player login without email delivery
+ 
+-`http://localhost:3000/account/update-password`
++1. Admin logs in through `/admin/login`.
++2. Open **Player Accounts**.
++3. Enter the official player's email and select **Create Login**.
++4. Copy the one-time temporary login details.
++5. Send the details directly to the player, for example through WhatsApp.
++6. The player logs in through `/player/login`.
++7. The player opens **Account Settings** and replaces the temporary password.
+ 
+-## 3. Verify admin access
++**Reset Login** creates a fresh temporary password. It replaces the player's current password, so use it only when needed.
+ 
+-1. Open `/admin/login`.
+-2. Log in using an existing Supabase Auth administrator.
+-3. The user must have an active row in `admin_profiles`.
+-4. Open **Email Notifications** and send a test email.
++## 5. Device notifications
+ 
+-## 4. Issue player accounts
++After login, admin and players select **Enable Notifications** on each phone or laptop they use.
+ 
+-1. Open `/admin/player-access`.
+-2. Choose an active official player.
+-3. Confirm the player email.
+-4. Select **Invite Player**.
+-5. Resend delivers a branded secure activation link.
+-6. The player sets a password and enters `/player`.
++Automatic app alerts cover:
+ 
+-Use **Resend Access** when the player needs a fresh secure link. **Revoke Access** removes the player-to-account link without deleting the public player profile.
++- Player availability and game or event responses to admin.
++- Challenge requests to admin and the selected opponent.
++- Match approvals and rejections to involved players.
++- Upcoming game additions or changes to active player accounts.
++- Published rosters to selected roster players.
++- Admin announcements to all active player accounts.
+ 
+-## 5. Notification rules
++The device controls the final notification sound and vibration behavior. Tapping a notification opens the related FACKTS screen.
++
++## 6. Optional Resend email
++
++Push notifications and temporary player login do not require Resend. When FACKTS later owns and verifies a custom domain, add:
++
++- `RESEND_API_KEY`
++- `EMAIL_FROM=FACKTS Hoops <notifications@verified-domain>`
++- `FACKTS_ADMIN_EMAIL=facktsafrica@gmail.com`
+ 
+-- A player availability response emails `FACKTS_ADMIN_EMAIL`.
+-- A player 1v1 challenge request emails `FACKTS_ADMIN_EMAIL`.
+-- Admin approval emails the available player recipients.
+-- The email API requires an approved FACKTS login and no longer acts as a public email relay.
++Until then, leave Resend variables unset. Player accounts and app notifications still work.
+diff --git a/lib/notifications/server.ts b/lib/notifications/server.ts
+new file mode 100644
+index 0000000..0c8a818
+--- /dev/null
++++ b/lib/notifications/server.ts
+@@ -0,0 +1,218 @@
++import webpush, { type PushSubscription } from "web-push";
++import { createSupabaseAdminClient } from "@/lib/supabase/admin";
++
++export type AppNotification = {
++  title: string;
++  body: string;
++  notificationType: string;
++  linkUrl: string;
++  tag?: string;
++};
++
++type PushSubscriptionRow = {
++  id: string;
++  user_id: string;
++  endpoint: string;
++  p256dh: string;
++  auth: string;
++};
++
++type PlayerRecipient = {
++  id: string;
++  user_id?: string | null;
++  full_name?: string | null;
++  name?: string | null;
++  nickname?: string | null;
++  email?: string | null;
++  phone?: string | null;
++};
++
++function configuredVapid() {
++  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
++  const privateKey = process.env.VAPID_PRIVATE_KEY;
++  const subject =
++    process.env.VAPID_SUBJECT || "mailto:facktsafrica@gmail.com";
++
++  if (!publicKey || !privateKey) return null;
++
++  return { publicKey, privateKey, subject };
++}
++
++export function pushDeliveryConfigured() {
++  return Boolean(configuredVapid());
++}
++
++export async function sendPushToUsers(
++  userIds: Array<string | null | undefined>,
++  notification: AppNotification
++) {
++  const ids = Array.from(new Set(userIds.filter(Boolean) as string[]));
++  const vapid = configuredVapid();
++
++  if (ids.length === 0 || !vapid) {
++    return { delivered: 0, removed: 0, configured: Boolean(vapid) };
++  }
++
++  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
++
++  const admin = createSupabaseAdminClient();
++  const { data, error } = await admin
++    .from("push_subscriptions")
++    .select("id, user_id, endpoint, p256dh, auth")
++    .in("user_id", ids)
++    .eq("enabled", true);
++
++  if (error) throw new Error(error.message);
++
++  const rows = (data ?? []) as PushSubscriptionRow[];
++  const expiredIds: string[] = [];
++  let delivered = 0;
++
++  await Promise.all(
++    rows.map(async (row) => {
++      const subscription: PushSubscription = {
++        endpoint: row.endpoint,
++        keys: { p256dh: row.p256dh, auth: row.auth },
++      };
++
++      try {
++        await webpush.sendNotification(
++          subscription,
++          JSON.stringify({
++            title: notification.title,
++            body: notification.body,
++            url: notification.linkUrl,
++            tag: notification.tag || notification.notificationType,
++            icon: "/icons/icon-192x192.png",
++            badge: "/icons/icon-192x192.png",
++          })
++        );
++        delivered += 1;
++      } catch (error) {
++        const statusCode =
++          typeof error === "object" && error && "statusCode" in error
++            ? Number(error.statusCode)
++            : 0;
++
++        if (statusCode === 404 || statusCode === 410) {
++          expiredIds.push(row.id);
++        }
++      }
++    })
++  );
++
++  if (expiredIds.length > 0) {
++    await admin.from("push_subscriptions").delete().in("id", expiredIds);
++  }
++
++  return {
++    delivered,
++    removed: expiredIds.length,
++    configured: true,
++  };
++}
++
++function playerName(player: PlayerRecipient) {
++  return player.full_name || player.name || player.nickname || "FACKTS Player";
++}
++
++export async function notifyPlayers(
++  playerIds: string[],
++  notification: AppNotification
++) {
++  const ids = Array.from(new Set(playerIds.filter(Boolean)));
++  if (ids.length === 0) return { created: 0, delivered: 0 };
++
++  const admin = createSupabaseAdminClient();
++  const { data, error } = await admin
++    .from("players")
++    .select("id, user_id, full_name, name, nickname, email, phone")
++    .in("id", ids)
++    .eq("is_active", true);
++
++  if (error) throw new Error(error.message);
++
++  const players = (data ?? []) as PlayerRecipient[];
++
++  if (players.length > 0) {
++    const { error: insertError } = await admin.from("fackts_notifications").insert(
++      players.map((player) => ({
++        recipient_role: "player",
++        recipient_source: "players",
++        recipient_id: player.id,
++        recipient_name: playerName(player),
++        recipient_email: player.email || null,
++        recipient_phone: player.phone || null,
++        title: notification.title,
++        body: notification.body,
++        notification_type: notification.notificationType,
++        link_url: notification.linkUrl,
++        is_read: false,
++      }))
++    );
++
++    if (insertError) throw new Error(insertError.message);
++  }
++
++  const push = await sendPushToUsers(
++    players.map((player) => player.user_id),
++    notification
++  );
++
++  return { created: players.length, delivered: push.delivered };
++}
++
++export async function notifyAllPlayers(notification: AppNotification) {
++  const admin = createSupabaseAdminClient();
++  const { data, error } = await admin
++    .from("players")
++    .select("id")
++    .not("user_id", "is", null)
++    .eq("is_active", true);
++
++  if (error) throw new Error(error.message);
++
++  return notifyPlayers(
++    (data ?? []).map((player) => String(player.id)),
++    notification
++  );
++}
++
++export async function notifyAdmins(notification: AppNotification) {
++  const admin = createSupabaseAdminClient();
++  const { data, error } = await admin
++    .from("admin_profiles")
++    .select("id, user_id, role")
++    .eq("is_active", true);
++
++  if (error) throw new Error(error.message);
++
++  const admins = data ?? [];
++
++  if (admins.length > 0) {
++    const { error: insertError } = await admin.from("fackts_notifications").insert(
++      admins.map((profile) => ({
++        recipient_role: "admin",
++        recipient_source: "admin_profiles",
++        recipient_id: profile.id,
++        recipient_name: profile.role || "FACKTS Admin",
++        recipient_email: null,
++        recipient_phone: null,
++        title: notification.title,
++        body: notification.body,
++        notification_type: notification.notificationType,
++        link_url: notification.linkUrl,
++        is_read: false,
++      }))
++    );
++
++    if (insertError) throw new Error(insertError.message);
++  }
++
++  const push = await sendPushToUsers(
++    admins.map((profile) => profile.user_id),
++    notification
++  );
++
++  return { created: admins.length, delivered: push.delivered };
++}
+diff --git a/package-lock.json b/package-lock.json
+index 86a23e0..bcffafb 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -12,13 +12,15 @@
+         "@supabase/supabase-js": "^2.105.1",
+         "next": "16.2.4",
+         "react": "19.2.4",
+-        "react-dom": "19.2.4"
++        "react-dom": "19.2.4",
++        "web-push": "^3.6.7"
+       },
+       "devDependencies": {
+         "@tailwindcss/postcss": "^4",
+         "@types/node": "^20",
+         "@types/react": "^19",
+         "@types/react-dom": "^19",
++        "@types/web-push": "^3.6.4",
+         "eslint": "^9",
+         "eslint-config-next": "16.2.4",
+         "tailwindcss": "^4",
+@@ -614,9 +616,6 @@
+       "cpu": [
+         "arm"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -633,9 +632,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -652,9 +648,6 @@
+       "cpu": [
+         "ppc64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -671,9 +664,6 @@
+       "cpu": [
+         "riscv64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -690,9 +680,6 @@
+       "cpu": [
+         "s390x"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -709,9 +696,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -728,9 +712,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -747,9 +728,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -766,9 +744,6 @@
+       "cpu": [
+         "arm"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -791,9 +766,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -816,9 +788,6 @@
+       "cpu": [
+         "ppc64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -841,9 +810,6 @@
+       "cpu": [
+         "riscv64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -866,9 +832,6 @@
+       "cpu": [
+         "s390x"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -891,9 +854,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -916,9 +876,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -941,9 +898,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1153,9 +1107,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1172,9 +1123,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1191,9 +1139,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1210,9 +1155,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1547,9 +1489,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1567,9 +1506,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1587,9 +1523,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1607,9 +1540,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1759,6 +1689,16 @@
+         "@types/react": "^19.2.0"
+       }
+     },
++    "node_modules/@types/web-push": {
++      "version": "3.6.4",
++      "resolved": "https://registry.npmjs.org/@types/web-push/-/web-push-3.6.4.tgz",
++      "integrity": "sha512-GnJmSr40H3RAnj0s34FNTcJi1hmWFV5KXugE0mYWnYhgTAHLJ/dJKAwDmvPJYMke0RplY2XE9LnM4hqSqKIjhQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "*"
++      }
++    },
+     "node_modules/@typescript-eslint/eslint-plugin": {
+       "version": "8.59.1",
+       "resolved": "https://registry.npmjs.org/@typescript-eslint/eslint-plugin/-/eslint-plugin-8.59.1.tgz",
+@@ -2160,9 +2100,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2177,9 +2114,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2194,9 +2128,6 @@
+         "ppc64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2211,9 +2142,6 @@
+         "riscv64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2228,9 +2156,6 @@
+         "riscv64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2245,9 +2170,6 @@
+         "s390x"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2262,9 +2184,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2279,9 +2198,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2370,6 +2286,15 @@
+         "acorn": "^6.0.0 || ^7.0.0 || ^8.0.0"
+       }
+     },
++    "node_modules/agent-base": {
++      "version": "7.1.4",
++      "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz",
++      "integrity": "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 14"
++      }
++    },
+     "node_modules/ajv": {
+       "version": "6.15.0",
+       "resolved": "https://registry.npmjs.org/ajv/-/ajv-6.15.0.tgz",
+@@ -2580,6 +2505,18 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/asn1.js": {
++      "version": "5.4.1",
++      "resolved": "https://registry.npmjs.org/asn1.js/-/asn1.js-5.4.1.tgz",
++      "integrity": "sha512-+I//4cYPccV8LdmBLiX8CYvf9Sp3vQsrqu2QNXRcrbiWvcx/UdlFiqUJJzxRQxgsZmvhXhn4cSKeSmoFjVdupA==",
++      "license": "MIT",
++      "dependencies": {
++        "bn.js": "^4.0.0",
++        "inherits": "^2.0.1",
++        "minimalistic-assert": "^1.0.0",
++        "safer-buffer": "^2.1.0"
++      }
++    },
+     "node_modules/ast-types-flow": {
+       "version": "0.0.8",
+       "resolved": "https://registry.npmjs.org/ast-types-flow/-/ast-types-flow-0.0.8.tgz",
+@@ -2652,6 +2589,12 @@
+         "node": ">=6.0.0"
+       }
+     },
++    "node_modules/bn.js": {
++      "version": "4.12.5",
++      "resolved": "https://registry.npmjs.org/bn.js/-/bn.js-4.12.5.tgz",
++      "integrity": "sha512-3aRg6/JxfffFD+OlOjOFR3Vo79l39ooBTFucxx+MT3dhCtzn3EmiUPQo+6/OZuI2jbXi3YKgmiTFBgChQMwIRQ==",
++      "license": "MIT"
++    },
+     "node_modules/brace-expansion": {
+       "version": "1.1.14",
+       "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.14.tgz",
+@@ -2710,6 +2653,12 @@
+         "node": "^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7"
+       }
+     },
++    "node_modules/buffer-equal-constant-time": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/buffer-equal-constant-time/-/buffer-equal-constant-time-1.0.1.tgz",
++      "integrity": "sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==",
++      "license": "BSD-3-Clause"
++    },
+     "node_modules/call-bind": {
+       "version": "1.0.9",
+       "resolved": "https://registry.npmjs.org/call-bind/-/call-bind-1.0.9.tgz",
+@@ -2947,7 +2896,6 @@
+       "version": "4.4.3",
+       "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+       "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
+-      "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "ms": "^2.1.3"
+@@ -3042,6 +2990,15 @@
+         "node": ">= 0.4"
+       }
+     },
++    "node_modules/ecdsa-sig-formatter": {
++      "version": "1.0.11",
++      "resolved": "https://registry.npmjs.org/ecdsa-sig-formatter/-/ecdsa-sig-formatter-1.0.11.tgz",
++      "integrity": "sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "safe-buffer": "^5.0.1"
++      }
++    },
+     "node_modules/electron-to-chromium": {
+       "version": "1.5.344",
+       "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.344.tgz",
+@@ -4122,6 +4079,28 @@
+         "hermes-estree": "0.25.1"
+       }
+     },
++    "node_modules/http_ece": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/http_ece/-/http_ece-1.2.0.tgz",
++      "integrity": "sha512-JrF8SSLVmcvc5NducxgyOrKXe3EsyHMgBFgSaIUGmArKe+rwr0uphRkRXvwiom3I+fpIfoItveHrfudL8/rxuA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=16"
++      }
++    },
++    "node_modules/https-proxy-agent": {
++      "version": "7.0.6",
++      "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-7.0.6.tgz",
++      "integrity": "sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==",
++      "license": "MIT",
++      "dependencies": {
++        "agent-base": "^7.1.2",
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 14"
++      }
++    },
+     "node_modules/iceberg-js": {
+       "version": "0.8.1",
+       "resolved": "https://registry.npmjs.org/iceberg-js/-/iceberg-js-0.8.1.tgz",
+@@ -4168,6 +4147,12 @@
+         "node": ">=0.8.19"
+       }
+     },
++    "node_modules/inherits": {
++      "version": "2.0.4",
++      "resolved": "https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz",
++      "integrity": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==",
++      "license": "ISC"
++    },
+     "node_modules/internal-slot": {
+       "version": "1.1.0",
+       "resolved": "https://registry.npmjs.org/internal-slot/-/internal-slot-1.1.0.tgz",
+@@ -4723,6 +4708,27 @@
+         "node": ">=4.0"
+       }
+     },
++    "node_modules/jwa": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/jwa/-/jwa-2.0.1.tgz",
++      "integrity": "sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==",
++      "license": "MIT",
++      "dependencies": {
++        "buffer-equal-constant-time": "^1.0.1",
++        "ecdsa-sig-formatter": "1.0.11",
++        "safe-buffer": "^5.0.1"
++      }
++    },
++    "node_modules/jws": {
++      "version": "4.0.1",
++      "resolved": "https://registry.npmjs.org/jws/-/jws-4.0.1.tgz",
++      "integrity": "sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==",
++      "license": "MIT",
++      "dependencies": {
++        "jwa": "^2.0.1",
++        "safe-buffer": "^5.0.1"
++      }
++    },
+     "node_modules/keyv": {
+       "version": "4.5.4",
+       "resolved": "https://registry.npmjs.org/keyv/-/keyv-4.5.4.tgz",
+@@ -4910,9 +4916,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -4934,9 +4937,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -4958,9 +4958,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -4982,9 +4979,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -5130,6 +5124,12 @@
+         "node": ">=8.6"
+       }
+     },
++    "node_modules/minimalistic-assert": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/minimalistic-assert/-/minimalistic-assert-1.0.1.tgz",
++      "integrity": "sha512-UtJcAD4yEaGtjPezWuO9wC4nwUnVH/8/Im3yEHQP4b67cXlD/Qr9hdITCU1xDbSEXg2XKNaP8jsReV7vQd00/A==",
++      "license": "ISC"
++    },
+     "node_modules/minimatch": {
+       "version": "3.1.5",
+       "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-3.1.5.tgz",
+@@ -5147,7 +5147,6 @@
+       "version": "1.2.8",
+       "resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.8.tgz",
+       "integrity": "sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==",
+-      "dev": true,
+       "license": "MIT",
+       "funding": {
+         "url": "https://github.com/sponsors/ljharb"
+@@ -5157,7 +5156,6 @@
+       "version": "2.1.3",
+       "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+       "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+-      "dev": true,
+       "license": "MIT"
+     },
+     "node_modules/nanoid": {
+@@ -5821,6 +5819,26 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/safe-buffer": {
++      "version": "5.2.1",
++      "resolved": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
++      "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT"
++    },
+     "node_modules/safe-push-apply": {
+       "version": "1.0.0",
+       "resolved": "https://registry.npmjs.org/safe-push-apply/-/safe-push-apply-1.0.0.tgz",
+@@ -5856,6 +5874,12 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/safer-buffer": {
++      "version": "2.1.2",
++      "resolved": "https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz",
++      "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
++      "license": "MIT"
++    },
+     "node_modules/scheduler": {
+       "version": "0.27.0",
+       "resolved": "https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz",
+@@ -6651,6 +6675,25 @@
+         "punycode": "^2.1.0"
+       }
+     },
++    "node_modules/web-push": {
++      "version": "3.6.7",
++      "resolved": "https://registry.npmjs.org/web-push/-/web-push-3.6.7.tgz",
++      "integrity": "sha512-OpiIUe8cuGjrj3mMBFWY+e4MMIkW3SVT+7vEIjvD9kejGUypv8GPDf84JdPWskK8zMRIJ6xYGm+Kxr8YkPyA0A==",
++      "license": "MPL-2.0",
++      "dependencies": {
++        "asn1.js": "^5.3.0",
++        "http_ece": "1.2.0",
++        "https-proxy-agent": "^7.0.0",
++        "jws": "^4.0.0",
++        "minimist": "^1.2.5"
++      },
++      "bin": {
++        "web-push": "src/cli.js"
++      },
++      "engines": {
++        "node": ">= 16"
++      }
++    },
+     "node_modules/which": {
+       "version": "2.0.2",
+       "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
+diff --git a/package.json b/package.json
+index b7de0e7..89c131e 100644
+--- a/package.json
++++ b/package.json
+@@ -13,13 +13,15 @@
+     "@supabase/supabase-js": "^2.105.1",
+     "next": "16.2.4",
+     "react": "19.2.4",
+-    "react-dom": "19.2.4"
++    "react-dom": "19.2.4",
++    "web-push": "^3.6.7"
+   },
+   "devDependencies": {
+     "@tailwindcss/postcss": "^4",
+     "@types/node": "^20",
+     "@types/react": "^19",
+     "@types/react-dom": "^19",
++    "@types/web-push": "^3.6.4",
+     "eslint": "^9",
+     "eslint-config-next": "16.2.4",
+     "tailwindcss": "^4",
+diff --git a/public/sw.js b/public/sw.js
+index 06fb18b..e2f9598 100644
+--- a/public/sw.js
++++ b/public/sw.js
+@@ -1,4 +1,4 @@
+-const CACHE_NAME = "fackts-hoops-pwa-v2";
++const CACHE_NAME = "fackts-hoops-pwa-v3";
+ const PRECACHE_URLS = [
+   "/",
+   "/manifest.webmanifest",
+@@ -101,3 +101,52 @@ self.addEventListener("fetch", (event) => {
+     event.respondWith(staticAsset(event.request));
+   }
+ });
++
++self.addEventListener("push", (event) => {
++  let payload = {};
++
++  try {
++    payload = event.data ? event.data.json() : {};
++  } catch {
++    payload = { body: event.data ? event.data.text() : "Open FACKTS Hoops for the latest update." };
++  }
++
++  const title = payload.title || "FACKTS Hoops";
++  const options = {
++    body: payload.body || "You have a new FACKTS update.",
++    icon: payload.icon || "/icons/icon-192x192.png",
++    badge: payload.badge || "/icons/icon-192x192.png",
++    tag: payload.tag || "fackts-update",
++    renotify: true,
++    vibrate: [200, 100, 200],
++    data: {
++      url: payload.url || "/player",
++    },
++  };
++
++  event.waitUntil(self.registration.showNotification(title, options));
++});
++
++self.addEventListener("notificationclick", (event) => {
++  event.notification.close();
++
++  const requestedPath = event.notification.data?.url || "/player";
++  const targetUrl = new URL(requestedPath, self.location.origin);
++
++  if (targetUrl.origin !== self.location.origin) {
++    targetUrl.href = `${self.location.origin}/player`;
++  }
++
++  event.waitUntil(
++    clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windowClients) => {
++      for (const client of windowClients) {
++        if ("focus" in client) {
++          await client.navigate(targetUrl.href);
++          return client.focus();
++        }
++      }
++
++      return clients.openWindow(targetUrl.href);
++    })
++  );
++});
+diff --git a/supabase/migrations/20260721_push_notifications.sql b/supabase/migrations/20260721_push_notifications.sql
+new file mode 100644
+index 0000000..4e4d1cc
+--- /dev/null
++++ b/supabase/migrations/20260721_push_notifications.sql
+@@ -0,0 +1,129 @@
++begin;
++
++create table if not exists public.push_subscriptions (
++  id uuid primary key default gen_random_uuid(),
++  user_id uuid not null references auth.users(id) on delete cascade,
++  endpoint text not null unique,
++  p256dh text not null,
++  auth text not null,
++  user_agent text,
++  enabled boolean not null default true,
++  created_at timestamptz not null default now(),
++  updated_at timestamptz not null default now()
++);
++
++create index if not exists push_subscriptions_user_id_idx
++  on public.push_subscriptions(user_id);
++
++alter table public.push_subscriptions enable row level security;
++
++drop policy if exists "users_read_own_push_subscriptions" on public.push_subscriptions;
++create policy "users_read_own_push_subscriptions"
++  on public.push_subscriptions
++  for select
++  to authenticated
++  using (user_id = auth.uid());
++
++drop policy if exists "users_create_own_push_subscriptions" on public.push_subscriptions;
++create policy "users_create_own_push_subscriptions"
++  on public.push_subscriptions
++  for insert
++  to authenticated
++  with check (user_id = auth.uid());
++
++drop policy if exists "users_update_own_push_subscriptions" on public.push_subscriptions;
++create policy "users_update_own_push_subscriptions"
++  on public.push_subscriptions
++  for update
++  to authenticated
++  using (user_id = auth.uid())
++  with check (user_id = auth.uid());
++
++drop policy if exists "users_delete_own_push_subscriptions" on public.push_subscriptions;
++create policy "users_delete_own_push_subscriptions"
++  on public.push_subscriptions
++  for delete
++  to authenticated
++  using (user_id = auth.uid());
++
++alter table public.fackts_notifications enable row level security;
++
++drop policy if exists "players_read_own_notifications" on public.fackts_notifications;
++create policy "players_read_own_notifications"
++  on public.fackts_notifications
++  for select
++  to authenticated
++  using (
++    recipient_role = 'player'
++    and exists (
++      select 1
++      from public.players
++      where players.user_id = auth.uid()
++        and players.id::text = fackts_notifications.recipient_id::text
++        and players.is_active = true
++    )
++  );
++
++drop policy if exists "players_update_own_notifications" on public.fackts_notifications;
++create policy "players_update_own_notifications"
++  on public.fackts_notifications
++  for update
++  to authenticated
++  using (
++    recipient_role = 'player'
++    and exists (
++      select 1
++      from public.players
++      where players.user_id = auth.uid()
++        and players.id::text = fackts_notifications.recipient_id::text
++        and players.is_active = true
++    )
++  )
++  with check (
++    recipient_role = 'player'
++    and exists (
++      select 1
++      from public.players
++      where players.user_id = auth.uid()
++        and players.id::text = fackts_notifications.recipient_id::text
++        and players.is_active = true
++    )
++  );
++
++drop policy if exists "admins_read_notifications" on public.fackts_notifications;
++create policy "admins_read_notifications"
++  on public.fackts_notifications
++  for select
++  to authenticated
++  using (
++    exists (
++      select 1
++      from public.admin_profiles
++      where admin_profiles.user_id = auth.uid()
++        and admin_profiles.is_active = true
++    )
++  );
++
++drop policy if exists "admins_update_notifications" on public.fackts_notifications;
++create policy "admins_update_notifications"
++  on public.fackts_notifications
++  for update
++  to authenticated
++  using (
++    exists (
++      select 1
++      from public.admin_profiles
++      where admin_profiles.user_id = auth.uid()
++        and admin_profiles.is_active = true
++    )
++  )
++  with check (
++    exists (
++      select 1
++      from public.admin_profiles
++      where admin_profiles.user_id = auth.uid()
++        and admin_profiles.is_active = true
++    )
++  );
++
++commit;

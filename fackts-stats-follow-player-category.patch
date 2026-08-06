@@ -1,0 +1,1447 @@
+diff --git a/app/admin/players/page.tsx b/app/admin/players/page.tsx
+index 49fad6c..7d3edc1 100644
+--- a/app/admin/players/page.tsx
++++ b/app/admin/players/page.tsx
+@@ -2,7 +2,13 @@
+ 
+ import Link from "next/link";
+ import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+-import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
++import {
++  EXTERNAL_PLAYER_TYPE,
++  FACKTS_PLAYER_TYPE,
++  GUEST_HOOPER_TYPE,
++  PROSPECT_PLAYER_TYPE,
++  playerClassificationLabel,
++} from "@/lib/hoops/playerClassification";
+ import { supabase } from "@/lib/supabase";
+ 
+ type PlayerRow = {
+@@ -50,6 +56,7 @@ type PlayerForm = {
+   full_name: string;
+   nickname: string;
+   jersey_number: string;
++  player_type: string;
+   role: string;
+   position: string;
+   height: string;
+@@ -86,6 +93,7 @@ const emptyForm: PlayerForm = {
+   full_name: "",
+   nickname: "",
+   jersey_number: "",
++  player_type: FACKTS_PLAYER_TYPE,
+   role: "Player",
+   position: "",
+   height: "",
+@@ -126,6 +134,13 @@ const roles = [
+   "Co-Captain",
+ ];
+ 
++const playerTypes = [
++  { label: "Official FACKTS Player", value: FACKTS_PLAYER_TYPE },
++  { label: "External Player", value: EXTERNAL_PLAYER_TYPE },
++  { label: "Guest Hooper", value: GUEST_HOOPER_TYPE },
++  { label: "Prospect", value: PROSPECT_PLAYER_TYPE },
++];
++
+ const positions = [
+   "Point Guard",
+   "Shooting Guard",
+@@ -235,7 +250,6 @@ export default function AdminPlayersPage() {
+     const { data, error } = await supabase
+       .from("players")
+       .select("*")
+-      .eq("player_type", FACKTS_PLAYER_TYPE)
+       .order("jersey_number", { ascending: true });
+ 
+     if (error) {
+@@ -294,6 +308,7 @@ export default function AdminPlayersPage() {
+       full_name: clean(player.full_name || player.name),
+       nickname: clean(player.nickname),
+       jersey_number: clean(player.jersey_number),
++      player_type: clean(player.player_type) || FACKTS_PLAYER_TYPE,
+       role: clean(player.role) || "Player",
+       position: clean(player.position),
+       height: clean(player.height),
+@@ -372,7 +387,7 @@ export default function AdminPlayersPage() {
+         nickname: form.nickname.trim() || null,
+         jersey_number: numberOrNull(form.jersey_number),
+         role: form.role.trim() || null,
+-        player_type: FACKTS_PLAYER_TYPE,
++        player_type: form.player_type || FACKTS_PLAYER_TYPE,
+         position: form.position.trim() || null,
+         height: form.height.trim() || null,
+         weight: form.weight.trim() || null,
+@@ -419,7 +434,11 @@ export default function AdminPlayersPage() {
+           throw new Error(error.message);
+         }
+ 
+-        setMessage("Player updated successfully.");
++        setMessage(
++          form.player_type === FACKTS_PLAYER_TYPE
++            ? "Player updated as an official FACKTS player."
++            : `Player moved to ${playerClassificationLabel(form.player_type)}. Their full stats history now follows this category.`
++        );
+       } else {
+         const { error } = await supabase.from("players").insert({
+           ...payload,
+@@ -484,8 +503,9 @@ export default function AdminPlayersPage() {
+               </h1>
+ 
+               <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
+-                Edit player identity, role, measurements, skills, links, photo,
+-                and development details as they grow.
++                Edit identity, current category, role, measurements, skills,
++                links, photo, and development details. Career stats follow the
++                current category automatically.
+               </p>
+             </div>
+ 
+@@ -580,7 +600,23 @@ export default function AdminPlayersPage() {
+                 />
+               </Field>
+ 
+-              <Field label="Role">
++              <Field label="Current Category">
++                <select
++                  name="player_type"
++                  value={form.player_type}
++                  onChange={handleChange}
++                  className={inputClass}
++                >
++                  {playerTypes.map((type) => (
++                    <option key={type.value} value={type.value}>
++                      {type.label}
++                    </option>
++                  ))}
++                </select>
++              </Field>
++            </div>
++
++            <Field label="Team Role">
+                 <select name="role" value={form.role} onChange={handleChange} className={inputClass}>
+                   {roles.map((role) => (
+                     <option key={role} value={role}>
+@@ -588,8 +624,15 @@ export default function AdminPlayersPage() {
+                     </option>
+                   ))}
+                 </select>
+-              </Field>
+-            </div>
++            </Field>
++
++            {editingId && form.player_type !== FACKTS_PLAYER_TYPE ? (
++              <div className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-xs font-bold leading-5 text-orange-100">
++                Saving this category removes the player from official FACKTS
++                lists and accounts. Their previous game and 1v1 stats are kept
++                and shown under Guest Leaderboards.
++              </div>
++            ) : null}
+ 
+             <div className="grid gap-4 sm:grid-cols-2">
+               <Field label="Position">
+@@ -1022,6 +1065,10 @@ export default function AdminPlayersPage() {
+                         {player.role || "Player"}
+                       </span>
+ 
++                      <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[11px] font-black uppercase text-orange-200">
++                        {playerClassificationLabel(player.player_type)}
++                      </span>
++
+                       {player.is_featured ? (
+                         <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] font-black uppercase text-blue-200">
+                           Featured
+@@ -1061,12 +1108,14 @@ export default function AdminPlayersPage() {
+                         Edit Everything
+                       </button>
+ 
+-                      <Link
+-                        href={`/players/${player.id}`}
+-                        className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:border-orange-400/60"
+-                      >
+-                        View
+-                      </Link>
++                      {player.player_type === FACKTS_PLAYER_TYPE ? (
++                        <Link
++                          href={`/players/${player.id}`}
++                          className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:border-orange-400/60"
++                        >
++                          View
++                        </Link>
++                      ) : null}
+ 
+                       <button
+                         type="button"
+diff --git a/app/api/admin/player-access/route.ts b/app/api/admin/player-access/route.ts
+index d838b6f..b1aa57e 100644
+--- a/app/api/admin/player-access/route.ts
++++ b/app/api/admin/player-access/route.ts
+@@ -8,6 +8,17 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+ 
+ export const runtime = "nodejs";
+ 
++function playerAccessError(error: unknown) {
++  if (
++    error instanceof Error &&
++    error.message === "PLAYER_ACCOUNTS_CONFIGURATION_MISSING"
++  ) {
++    return "Player Accounts is not connected to the secure Supabase Admin key yet. Existing accounts have not been deleted. Add the server-only key in Vercel, then redeploy.";
++  }
++
++  return error instanceof Error ? error.message : "Player Accounts could not be loaded.";
++}
++
+ function temporaryPassword() {
+   return `Fackts!${randomBytes(8).toString("base64url")}`;
+ }
+@@ -34,7 +45,7 @@ export async function GET() {
+     return NextResponse.json({ ok: true, players: data ?? [] });
+   } catch (error) {
+     return NextResponse.json(
+-      { ok: false, error: error instanceof Error ? error.message : "Could not load player accounts." },
++      { ok: false, error: playerAccessError(error) },
+       { status: 500 }
+     );
+   }
+@@ -225,7 +236,7 @@ export async function POST(request: NextRequest) {
+     });
+   } catch (error) {
+     return NextResponse.json(
+-      { ok: false, error: error instanceof Error ? error.message : "Access setup failed." },
++      { ok: false, error: playerAccessError(error) },
+       { status: 500 }
+     );
+   }
+diff --git a/app/games/[id]/page.tsx b/app/games/[id]/page.tsx
+index 6488b08..8571927 100644
+--- a/app/games/[id]/page.tsx
++++ b/app/games/[id]/page.tsx
+@@ -35,6 +35,7 @@ type GameRow = {
+ 
+ type PlayerRow = {
+   id: string;
++  is_guest_identity?: boolean;
+   full_name?: string | null;
+   name?: string | null;
+   nickname?: string | null;
+@@ -349,12 +350,37 @@ async function getGameData(gameId: string) {
+   let players: PlayerRow[] = [];
+ 
+   if (playerIds.length > 0) {
+-    const { data: playersData } = await supabase
+-      .from("players")
+-      .select("*")
+-      .in("id", playerIds);
++    const [playersResult, linkedGuestsResult] = await Promise.all([
++      supabase.from("players").select("*").in("id", playerIds),
++      supabase
++        .from("guest_hoopers")
++        .select("*")
++        .in("source_player_id", playerIds),
++    ]);
++
++    players = (playersResult.data || []) as PlayerRow[];
++
++    const loadedPlayerIds = new Set(players.map((player) => player.id));
++    (linkedGuestsResult.data || []).forEach((guest: any) => {
++      if (!guest.source_player_id || loadedPlayerIds.has(guest.source_player_id)) {
++        return;
++      }
+ 
+-    players = (playersData || []) as PlayerRow[];
++      players.push({
++        id: guest.source_player_id,
++        is_guest_identity: true,
++        full_name: guest.full_name,
++        name: guest.full_name,
++        nickname: guest.nickname,
++        role:
++          guest.guest_type === "external_player"
++            ? "External Player"
++            : "Guest Hooper",
++        position: guest.position,
++        photo_url: guest.photo_url,
++        photo_position: guest.photo_position,
++      });
++    });
+   }
+ 
+   const playerMap = new Map<string, PlayerRow>();
+@@ -603,7 +629,7 @@ export default async function GameDetailsPage({
+                 <BigStat label="BLK" value={statNumber(playerOfGame.blocks)} />
+               </div>
+ 
+-              {playerOfGame.player?.id ? (
++              {playerOfGame.player?.id && !playerOfGame.player.is_guest_identity ? (
+                 <div className="mt-6">
+                   <Link
+                     href={`/players/${playerOfGame.player.id}`}
+@@ -852,4 +878,4 @@ function EmptyBox({ text }: { text: string }) {
+       {text}
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/guest-leaderboards/page.tsx b/app/guest-leaderboards/page.tsx
+index a64fce2..633780d 100644
+--- a/app/guest-leaderboards/page.tsx
++++ b/app/guest-leaderboards/page.tsx
+@@ -1,4 +1,8 @@
+ import Link from "next/link";
++import {
++  getCareerGameTotals,
++  mergeCareerGameStats,
++} from "@/lib/hoops/careerStats";
+ import { supabase } from "@/lib/supabase";
+ 
+ export const dynamic = "force-dynamic";
+@@ -6,6 +10,8 @@ export const revalidate = 0;
+ 
+ type GuestLeader = {
+   id: string;
++  source_player_id: string | null;
++  guest_type: string | null;
+   full_name: string;
+   nickname: string | null;
+   position: string | null;
+@@ -37,8 +43,104 @@ type GuestLeader = {
+   one_v_one_losses: number;
+ };
+ 
++type OneOnOneStatRow = {
++  participant_type?: string | null;
++  fackts_player_id?: string | null;
++  guest_hooper_id?: string | null;
++  opponent_type?: string | null;
++  opponent_player_id?: string | null;
++  opponent_guest_hooper_id?: string | null;
++  opponent_name?: string | null;
++  points_scored?: number | string | null;
++  points_allowed?: number | string | null;
++  result?: string | null;
++  status?: string | null;
++  matches_played?: number | string | null;
++  wins?: number | string | null;
++  losses?: number | string | null;
++};
++
++function statNumber(value: unknown) {
++  const parsed = Number(value ?? 0);
++  return Number.isFinite(parsed) ? parsed : 0;
++}
++
++function oneOnOneCareerTotals(
++  rows: OneOnOneStatRow[],
++  guestId: string,
++  sourcePlayerId?: string | null
++) {
++  return rows.reduce<{ matches: number; wins: number; losses: number }>(
++    (totals, row) => {
++      const isParticipant =
++        row.guest_hooper_id === guestId ||
++        Boolean(sourcePlayerId && row.fackts_player_id === sourcePlayerId);
++      const isOpponent =
++        row.opponent_guest_hooper_id === guestId ||
++        Boolean(sourcePlayerId && row.opponent_player_id === sourcePlayerId);
++
++      if (!isParticipant && !isOpponent) return totals;
++
++      const aggregateMatches = statNumber(row.matches_played);
++      const aggregateWins = statNumber(row.wins);
++      const aggregateLosses = statNumber(row.losses);
++      const hasMatchOpponent = Boolean(
++        row.opponent_player_id ||
++          row.opponent_guest_hooper_id ||
++          row.opponent_name
++      );
++
++      if (
++        !hasMatchOpponent &&
++        (aggregateMatches > 0 || aggregateWins > 0 || aggregateLosses > 0)
++      ) {
++        totals.matches +=
++          aggregateMatches || aggregateWins + aggregateLosses;
++        totals.wins += aggregateWins;
++        totals.losses += aggregateLosses;
++        return totals;
++      }
++
++      const status = String(row.status ?? "").toLowerCase();
++      if (["upcoming", "pending", "scheduled", "cancelled"].includes(status)) {
++        return totals;
++      }
++
++      const score1 = Number(row.points_scored);
++      const score2 = Number(row.points_allowed);
++      const hasScores = Number.isFinite(score1) && Number.isFinite(score2);
++      const result = String(row.result ?? "").toLowerCase();
++
++      if (!hasScores && !["win", "won", "loss", "lost", "draw"].includes(result)) {
++        return totals;
++      }
++
++      totals.matches += 1;
++
++      if (hasScores) {
++        const ownScore = isParticipant ? score1 : score2;
++        const otherScore = isParticipant ? score2 : score1;
++        if (ownScore > otherScore) totals.wins += 1;
++        if (ownScore < otherScore) totals.losses += 1;
++        return totals;
++      }
++
++      const participantWon = result === "win" || result === "won";
++      const participantLost = result === "loss" || result === "lost";
++      if ((isParticipant && participantWon) || (isOpponent && participantLost)) {
++        totals.wins += 1;
++      }
++      if ((isParticipant && participantLost) || (isOpponent && participantWon)) {
++        totals.losses += 1;
++      }
++      return totals;
++    },
++    { matches: 0, wins: 0, losses: 0 }
++  );
++}
++
+ async function getGuestLeaderboard() {
+-  const [guestsResult, gameStatsResult, oneOnOneResult] = await Promise.all([
++  const [guestsResult, gameStatsResult, playerStatsResult, oneOnOneResult] = await Promise.all([
+     supabase
+       .from("guest_hoopers")
+       .select("*")
+@@ -47,6 +149,8 @@ async function getGuestLeaderboard() {
+ 
+     supabase.from("guest_game_stats").select("*"),
+ 
++    supabase.from("player_game_stats").select("*"),
++
+     supabase.from("guest_one_on_one_stats").select("*"),
+   ]);
+ 
+@@ -59,65 +163,38 @@ async function getGuestLeaderboard() {
+     console.error("Guest game stats error:", gameStatsResult.error.message);
+   }
+ 
++  if (playerStatsResult.error) {
++    console.error("Former player stats error:", playerStatsResult.error.message);
++  }
++
+   if (oneOnOneResult.error) {
+     console.error("Guest 1v1 stats error:", oneOnOneResult.error.message);
+   }
+ 
+   const guests = guestsResult.data ?? [];
+   const gameStats = gameStatsResult.data ?? [];
++  const playerStats = playerStatsResult.data ?? [];
+   const oneOnOneStats = oneOnOneResult.data ?? [];
+ 
+   return guests.map((guest: any) => {
+     const guestGameStats = gameStats.filter(
+       (row: any) => row.guest_hooper_id === guest.id
+     );
+-
+-    const guestOneOnOneStats = oneOnOneStats.filter(
+-      (row: any) => row.guest_hooper_id === guest.id
++    const formerPlayerStats = guest.source_player_id
++      ? playerStats.filter(
++          (row: any) => row.player_id === guest.source_player_id
++        )
++      : [];
++    const careerRows = mergeCareerGameStats(
++      guestGameStats,
++      formerPlayerStats
+     );
+-
+-    const gamesPlayed = guestGameStats.length;
+-
+-    const totals = guestGameStats.reduce(
+-      (acc: any, row: any) => {
+-        acc.total_points += Number(row.points ?? 0);
+-        acc.total_assists += Number(row.assists ?? 0);
+-        acc.total_rebounds += Number(row.rebounds ?? 0);
+-        acc.total_steals += Number(row.steals ?? 0);
+-        acc.total_blocks += Number(row.blocks ?? 0);
+-        acc.total_three_pointers_made += Number(row.three_pointers_made ?? 0);
+-        return acc;
+-      },
+-      {
+-        total_points: 0,
+-        total_assists: 0,
+-        total_rebounds: 0,
+-        total_steals: 0,
+-        total_blocks: 0,
+-        total_three_pointers_made: 0,
+-      }
+-    );
+-
+-    const oneVOneTotals = guestOneOnOneStats.reduce(
+-      (acc: any, row: any) => {
+-        acc.matches += Number(row.matches_played ?? 0);
+-
+-        if (Number(row.wins ?? 0) > 0 || Number(row.losses ?? 0) > 0) {
+-          acc.wins += Number(row.wins ?? 0);
+-          acc.losses += Number(row.losses ?? 0);
+-        } else {
+-          const result = String(row.result ?? "").toLowerCase();
+-          if (result === "win" || result === "won") acc.wins += 1;
+-          if (result === "loss" || result === "lost") acc.losses += 1;
+-        }
+-
+-        return acc;
+-      },
+-      {
+-        matches: 0,
+-        wins: 0,
+-        losses: 0,
+-      }
++    const totals = getCareerGameTotals(careerRows);
++    const gamesPlayed = totals.gamesPlayed;
++    const oneVOneTotals = oneOnOneCareerTotals(
++      oneOnOneStats,
++      guest.id,
++      guest.source_player_id
+     );
+ 
+     const calculatedMatches =
+@@ -131,31 +208,37 @@ async function getGuestLeaderboard() {
+ 
+     return {
+       id: guest.id,
++      source_player_id: guest.source_player_id ?? null,
++      guest_type: guest.guest_type ?? null,
+       full_name: guest.full_name,
+       nickname: guest.nickname ?? null,
+       position: guest.position ?? null,
+-      role: guest.role ?? "Guest Hooper",
++      role:
++        guest.role ??
++        (guest.guest_type === "external_player"
++          ? "External Player"
++          : "Guest Hooper"),
+       photo_url: guest.photo_url ?? null,
+       photo_position: guest.photo_position ?? null,
+ 
+       games_played: gamesPlayed,
+ 
+-      total_points: totals.total_points,
+-      points_per_game: avg(totals.total_points),
++      total_points: totals.points,
++      points_per_game: avg(totals.points),
+ 
+-      total_assists: totals.total_assists,
+-      assists_per_game: avg(totals.total_assists),
++      total_assists: totals.assists,
++      assists_per_game: avg(totals.assists),
+ 
+-      total_rebounds: totals.total_rebounds,
+-      rebounds_per_game: avg(totals.total_rebounds),
++      total_rebounds: totals.rebounds,
++      rebounds_per_game: avg(totals.rebounds),
+ 
+-      total_steals: totals.total_steals,
+-      steals_per_game: avg(totals.total_steals),
++      total_steals: totals.steals,
++      steals_per_game: avg(totals.steals),
+ 
+-      total_blocks: totals.total_blocks,
+-      blocks_per_game: avg(totals.total_blocks),
++      total_blocks: totals.blocks,
++      blocks_per_game: avg(totals.blocks),
+ 
+-      total_three_pointers_made: totals.total_three_pointers_made,
++      total_three_pointers_made: totals.threePointersMade,
+ 
+       one_v_one_matches: calculatedMatches,
+       one_v_one_wins: oneVOneTotals.wins,
+@@ -397,4 +480,4 @@ function GuestLeaderboardTableCard({
+       </div>
+     </section>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/leaderboards/page.tsx b/app/leaderboards/page.tsx
+index d949a68..bb0b3bb 100644
+--- a/app/leaderboards/page.tsx
++++ b/app/leaderboards/page.tsx
+@@ -1,4 +1,8 @@
+ import Link from "next/link";
++import {
++  getCareerGameTotals,
++  mergeCareerGameStats,
++} from "@/lib/hoops/careerStats";
+ import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
+ import { supabase } from "@/lib/supabase";
+ 
+@@ -36,7 +40,7 @@ type LeaderboardPlayer = {
+ };
+ 
+ async function getLeaderboard() {
+-  const [playersResult, statsResult] = await Promise.all([
++  const [playersResult, statsResult, linkedGuestsResult, guestStatsResult] = await Promise.all([
+     supabase
+       .from("players")
+       .select("*")
+@@ -45,46 +49,40 @@ async function getLeaderboard() {
+       .order("jersey_number", { ascending: true }),
+ 
+     supabase.from("player_game_stats").select("*"),
++
++    supabase
++      .from("guest_hoopers")
++      .select("id, source_player_id")
++      .not("source_player_id", "is", null),
++
++    supabase.from("guest_game_stats").select("*"),
+   ]);
+ 
+-  if (playersResult.error || statsResult.error) {
++  if (
++    playersResult.error ||
++    statsResult.error ||
++    linkedGuestsResult.error ||
++    guestStatsResult.error
++  ) {
+     return [];
+   }
+ 
+   const players = playersResult.data ?? [];
+   const stats = statsResult.data ?? [];
++  const linkedGuests = linkedGuestsResult.data ?? [];
++  const guestStats = guestStatsResult.data ?? [];
+ 
+   return players.map((player: any) => {
+     const playerStats = stats.filter((row: any) => row.player_id === player.id);
+-    const gamesPlayed = playerStats.length;
+-
+-    const totals = playerStats.reduce(
+-      (acc: any, row: any) => {
+-        acc.total_points += Number(row.points ?? 0);
+-        acc.total_assists += Number(row.assists ?? 0);
+-        acc.total_rebounds += Number(row.rebounds ?? 0);
+-        acc.total_steals += Number(row.steals ?? 0);
+-        acc.total_blocks += Number(row.blocks ?? 0);
+-
+-        acc.total_three_pointers_made += Number(
+-          row.three_pointers_made ??
+-            row.three_pointers ??
+-            row.threes_made ??
+-            row.three_pm ??
+-            0
+-        );
+-
+-        return acc;
+-      },
+-      {
+-        total_points: 0,
+-        total_assists: 0,
+-        total_rebounds: 0,
+-        total_steals: 0,
+-        total_blocks: 0,
+-        total_three_pointers_made: 0,
+-      }
++    const linkedGuestIds = linkedGuests
++      .filter((guest: any) => guest.source_player_id === player.id)
++      .map((guest: any) => guest.id);
++    const linkedGuestStats = guestStats.filter((row: any) =>
++      linkedGuestIds.includes(row.guest_hooper_id)
+     );
++    const careerRows = mergeCareerGameStats(playerStats, linkedGuestStats);
++    const totals = getCareerGameTotals(careerRows);
++    const gamesPlayed = totals.gamesPlayed;
+ 
+     function avg(value: number) {
+       return gamesPlayed > 0 ? Number((value / gamesPlayed).toFixed(1)) : 0;
+@@ -102,22 +100,22 @@ async function getLeaderboard() {
+ 
+       games_played: gamesPlayed,
+ 
+-      total_points: totals.total_points,
+-      points_per_game: avg(totals.total_points),
++      total_points: totals.points,
++      points_per_game: avg(totals.points),
+ 
+-      total_assists: totals.total_assists,
+-      assists_per_game: avg(totals.total_assists),
++      total_assists: totals.assists,
++      assists_per_game: avg(totals.assists),
+ 
+-      total_rebounds: totals.total_rebounds,
+-      rebounds_per_game: avg(totals.total_rebounds),
++      total_rebounds: totals.rebounds,
++      rebounds_per_game: avg(totals.rebounds),
+ 
+-      total_steals: totals.total_steals,
+-      steals_per_game: avg(totals.total_steals),
++      total_steals: totals.steals,
++      steals_per_game: avg(totals.steals),
+ 
+-      total_blocks: totals.total_blocks,
+-      blocks_per_game: avg(totals.total_blocks),
++      total_blocks: totals.blocks,
++      blocks_per_game: avg(totals.blocks),
+ 
+-      total_three_pointers_made: totals.total_three_pointers_made,
++      total_three_pointers_made: totals.threePointersMade,
+     } as LeaderboardPlayer;
+   });
+ }
+diff --git a/app/one-on-one/[id]/page.tsx b/app/one-on-one/[id]/page.tsx
+index bdd4116..28ebbc6 100644
+--- a/app/one-on-one/[id]/page.tsx
++++ b/app/one-on-one/[id]/page.tsx
+@@ -12,6 +12,8 @@ type Player = {
+ 
+ type GuestHooper = {
+   id: string;
++  source_player_id?: string | null;
++  is_active?: boolean | null;
+   full_name?: string | null;
+   name?: string | null;
+   nickname?: string | null;
+@@ -100,9 +102,21 @@ function findByName<T extends Player | GuestHooper>(
+ function getParticipant(
+   row: OneOnOneRow,
+   playerMap: Map<string, Player>,
+-  guestMap: Map<string, GuestHooper>
++  guestMap: Map<string, GuestHooper>,
++  guestBySourcePlayerId: Map<string, GuestHooper>
+ ) {
+   if (row.participant_type === "fackts_player" || row.fackts_player_id) {
++    const linkedGuest = row.fackts_player_id
++      ? guestBySourcePlayerId.get(String(row.fackts_player_id))
++      : null;
++
++    if (linkedGuest && linkedGuest.is_active !== false) {
++      return {
++        name: getName(linkedGuest),
++        type: "Guest Hooper",
++      };
++    }
++
+     const player = row.fackts_player_id
+       ? playerMap.get(String(row.fackts_player_id))
+       : null;
+@@ -118,6 +132,17 @@ function getParticipant(
+       ? guestMap.get(String(row.guest_hooper_id))
+       : null;
+ 
++    const promotedPlayer = guest?.source_player_id
++      ? playerMap.get(String(guest.source_player_id))
++      : null;
++
++    if (promotedPlayer) {
++      return {
++        name: getName(promotedPlayer),
++        type: "FACKTS Player",
++      };
++    }
++
+     return {
+       name: getName(guest),
+       type: "Guest Hooper",
+@@ -135,9 +160,21 @@ function getOpponent(
+   players: Player[],
+   guests: GuestHooper[],
+   playerMap: Map<string, Player>,
+-  guestMap: Map<string, GuestHooper>
++  guestMap: Map<string, GuestHooper>,
++  guestBySourcePlayerId: Map<string, GuestHooper>
+ ) {
+   if (row.opponent_type === "fackts_player" || row.opponent_player_id) {
++    const linkedGuest = row.opponent_player_id
++      ? guestBySourcePlayerId.get(String(row.opponent_player_id))
++      : null;
++
++    if (linkedGuest && linkedGuest.is_active !== false) {
++      return {
++        name: getName(linkedGuest),
++        type: "Guest Hooper",
++      };
++    }
++
+     const player = row.opponent_player_id
+       ? playerMap.get(String(row.opponent_player_id))
+       : null;
+@@ -153,6 +190,17 @@ function getOpponent(
+       ? guestMap.get(String(row.opponent_guest_hooper_id))
+       : null;
+ 
++    const promotedPlayer = guest?.source_player_id
++      ? playerMap.get(String(guest.source_player_id))
++      : null;
++
++    if (promotedPlayer) {
++      return {
++        name: getName(promotedPlayer),
++        type: "FACKTS Player",
++      };
++    }
++
+     return {
+       name: getName(guest),
+       type: "Guest Hooper",
+@@ -279,12 +327,20 @@ async function getData(id: string) {
+   const guestMap = new Map<string, GuestHooper>();
+   guests.forEach((guest) => guestMap.set(String(guest.id), guest));
+ 
++  const guestBySourcePlayerId = new Map<string, GuestHooper>();
++  guests.forEach((guest) => {
++    if (guest.source_player_id) {
++      guestBySourcePlayerId.set(String(guest.source_player_id), guest);
++    }
++  });
++
+   return {
+     row,
+     players,
+     guests,
+     playerMap,
+     guestMap,
++    guestBySourcePlayerId,
+     error: rowResult.error?.message || "",
+   };
+ }
+@@ -329,13 +385,19 @@ export default async function OneOnOneMatchPage({
+   }
+ 
+   const row = data.row;
+-  const participant = getParticipant(row, data.playerMap, data.guestMap);
++  const participant = getParticipant(
++    row,
++    data.playerMap,
++    data.guestMap,
++    data.guestBySourcePlayerId
++  );
+   const opponent = getOpponent(
+     row,
+     data.players,
+     data.guests,
+     data.playerMap,
+-    data.guestMap
++    data.guestMap,
++    data.guestBySourcePlayerId
+   );
+ 
+   const result = getResult(row);
+diff --git a/app/one-on-one/page.tsx b/app/one-on-one/page.tsx
+index 2e42d70..b90937d 100644
+--- a/app/one-on-one/page.tsx
++++ b/app/one-on-one/page.tsx
+@@ -17,6 +17,9 @@ type Player = {
+ 
+ type GuestHooper = {
+   id: string;
++  source_player_id?: string | null;
++  guest_type?: string | null;
++  is_active?: boolean | null;
+   full_name?: string | null;
+   name?: string | null;
+   nickname?: string | null;
+@@ -186,7 +189,8 @@ function findGuestByName(
+ function getPlayer1Identity(
+   row: OneOnOneRow,
+   playerMap: Map<string, Player>,
+-  guestMap: Map<string, GuestHooper>
++  guestMap: Map<string, GuestHooper>,
++  guestBySourcePlayerId: Map<string, GuestHooper>
+ ): Identity {
+   const rowImage =
+     row.player_one_cutout_url ||
+@@ -195,6 +199,20 @@ function getPlayer1Identity(
+     "";
+ 
+   if (row.participant_type === "fackts_player" || row.fackts_player_id) {
++    const linkedGuest = row.fackts_player_id
++      ? guestBySourcePlayerId.get(String(row.fackts_player_id))
++      : null;
++
++    if (linkedGuest && linkedGuest.is_active !== false) {
++      return {
++        id: `guest-${linkedGuest.id}`,
++        name: getPersonName(linkedGuest) || row.participant_name || "Guest Hooper",
++        type: "guest_hooper",
++        position: getPersonPosition(linkedGuest) || "Guest Hooper",
++        photo_url: rowImage || getPersonPhoto(linkedGuest),
++      };
++    }
++
+     const player = row.fackts_player_id
+       ? playerMap.get(String(row.fackts_player_id))
+       : null;
+@@ -215,6 +233,20 @@ function getPlayer1Identity(
+       ? guestMap.get(String(row.guest_hooper_id))
+       : null;
+ 
++    const promotedPlayer = guest?.source_player_id
++      ? playerMap.get(String(guest.source_player_id))
++      : null;
++
++    if (promotedPlayer) {
++      return {
++        id: `player-${promotedPlayer.id}`,
++        name: getPersonName(promotedPlayer) || row.participant_name || "FACKTS Player",
++        type: "fackts_player",
++        position: getPersonPosition(promotedPlayer) || "FACKTS Player",
++        photo_url: rowImage || getPersonPhoto(promotedPlayer),
++      };
++    }
++
+     const fallbackName = row.participant_name || "Guest Hooper";
+ 
+     return {
+@@ -239,6 +271,7 @@ function getPlayer2Identity(
+   row: OneOnOneRow,
+   playerMap: Map<string, Player>,
+   guestMap: Map<string, GuestHooper>,
++  guestBySourcePlayerId: Map<string, GuestHooper>,
+   players: Player[],
+   guests: GuestHooper[]
+ ): Identity {
+@@ -249,6 +282,20 @@ function getPlayer2Identity(
+     "";
+ 
+   if (row.opponent_type === "fackts_player" || row.opponent_player_id) {
++    const linkedGuest = row.opponent_player_id
++      ? guestBySourcePlayerId.get(String(row.opponent_player_id))
++      : null;
++
++    if (linkedGuest && linkedGuest.is_active !== false) {
++      return {
++        id: `guest-${linkedGuest.id}`,
++        name: getPersonName(linkedGuest) || row.opponent_name || "Guest Hooper",
++        type: "guest_hooper",
++        position: getPersonPosition(linkedGuest) || "Guest Hooper",
++        photo_url: rowImage || getPersonPhoto(linkedGuest),
++      };
++    }
++
+     const player = row.opponent_player_id
+       ? playerMap.get(String(row.opponent_player_id))
+       : null;
+@@ -269,6 +316,20 @@ function getPlayer2Identity(
+       ? guestMap.get(String(row.opponent_guest_hooper_id))
+       : null;
+ 
++    const promotedPlayer = guest?.source_player_id
++      ? playerMap.get(String(guest.source_player_id))
++      : null;
++
++    if (promotedPlayer) {
++      return {
++        id: `player-${promotedPlayer.id}`,
++        name: getPersonName(promotedPlayer) || row.opponent_name || "FACKTS Player",
++        type: "fackts_player",
++        position: getPersonPosition(promotedPlayer) || "FACKTS Player",
++        photo_url: rowImage || getPersonPhoto(promotedPlayer),
++      };
++    }
++
+     const fallbackName = row.opponent_name || "Guest Hooper";
+ 
+     return {
+@@ -540,12 +601,20 @@ async function getData() {
+   const guestMap = new Map<string, GuestHooper>();
+   guests.forEach((guest) => guestMap.set(String(guest.id), guest));
+ 
++  const guestBySourcePlayerId = new Map<string, GuestHooper>();
++  guests.forEach((guest) => {
++    if (guest.source_player_id) {
++      guestBySourcePlayerId.set(String(guest.source_player_id), guest);
++    }
++  });
++
+   return {
+     rows,
+     players,
+     guests,
+     playerMap,
+     guestMap,
++    guestBySourcePlayerId,
+   };
+ }
+ 
+@@ -553,6 +622,7 @@ function buildLeaderboard(
+   rows: OneOnOneRow[],
+   playerMap: Map<string, Player>,
+   guestMap: Map<string, GuestHooper>,
++  guestBySourcePlayerId: Map<string, GuestHooper>,
+   players: Player[],
+   guests: GuestHooper[]
+ ) {
+@@ -587,8 +657,20 @@ function buildLeaderboard(
+ 
+     if (player1Score === null || player2Score === null) return;
+ 
+-    const player1 = getPlayer1Identity(row, playerMap, guestMap);
+-    const player2 = getPlayer2Identity(row, playerMap, guestMap, players, guests);
++    const player1 = getPlayer1Identity(
++      row,
++      playerMap,
++      guestMap,
++      guestBySourcePlayerId
++    );
++    const player2 = getPlayer2Identity(
++      row,
++      playerMap,
++      guestMap,
++      guestBySourcePlayerId,
++      players,
++      guests
++    );
+ 
+     const player1Item = ensureItem(player1);
+     const player2Item = ensureItem(player2);
+@@ -665,12 +747,20 @@ function getBiggestWin(rows: OneOnOneRow[]) {
+ }
+ 
+ export default async function OneOnOnePage() {
+-  const { rows, players, guests, playerMap, guestMap } = await getData();
++  const {
++    rows,
++    players,
++    guests,
++    playerMap,
++    guestMap,
++    guestBySourcePlayerId,
++  } = await getData();
+ 
+   const leaderboard = buildLeaderboard(
+     rows,
+     playerMap,
+     guestMap,
++    guestBySourcePlayerId,
+     players,
+     guests
+   );
+@@ -756,6 +846,7 @@ export default async function OneOnOnePage() {
+             guests={guests}
+             playerMap={playerMap}
+             guestMap={guestMap}
++            guestBySourcePlayerId={guestBySourcePlayerId}
+           />
+         ) : (
+           <EmptyBox text="No upcoming 1-on-1 battles added yet." />
+@@ -819,6 +910,7 @@ export default async function OneOnOnePage() {
+             guests={guests}
+             playerMap={playerMap}
+             guestMap={guestMap}
++            guestBySourcePlayerId={guestBySourcePlayerId}
+           />
+         ) : (
+           <EmptyBox text="No completed 1-on-1 results yet." />
+@@ -835,6 +927,7 @@ export default async function OneOnOnePage() {
+             guests={guests}
+             playerMap={playerMap}
+             guestMap={guestMap}
++            guestBySourcePlayerId={guestBySourcePlayerId}
+           />
+         </section>
+       ) : null}
+@@ -848,12 +941,14 @@ function FixtureList({
+   guests,
+   playerMap,
+   guestMap,
++  guestBySourcePlayerId,
+ }: {
+   rows: OneOnOneRow[];
+   players: Player[];
+   guests: GuestHooper[];
+   playerMap: Map<string, Player>;
+   guestMap: Map<string, GuestHooper>;
++  guestBySourcePlayerId: Map<string, GuestHooper>;
+ }) {
+   return (
+     <div className="space-y-3">
+@@ -865,6 +960,7 @@ function FixtureList({
+           guests={guests}
+           playerMap={playerMap}
+           guestMap={guestMap}
++          guestBySourcePlayerId={guestBySourcePlayerId}
+         />
+       ))}
+     </div>
+@@ -877,15 +973,29 @@ function FixtureBattleCard({
+   guests,
+   playerMap,
+   guestMap,
++  guestBySourcePlayerId,
+ }: {
+   row: OneOnOneRow;
+   players: Player[];
+   guests: GuestHooper[];
+   playerMap: Map<string, Player>;
+   guestMap: Map<string, GuestHooper>;
++  guestBySourcePlayerId: Map<string, GuestHooper>;
+ }) {
+-  const player1 = getPlayer1Identity(row, playerMap, guestMap);
+-  const player2 = getPlayer2Identity(row, playerMap, guestMap, players, guests);
++  const player1 = getPlayer1Identity(
++    row,
++    playerMap,
++    guestMap,
++    guestBySourcePlayerId
++  );
++  const player2 = getPlayer2Identity(
++    row,
++    playerMap,
++    guestMap,
++    guestBySourcePlayerId,
++    players,
++    guests
++  );
+ 
+   const status = getMatchStatus(row);
+   const player1Score = getPlayer1Score(row);
+diff --git a/lib/hoops/careerStats.ts b/lib/hoops/careerStats.ts
+new file mode 100644
+index 0000000..927d382
+--- /dev/null
++++ b/lib/hoops/careerStats.ts
+@@ -0,0 +1,80 @@
++export type CareerGameStatRow = {
++  id?: string | null;
++  game_id?: string | null;
++  points?: number | string | null;
++  assists?: number | string | null;
++  rebounds?: number | string | null;
++  steals?: number | string | null;
++  blocks?: number | string | null;
++  three_pointers_made?: number | string | null;
++  three_pointers?: number | string | null;
++  threes_made?: number | string | null;
++  three_pm?: number | string | null;
++};
++
++export type CareerGameTotals = {
++  gamesPlayed: number;
++  points: number;
++  assists: number;
++  rebounds: number;
++  steals: number;
++  blocks: number;
++  threePointersMade: number;
++};
++
++function numberValue(value: unknown) {
++  const parsed = Number(value ?? 0);
++  return Number.isFinite(parsed) ? parsed : 0;
++}
++
++/**
++ * Keep one box score per covered game.  The first group wins if old data was
++ * accidentally entered in both the official and guest stats tables.
++ */
++export function mergeCareerGameStats(
++  ...groups: CareerGameStatRow[][]
++): CareerGameStatRow[] {
++  const rows = new Map<string, CareerGameStatRow>();
++  let fallbackIndex = 0;
++
++  groups.flat().forEach((row) => {
++    const gameKey = row.game_id ? `game:${row.game_id}` : null;
++    const rowKey = row.id ? `row:${row.id}` : `unknown:${fallbackIndex++}`;
++    const key = gameKey || rowKey;
++
++    if (!rows.has(key)) rows.set(key, row);
++  });
++
++  return Array.from(rows.values());
++}
++
++export function getCareerGameTotals(
++  rows: CareerGameStatRow[]
++): CareerGameTotals {
++  return rows.reduce<CareerGameTotals>(
++    (totals, row) => {
++      totals.gamesPlayed += 1;
++      totals.points += numberValue(row.points);
++      totals.assists += numberValue(row.assists);
++      totals.rebounds += numberValue(row.rebounds);
++      totals.steals += numberValue(row.steals);
++      totals.blocks += numberValue(row.blocks);
++      totals.threePointersMade += numberValue(
++        row.three_pointers_made ??
++          row.three_pointers ??
++          row.threes_made ??
++          row.three_pm
++      );
++      return totals;
++    },
++    {
++      gamesPlayed: 0,
++      points: 0,
++      assists: 0,
++      rebounds: 0,
++      steals: 0,
++      blocks: 0,
++      threePointersMade: 0,
++    }
++  );
++}
+diff --git a/lib/hoops/playerClassification.ts b/lib/hoops/playerClassification.ts
+index 7583130..06b5fcd 100644
+--- a/lib/hoops/playerClassification.ts
++++ b/lib/hoops/playerClassification.ts
+@@ -1,9 +1,13 @@
+ export const FACKTS_PLAYER_TYPE = "fackts_player" as const;
++export const EXTERNAL_PLAYER_TYPE = "external_player" as const;
++export const GUEST_HOOPER_TYPE = "guest_hooper" as const;
+ export const LEGACY_GUEST_TYPE = "guest_legacy" as const;
+ export const PROSPECT_PLAYER_TYPE = "prospect" as const;
+ 
+ export type PlayerClassification =
+   | typeof FACKTS_PLAYER_TYPE
++  | typeof EXTERNAL_PLAYER_TYPE
++  | typeof GUEST_HOOPER_TYPE
+   | typeof LEGACY_GUEST_TYPE
+   | typeof PROSPECT_PLAYER_TYPE;
+ 
+@@ -22,3 +26,20 @@ export function isOfficialFacktsPlayer(player: ClassifiablePlayer) {
+   const role = String(player.role ?? "").toLowerCase();
+   return !role.includes("guest") && !role.includes("external") && !role.includes("prospect");
+ }
++
++export function isGuestLeaderboardPlayer(player: ClassifiablePlayer) {
++  return (
++    player.player_type === EXTERNAL_PLAYER_TYPE ||
++    player.player_type === GUEST_HOOPER_TYPE ||
++    player.player_type === LEGACY_GUEST_TYPE
++  );
++}
++
++export function playerClassificationLabel(playerType?: string | null) {
++  if (playerType === EXTERNAL_PLAYER_TYPE) return "External Player";
++  if (playerType === GUEST_HOOPER_TYPE || playerType === LEGACY_GUEST_TYPE) {
++    return "Guest Hooper";
++  }
++  if (playerType === PROSPECT_PLAYER_TYPE) return "Prospect";
++  return "Official FACKTS Player";
++}
+diff --git a/lib/supabase/admin.ts b/lib/supabase/admin.ts
+index 0dedd3e..6b54c02 100644
+--- a/lib/supabase/admin.ts
++++ b/lib/supabase/admin.ts
+@@ -1,13 +1,13 @@
+ import { createClient } from "@supabase/supabase-js";
+ 
+ export function createSupabaseAdminClient() {
+-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
++  const supabaseUrl =
++    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
++  const serviceRoleKey =
++    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+ 
+   if (!supabaseUrl || !serviceRoleKey) {
+-    throw new Error(
+-      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY."
+-    );
++    throw new Error("PLAYER_ACCOUNTS_CONFIGURATION_MISSING");
+   }
+ 
+   return createClient(supabaseUrl, serviceRoleKey, {
+diff --git a/supabase/migrations/20260722_stats_follow_player_category.sql b/supabase/migrations/20260722_stats_follow_player_category.sql
+new file mode 100644
+index 0000000..f63b192
+--- /dev/null
++++ b/supabase/migrations/20260722_stats_follow_player_category.sql
+@@ -0,0 +1,196 @@
++begin;
++
++-- A former FACKTS player keeps one permanent player identity.  When their
++-- category changes, the linked guest row becomes the public guest identity
++-- while historical player_game_stats remain safely attached to the original
++-- player id.
++alter table public.players
++  drop constraint if exists players_player_type_check;
++
++alter table public.players
++  add constraint players_player_type_check
++  check (
++    player_type in (
++      'fackts_player',
++      'external_player',
++      'guest_hooper',
++      'guest_legacy',
++      'prospect'
++    )
++  );
++
++alter table public.guest_hoopers
++  add column if not exists source_player_id uuid references public.players(id) on delete set null,
++  add column if not exists guest_type text not null default 'guest_hooper';
++
++alter table public.guest_hoopers
++  drop constraint if exists guest_hoopers_guest_type_check;
++
++alter table public.guest_hoopers
++  add constraint guest_hoopers_guest_type_check
++  check (guest_type in ('guest_hooper', 'external_player'));
++
++create unique index if not exists guest_hoopers_source_player_id_unique
++  on public.guest_hoopers(source_player_id);
++
++create index if not exists guest_hoopers_guest_type_active_idx
++  on public.guest_hoopers(guest_type, is_active);
++
++comment on column public.guest_hoopers.source_player_id is
++  'Permanent link to a former/current players row so career stats follow category changes without copying or deleting match data.';
++
++-- Link guest rows created by the previous classification migration.  The two
++-- row numbers make name-based backfill one-to-one; ambiguous duplicates are
++-- left alone and receive a new unambiguous linked row below.
++with candidates as (
++  select
++    g.id as guest_id,
++    p.id as player_id,
++    row_number() over (
++      partition by p.id
++      order by
++        case when coalesce(g.notes, '') like 'Migrated from the legacy mixed players list.%' then 0 else 1 end,
++        g.created_at nulls last,
++        g.id
++    ) as player_rank,
++    row_number() over (
++      partition by g.id
++      order by p.created_at nulls last, p.id
++    ) as guest_rank
++  from public.players p
++  join public.guest_hoopers g
++    on lower(trim(g.full_name)) = lower(trim(coalesce(nullif(p.full_name, ''), nullif(p.name, ''), nullif(p.nickname, ''), 'Guest Hooper')))
++  where p.player_type in ('external_player', 'guest_hooper', 'guest_legacy')
++    and g.source_player_id is null
++)
++update public.guest_hoopers g
++set
++  source_player_id = candidates.player_id,
++  guest_type = case
++    when p.player_type = 'external_player' then 'external_player'
++    else 'guest_hooper'
++  end
++from candidates
++join public.players p on p.id = candidates.player_id
++where g.id = candidates.guest_id
++  and candidates.player_rank = 1
++  and candidates.guest_rank = 1;
++
++-- Ensure every already-demoted player has exactly one linked guest identity.
++insert into public.guest_hoopers (
++  source_player_id,
++  guest_type,
++  full_name,
++  nickname,
++  position,
++  photo_url,
++  photo_position,
++  notes,
++  is_active
++)
++select
++  p.id,
++  case when p.player_type = 'external_player' then 'external_player' else 'guest_hooper' end,
++  coalesce(nullif(trim(p.full_name), ''), nullif(trim(p.name), ''), nullif(trim(p.nickname), ''), 'Guest Hooper'),
++  p.nickname,
++  p.position,
++  p.photo_url,
++  coalesce(p.photo_position, 'center center'),
++  'Linked to the original FACKTS player identity. Career stats follow the current player category.',
++  coalesce(p.is_active, true)
++from public.players p
++where p.player_type in ('external_player', 'guest_hooper', 'guest_legacy')
++on conflict (source_player_id) do update
++set
++  guest_type = excluded.guest_type,
++  full_name = excluded.full_name,
++  nickname = excluded.nickname,
++  position = excluded.position,
++  photo_url = excluded.photo_url,
++  photo_position = excluded.photo_position,
++  is_active = excluded.is_active;
++
++-- A demoted player cannot retain official portal access or featured-player
++-- placement.  The Auth user itself is preserved so no account data is deleted.
++create or replace function public.enforce_player_category_access()
++returns trigger
++language plpgsql
++security definer
++set search_path = public
++as $$
++begin
++  if new.player_type <> 'fackts_player' then
++    new.user_id := null;
++    new.is_featured := false;
++  end if;
++
++  return new;
++end;
++$$;
++
++drop trigger if exists enforce_player_category_access_trigger on public.players;
++create trigger enforce_player_category_access_trigger
++before insert or update of player_type, user_id, is_featured
++on public.players
++for each row
++execute function public.enforce_player_category_access();
++
++-- Keep the linked guest identity in sync whenever an admin changes the player
++-- category or edits public profile fields.
++create or replace function public.sync_linked_guest_identity()
++returns trigger
++language plpgsql
++security definer
++set search_path = public
++as $$
++begin
++  if new.player_type in ('external_player', 'guest_hooper', 'guest_legacy') then
++    insert into public.guest_hoopers (
++      source_player_id,
++      guest_type,
++      full_name,
++      nickname,
++      position,
++      photo_url,
++      photo_position,
++      notes,
++      is_active
++    )
++    values (
++      new.id,
++      case when new.player_type = 'external_player' then 'external_player' else 'guest_hooper' end,
++      coalesce(nullif(trim(new.full_name), ''), nullif(trim(new.name), ''), nullif(trim(new.nickname), ''), 'Guest Hooper'),
++      new.nickname,
++      new.position,
++      new.photo_url,
++      coalesce(new.photo_position, 'center center'),
++      'Linked to the original FACKTS player identity. Career stats follow the current player category.',
++      coalesce(new.is_active, true)
++    )
++    on conflict (source_player_id) do update
++    set
++      guest_type = excluded.guest_type,
++      full_name = excluded.full_name,
++      nickname = excluded.nickname,
++      position = excluded.position,
++      photo_url = excluded.photo_url,
++      photo_position = excluded.photo_position,
++      is_active = excluded.is_active;
++  else
++    update public.guest_hoopers
++    set is_active = false
++    where source_player_id = new.id;
++  end if;
++
++  return new;
++end;
++$$;
++
++drop trigger if exists sync_linked_guest_identity_trigger on public.players;
++create trigger sync_linked_guest_identity_trigger
++after insert or update of player_type, full_name, name, nickname, position, photo_url, photo_position, is_active
++on public.players
++for each row
++execute function public.sync_linked_guest_identity();
++
++commit;

@@ -1,0 +1,14 @@
+FACKTS EVENTS MOBILE + NAVIGATION FIX
+
+1. Copy everything inside this folder.
+2. Paste it into the main fackts-hoops-web project folder (the folder containing package.json).
+3. Choose "Replace the files in the destination" when Windows asks.
+4. Stop the current dev server with Ctrl+C.
+5. Run: npm run dev
+6. Open localhost:3000 again. Refresh once if the browser was already open.
+
+The first localhost load removes the stale service worker/cache that was causing
+other pages to hang. The round Next.js development badge is also disabled, and
+the Events coverage CTA is corrected for phone screens.
+
+Validation: npx tsc --noEmit passed.

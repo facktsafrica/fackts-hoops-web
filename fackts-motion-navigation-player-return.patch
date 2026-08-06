@@ -1,0 +1,649 @@
+diff --git a/app/layout.tsx b/app/layout.tsx
+index cd7e509..09b5a96 100644
+--- a/app/layout.tsx
++++ b/app/layout.tsx
+@@ -1,10 +1,12 @@
+-import type { Metadata, Viewport } from "next";
+-import "./globals.css";
+-import PublicHeader from "./components/PublicHeader";
+-import PublicMobileNav from "./components/PublicMobileNav";
+-import FacktsTicker from "./components/FacktsTicker";
+-import PwaInstallButton from "./components/PwaInstallButton";
+-import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
++import type { Metadata, Viewport } from "next";
++import "./globals.css";
++import "./fackts-motion.css";
++import PublicHeader from "./components/PublicHeader";
++import PublicMobileNav from "./components/PublicMobileNav";
++import FacktsTicker from "./components/FacktsTicker";
++import PwaInstallButton from "./components/PwaInstallButton";
++import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
++import PlayerPortalReturn from "./components/PlayerPortalReturn";
+ 
+ export const metadata: Metadata = {
+   metadataBase: new URL(
+@@ -65,10 +67,11 @@ export default function RootLayout({
+       <body>
+         <PwaServiceWorkerClient />
+         <PublicHeader />
+-        <PwaInstallButton />
+-        <FacktsTicker />
+-        {children}
+-        <PublicMobileNav />
++        <PwaInstallButton />
++        <FacktsTicker />
++        {children}
++        <PlayerPortalReturn />
++        <PublicMobileNav />
+       </body>
+     </html>
+   );
+diff --git a/app/components/PublicHeader.tsx b/app/components/PublicHeader.tsx
+index 3c54d0b..296ad6a 100644
+--- a/app/components/PublicHeader.tsx
++++ b/app/components/PublicHeader.tsx
+@@ -135,12 +135,19 @@ export default function PublicHeader() {
+               Book Coverage
+             </Link>
+ 
+-            <button
+-              type="button"
+-              onClick={() => setOpen(true)}
+-              className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-black text-slate-100 transition hover:border-orange-400 hover:text-orange-300 md:px-5 md:text-sm"
+-            >
+-              Menu
++            <button
++              type="button"
++              onClick={() => setOpen(true)}
++              aria-label="Open site menu"
++              aria-expanded={open}
++              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-100 transition hover:border-orange-400 hover:text-orange-300"
++            >
++              <span className="sr-only">Open site menu</span>
++              <span className="flex w-5 flex-col gap-1.5" aria-hidden="true">
++                <span className="h-0.5 w-full rounded-full bg-current" />
++                <span className="h-0.5 w-full rounded-full bg-current" />
++                <span className="h-0.5 w-full rounded-full bg-current" />
++              </span>
+             </button>
+           </div>
+         </div>
+@@ -181,13 +188,14 @@ export default function PublicHeader() {
+                   </div>
+                 </Link>
+ 
+-                <button
+-                  type="button"
+-                  onClick={() => setOpen(false)}
+-                  className="rounded-full border border-slate-700 px-4 py-2 text-sm font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300"
+-                >
+-                  Close
+-                </button>
++                <button
++                  type="button"
++                  onClick={() => setOpen(false)}
++                  aria-label="Close site menu"
++                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 text-xl font-black text-slate-200 transition hover:border-orange-400 hover:text-orange-300"
++                >
++                  ×
++                </button>
+               </div>
+             </div>
+ 
+diff --git a/app/admin/layout.tsx b/app/admin/layout.tsx
+index 43000ac..37ddf49 100644
+--- a/app/admin/layout.tsx
++++ b/app/admin/layout.tsx
+@@ -2,8 +2,9 @@
+ 
+ import { ReactNode, useEffect, useState } from "react";
+ import { usePathname } from "next/navigation";
+-import Link from "next/link";
+-import { supabase } from "@/lib/supabase";
++import Link from "next/link";
++import { supabase } from "@/lib/supabase";
++import AdminNavigation from "@/app/components/AdminNavigation";
+ 
+ type AccessState = "checking" | "allowed" | "denied";
+ 
+@@ -125,5 +126,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
+     );
+   }
+ 
+-  return <>{children}</>;
+-}
++  if (isLoginPage) return <>{children}</>;
++
++  return (
++    <>
++      <AdminNavigation />
++      {children}
++    </>
++  );
++}
+diff --git a/app/page.tsx b/app/page.tsx
+index 6cc8684..43445ad 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -1,7 +1,8 @@
+ import Link from "next/link";
+ import { supabase } from "@/lib/supabase";
+-import FacktsNetwork from "./components/FacktsNetwork";
+-import FacktsStories from "./components/FacktsStories";
++import FacktsNetwork from "./components/FacktsNetwork";
++import FacktsStories from "./components/FacktsStories";
++import AnimatedNumber from "./components/AnimatedNumber";
+ 
+ export const dynamic = "force-dynamic";
+ export const revalidate = 0;
+@@ -1077,7 +1078,9 @@ function HeroStat({ label, value }: { label: string; value: string }) {
+   return (
+     <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 backdrop-blur">
+       <div className="text-sm text-slate-400">{label}</div>
+-      <div className="mt-2 text-3xl font-black text-orange-300">{value}</div>
++      <div className="mt-2 text-3xl font-black text-orange-300">
++        <AnimatedNumber value={value} />
++      </div>
+     </div>
+   );
+ }
+@@ -1103,7 +1106,9 @@ function FeaturedStat({ label, value }: { label: string; value: string }) {
+         {label}
+       </div>
+ 
+-      <div className="mt-1 text-lg font-black text-orange-300">{value}</div>
++      <div className="mt-1 text-lg font-black text-orange-300">
++        <AnimatedNumber value={value} />
++      </div>
+     </div>
+   );
+ }
+@@ -1115,7 +1120,9 @@ function FlashStat({ label, value }: { label: string; value: number }) {
+         {label}
+       </div>
+ 
+-      <div className="mt-2 text-4xl font-black text-orange-300">{value}</div>
++      <div className="mt-2 text-4xl font-black text-orange-300">
++        <AnimatedNumber value={value} />
++      </div>
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/player/page.tsx b/app/player/page.tsx
+index 2223298..ee5b435 100644
+--- a/app/player/page.tsx
++++ b/app/player/page.tsx
+@@ -2,7 +2,8 @@ import Link from "next/link";
+ import { redirect } from "next/navigation";
+ import PlayerLogoutButton from "@/app/components/PlayerLogoutButton";
+ import NotificationBell from "@/app/components/NotificationBell";
+-import PushNotificationManager from "@/app/components/PushNotificationManager";
++import PushNotificationManager from "@/app/components/PushNotificationManager";
++import AnimatedNumber from "@/app/components/AnimatedNumber";
+ import { getPlayerAccess } from "@/lib/auth/server";
+ 
+ export const dynamic = "force-dynamic";
+@@ -214,7 +215,9 @@ function PortalStat({ label, value }: { label: string; value: string }) {
+   return (
+     <div className="rounded-2xl border border-slate-800 bg-black/40 p-4">
+       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+-      <p className="mt-2 text-3xl font-black text-orange-300">{value}</p>
++      <p className="mt-2 text-3xl font-black text-orange-300">
++        <AnimatedNumber value={value} />
++      </p>
+     </div>
+   );
+ }
+diff --git a/app/games/page.tsx b/app/games/page.tsx
+index 9013f47..90281bc 100644
+--- a/app/games/page.tsx
++++ b/app/games/page.tsx
+@@ -1,8 +1,9 @@
+ export const dynamic = "force-dynamic";
+ export const revalidate = 0;
+ 
+-import Link from "next/link";
+-import { createClient } from "@supabase/supabase-js";
++import Link from "next/link";
++import { createClient } from "@supabase/supabase-js";
++import AnimatedNumber from "@/app/components/AnimatedNumber";
+ 
+ type GameRow = {
+   id: string;
+@@ -515,8 +516,9 @@ function FeaturedGameCard({
+             Score
+           </p>
+ 
+-          <p className="mt-2 text-5xl font-black">
+-            {getFacktsScore(game) ?? "-"} - {getOpponentScore(game) ?? "-"}
++          <p className="mt-2 text-5xl font-black">
++            <AnimatedNumber value={getFacktsScore(game) ?? "-"} /> -{" "}
++            <AnimatedNumber value={getOpponentScore(game) ?? "-"} />
+           </p>
+ 
+           {getGameStatus(game) === "Completed" ? (
+@@ -629,8 +631,9 @@ function GameCard({
+             Score
+           </p>
+ 
+-          <p className="mt-1 text-3xl font-black">
+-            {facktsScore ?? "-"} - {opponentScore ?? "-"}
++          <p className="mt-1 text-3xl font-black">
++            <AnimatedNumber value={facktsScore ?? "-"} /> -{" "}
++            <AnimatedNumber value={opponentScore ?? "-"} />
+           </p>
+ 
+           {status === "Completed" ? (
+@@ -765,4 +768,4 @@ function EmptyBox({ text }: { text: string }) {
+       {text}
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/games/[id]/page.tsx b/app/games/[id]/page.tsx
+index 4de0dc6..23bacd6 100644
+--- a/app/games/[id]/page.tsx
++++ b/app/games/[id]/page.tsx
+@@ -1,8 +1,9 @@
+ export const dynamic = "force-dynamic";
+ export const revalidate = 0;
+ 
+-import Link from "next/link";
+-import { createClient } from "@supabase/supabase-js";
++import Link from "next/link";
++import { createClient } from "@supabase/supabase-js";
++import AnimatedNumber from "@/app/components/AnimatedNumber";
+ 
+ type GameRow = {
+   id: string;
+@@ -536,8 +537,8 @@ export default async function GameDetailsPage({
+                       FACKTS
+                     </p>
+ 
+-                    <p className="text-5xl font-black text-white sm:text-6xl">
+-                      {facktsScore ?? "-"}
++                    <p className="text-5xl font-black text-white sm:text-6xl">
++                      <AnimatedNumber value={facktsScore ?? "-"} />
+                     </p>
+                   </div>
+ 
+@@ -548,8 +549,8 @@ export default async function GameDetailsPage({
+                       {getOpponent(game)}
+                     </p>
+ 
+-                    <p className="text-5xl font-black text-white sm:text-6xl">
+-                      {opponentScore ?? "-"}
++                    <p className="text-5xl font-black text-white sm:text-6xl">
++                      <AnimatedNumber value={opponentScore ?? "-"} />
+                     </p>
+                   </div>
+                 </div>
+@@ -843,7 +844,9 @@ function BigStat({ label, value }: { label: string; value: number }) {
+         {label}
+       </p>
+ 
+-      <p className="mt-2 text-4xl font-black text-orange-300">{value}</p>
++      <p className="mt-2 text-4xl font-black text-orange-300">
++        <AnimatedNumber value={value} />
++      </p>
+     </div>
+   );
+ }
+diff --git a/app/one-on-one/[id]/page.tsx b/app/one-on-one/[id]/page.tsx
+index 133a2fc..6721fb2 100644
+--- a/app/one-on-one/[id]/page.tsx
++++ b/app/one-on-one/[id]/page.tsx
+@@ -1,6 +1,7 @@
+ import Link from "next/link";
+ import { createClient } from "@supabase/supabase-js";
+-import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
++import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
++import AnimatedNumber from "@/app/components/AnimatedNumber";
+ 
+ type Player = {
+   id: string;
+@@ -453,8 +454,8 @@ export default async function OneOnOneMatchPage({
+                     {participant.name}
+                   </p>
+                   <p className="text-xs text-zinc-500">{participant.type}</p>
+-                  <p className="mt-3 text-5xl font-black text-orange-300">
+-                    {participantScore ?? "-"}
++                  <p className="mt-3 text-5xl font-black text-orange-300">
++                    <AnimatedNumber value={participantScore ?? "-"} />
+                   </p>
+                 </div>
+ 
+@@ -467,8 +468,8 @@ export default async function OneOnOneMatchPage({
+                     {opponent.name}
+                   </p>
+                   <p className="text-xs text-zinc-500">{opponent.type}</p>
+-                  <p className="mt-3 text-5xl font-black text-white">
+-                    {opponentScore ?? "-"}
++                  <p className="mt-3 text-5xl font-black text-white">
++                    <AnimatedNumber value={opponentScore ?? "-"} />
+                   </p>
+                 </div>
+               </div>
+diff --git a/app/players/[id]/page.tsx b/app/players/[id]/page.tsx
+index a16117d..8f492ec 100644
+--- a/app/players/[id]/page.tsx
++++ b/app/players/[id]/page.tsx
+@@ -1,4 +1,5 @@
+-import Link from "next/link";
++import Link from "next/link";
++import AnimatedNumber from "@/app/components/AnimatedNumber";
+ import { supabase } from "@/lib/supabase";
+ import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
+ 
+@@ -328,7 +329,9 @@ function BigStat({ label, value }: { label: string; value: string }) {
+   return (
+     <div className="rounded-3xl border border-orange-500/20 bg-slate-900 p-5 text-center shadow-lg shadow-orange-950/10">
+       <div className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</div>
+-      <div className="mt-2 text-3xl font-black text-orange-300">{value}</div>
++      <div className="mt-2 text-3xl font-black text-orange-300">
++        <AnimatedNumber value={value} />
++      </div>
+     </div>
+   );
+ }
+@@ -337,7 +340,9 @@ function SmallStat({ label, value }: { label: string; value: string }) {
+   return (
+     <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-center">
+       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+-      <div className="mt-1 text-lg font-black text-orange-300">{value}</div>
++      <div className="mt-1 text-lg font-black text-orange-300">
++        <AnimatedNumber value={value} />
++      </div>
+     </div>
+   );
+ }
+diff --git a/workspace/scratch/3f522721672a/work-current/fackts-hoops-web/app/components/AnimatedNumber.tsx b/app/components/AnimatedNumber.tsx
+new file mode 100644
+index 0000000..39b5d80
+--- /dev/null
++++ b/app/components/AnimatedNumber.tsx
+@@ -0,0 +1,71 @@
++"use client";
++
++import { useEffect, useRef, useState } from "react";
++
++type AnimatedNumberProps = {
++  value: number | string;
++  duration?: number;
++  className?: string;
++};
++
++function parseValue(value: number | string) {
++  if (typeof value === "number" && Number.isFinite(value)) {
++    return { number: value, decimals: Number.isInteger(value) ? 0 : 1 };
++  }
++
++  const text = String(value).trim();
++  if (!/^-?\d+(?:\.\d+)?$/.test(text)) return null;
++
++  const number = Number(text);
++  if (!Number.isFinite(number)) return null;
++
++  return {
++    number,
++    decimals: text.includes(".") ? text.split(".")[1].length : 0,
++  };
++}
++
++export default function AnimatedNumber({
++  value,
++  duration = 850,
++  className,
++}: AnimatedNumberProps) {
++  const parsed = parseValue(value);
++  const [display, setDisplay] = useState(parsed ? 0 : value);
++  const frameRef = useRef<number | null>(null);
++
++  useEffect(() => {
++    const next = parseValue(value);
++
++    if (!next || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
++      setDisplay(value);
++      return;
++    }
++
++    const startedAt = performance.now();
++
++    function animate(now: number) {
++      const progress = Math.min((now - startedAt) / duration, 1);
++      const eased = 1 - Math.pow(1 - progress, 3);
++      const current = next!.number * eased;
++
++      setDisplay(
++        next!.decimals > 0
++          ? current.toFixed(next!.decimals)
++          : Math.round(current)
++      );
++
++      if (progress < 1) {
++        frameRef.current = requestAnimationFrame(animate);
++      }
++    }
++
++    frameRef.current = requestAnimationFrame(animate);
++
++    return () => {
++      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
++    };
++  }, [duration, value]);
++
++  return <span className={className}>{display}</span>;
++}
+diff --git a/workspace/scratch/3f522721672a/work-current/fackts-hoops-web/app/components/PlayerPortalReturn.tsx b/app/components/PlayerPortalReturn.tsx
+new file mode 100644
+index 0000000..3076316
+--- /dev/null
++++ b/app/components/PlayerPortalReturn.tsx
+@@ -0,0 +1,74 @@
++"use client";
++
++import Link from "next/link";
++import { usePathname } from "next/navigation";
++import { useEffect, useState } from "react";
++import { supabase } from "@/lib/supabase";
++
++const PLAYER_DESTINATIONS = [
++  "/calendar",
++  "/games",
++  "/leaderboards",
++  "/one-on-one",
++  "/players",
++];
++
++export default function PlayerPortalReturn() {
++  const pathname = usePathname();
++  const [hasPlayerSession, setHasPlayerSession] = useState(false);
++
++  const isDestination = PLAYER_DESTINATIONS.some(
++    (path) => pathname === path || pathname.startsWith(`${path}/`)
++  );
++
++  useEffect(() => {
++    let active = true;
++
++    async function checkPlayerSession() {
++      if (!isDestination) {
++        setHasPlayerSession(false);
++        return;
++      }
++
++      const { data } = await supabase.auth.getUser();
++      if (!active || !data.user) {
++        if (active) setHasPlayerSession(false);
++        return;
++      }
++
++      const { data: player } = await supabase
++        .from("players")
++        .select("id")
++        .eq("user_id", data.user.id)
++        .eq("is_active", true)
++        .eq("player_type", "official_fackts")
++        .maybeSingle();
++
++      if (active) setHasPlayerSession(Boolean(player));
++    }
++
++    checkPlayerSession();
++
++    const { data: listener } = supabase.auth.onAuthStateChange(() => {
++      checkPlayerSession();
++    });
++
++    return () => {
++      active = false;
++      listener.subscription.unsubscribe();
++    };
++  }, [isDestination]);
++
++  if (!isDestination || !hasPlayerSession) return null;
++
++  return (
++    <Link
++      href="/player"
++      className="fixed bottom-5 left-4 z-[85] inline-flex items-center gap-2 rounded-full border border-orange-400/50 bg-slate-950/95 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-orange-200 shadow-2xl shadow-black/50 backdrop-blur transition hover:-translate-y-1 hover:bg-orange-500 hover:text-black sm:bottom-6 sm:left-6 sm:text-sm"
++      aria-label="Back to Player Portal"
++    >
++      <span aria-hidden="true">←</span>
++      Player Portal
++    </Link>
++  );
++}
+diff --git a/workspace/scratch/3f522721672a/work-current/fackts-hoops-web/app/components/AdminNavigation.tsx b/app/components/AdminNavigation.tsx
+new file mode 100644
+index 0000000..e3cafc4
+--- /dev/null
++++ b/app/components/AdminNavigation.tsx
+@@ -0,0 +1,124 @@
++"use client";
++
++import Link from "next/link";
++import { usePathname } from "next/navigation";
++import { useEffect, useState } from "react";
++import AdminLogoutButton from "./AdminLogoutButton";
++
++const adminItems = [
++  ["Control Room", "/admin"],
++  ["Players", "/admin/players"],
++  ["Player Applications", "/admin/player-applications"],
++  ["Player Accounts", "/admin/player-access"],
++  ["Games", "/admin/games"],
++  ["Player Stats", "/admin/stats"],
++  ["Calendar / Events", "/admin/calendar"],
++  ["1-on-1 Battles", "/admin/one-on-one"],
++  ["Ticker / Site Notice", "/admin/ticker"],
++  ["Guest Hoopers", "/admin/guest-hoopers"],
++  ["Guest Game Stats", "/admin/guest-game-stats"],
++  ["Rosters", "/admin/rosters"],
++  ["App Notifications", "/admin/notifications"],
++  ["Partners", "/admin/partners"],
++] as const;
++
++export default function AdminNavigation() {
++  const pathname = usePathname();
++  const [open, setOpen] = useState(false);
++
++  useEffect(() => setOpen(false), [pathname]);
++
++  return (
++    <>
++      <header className="sticky top-0 z-[80] border-b border-slate-800 bg-slate-950/95 text-white shadow-lg shadow-black/20 backdrop-blur">
++        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
++          <Link href="/admin" className="min-w-0">
++            <p className="truncate text-[10px] font-black uppercase tracking-[0.24em] text-orange-300">
++              FACKTS Hoops
++            </p>
++            <p className="truncate text-lg font-black">Admin Control Room</p>
++          </Link>
++
++          <button
++            type="button"
++            onClick={() => setOpen(true)}
++            aria-label="Open admin menu"
++            aria-expanded={open}
++            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition hover:border-orange-400 hover:text-orange-300"
++          >
++            <span className="sr-only">Open admin menu</span>
++            <span className="flex w-5 flex-col gap-1.5" aria-hidden="true">
++              <span className="h-0.5 w-full rounded-full bg-current" />
++              <span className="h-0.5 w-full rounded-full bg-current" />
++              <span className="h-0.5 w-full rounded-full bg-current" />
++            </span>
++          </button>
++        </div>
++      </header>
++
++      {open ? (
++        <div className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm">
++          <button
++            type="button"
++            aria-label="Close admin menu overlay"
++            onClick={() => setOpen(false)}
++            className="absolute inset-0 h-full w-full"
++          />
++          <aside className="absolute right-0 top-0 flex h-full w-full max-w-sm flex-col border-l border-slate-800 bg-slate-950 text-white shadow-2xl">
++            <div className="flex items-center justify-between border-b border-slate-800 p-5">
++              <div>
++                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-orange-300">
++                  Admin Only
++                </p>
++                <p className="mt-1 text-xl font-black">Control Menu</p>
++              </div>
++              <button
++                type="button"
++                onClick={() => setOpen(false)}
++                aria-label="Close admin menu"
++                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 text-xl font-black text-slate-200 hover:border-orange-400 hover:text-orange-300"
++              >
++                ×
++              </button>
++            </div>
++
++            <nav className="flex-1 overflow-y-auto p-5">
++              <div className="grid gap-2">
++                {adminItems.map(([label, href]) => {
++                  const active =
++                    href === "/admin"
++                      ? pathname === href
++                      : pathname === href || pathname.startsWith(`${href}/`);
++
++                  return (
++                    <Link
++                      key={href}
++                      href={href}
++                      className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${
++                        active
++                          ? "border-orange-500/50 bg-orange-500/15 text-orange-200"
++                          : "border-slate-800 bg-slate-900 text-slate-200 hover:border-orange-400/60"
++                      }`}
++                    >
++                      {label}
++                    </Link>
++                  );
++                })}
++              </div>
++            </nav>
++
++            <div className="grid grid-cols-2 gap-2 border-t border-slate-800 p-5">
++              <Link
++                href="/"
++                className="rounded-2xl border border-slate-700 px-4 py-3 text-center text-sm font-black text-slate-200"
++              >
++                View Site
++              </Link>
++              <AdminLogoutButton />
++            </div>
++          </aside>
++        </div>
++      ) : null}
++    </>
++  );
++}

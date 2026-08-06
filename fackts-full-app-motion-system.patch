@@ -1,0 +1,281 @@
+diff --git a/app/fackts-motion.css b/app/fackts-motion.css
+index 1c02dfc..5834630 100644
+--- a/app/fackts-motion.css
++++ b/app/fackts-motion.css
+@@ -16,7 +16,7 @@ body {
+    ========================================================= */
+ 
+ main {
+-  animation: facktsPageRise 320ms ease-out both;
++  animation: facktsPageRise 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+ }
+ 
+ @keyframes facktsPageRise {
+@@ -36,8 +36,51 @@ main {
+    Do not touch z-index here. Keeps hero text visible.
+    ========================================================= */
+ 
+-main > section {
+-  animation: facktsSectionReveal 420ms ease-out both;
++[data-motion-ready="true"] {
++  opacity: 0;
++  transform: translateY(22px) scale(0.985);
++  transition:
++    opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
++    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
++    box-shadow 220ms ease,
++    border-color 220ms ease,
++    background-color 220ms ease;
++  transition-delay: var(--fackts-motion-delay, 0ms);
++}
++
++[data-motion-ready="true"][data-motion-visible="true"] {
++  opacity: 1;
++  transform: translateY(0) scale(1);
++}
++
++.fackts-counting {
++  display: inline-block;
++  min-width: 1ch;
++  color: #fb923c;
++  font-variant-numeric: tabular-nums;
++  text-shadow: 0 0 18px rgba(249, 115, 22, 0.28);
++  animation: facktsNumberPulse 360ms ease-out both;
++}
++
++.fackts-counted {
++  animation: facktsNumberSettle 260ms ease-out both;
++}
++
++@keyframes facktsNumberPulse {
++  from {
++    opacity: 0.35;
++    transform: translateY(7px) scale(0.9);
++  }
++  to {
++    opacity: 1;
++    transform: translateY(0) scale(1);
++  }
++}
++
++@keyframes facktsNumberSettle {
++  0% { transform: scale(1); }
++  55% { transform: scale(1.08); }
++  100% { transform: scale(1); }
+ }
+ 
+ @keyframes facktsSectionReveal {
+@@ -129,7 +172,7 @@ button.rounded-2xl:hover {
+ 
+ a.rounded-3xl:hover,
+ article.rounded-3xl:hover {
+-  transform: translateY(-3px);
++  transform: translateY(-5px) scale(1.008);
+   box-shadow:
+     0 14px 34px rgba(0, 0, 0, 0.3),
+     0 0 20px rgba(249, 115, 22, 0.1);
+@@ -174,8 +217,47 @@ a img {
+ 
+ article:hover img,
+ a:hover img {
++  transform: scale(1.025);
+   filter: saturate(1.06) contrast(1.03);
+ }
++
++button,
++a,
++[role="button"] {
++  transition:
++    transform 180ms ease,
++    opacity 180ms ease,
++    color 180ms ease,
++    background-color 180ms ease,
++    border-color 180ms ease,
++    box-shadow 180ms ease;
++}
++
++table tbody tr {
++  transition:
++    transform 180ms ease,
++    background-color 180ms ease,
++    border-color 180ms ease;
++}
++
++table tbody tr:hover {
++  transform: translateX(3px);
++}
++
++header {
++  animation: facktsHeaderDrop 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
++}
++
++@keyframes facktsHeaderDrop {
++  from {
++    opacity: 0;
++    transform: translateY(-10px);
++  }
++  to {
++    opacity: 1;
++    transform: translateY(0);
++  }
++}
+ 
+ #media-stories article:hover img {
+   transform: scale(1.035);
+diff --git a/app/layout.tsx b/app/layout.tsx
+index b6a1079..9894d68 100644
+--- a/app/layout.tsx
++++ b/app/layout.tsx
+@@ -7,6 +7,7 @@ import FacktsTicker from "./components/FacktsTicker";
+ import PwaInstallButton from "./components/PwaInstallButton";
+ import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
+ import PlayerPortalReturn from "./components/PlayerPortalReturn";
++import FacktsMotionSystem from "./components/FacktsMotionSystem";
+ 
+ export const metadata: Metadata = {
+   metadataBase: new URL(
+@@ -66,6 +67,7 @@ export default function RootLayout({
+       </head>
+       <body>
+         <PwaServiceWorkerClient />
++        <FacktsMotionSystem />
+         <PublicHeader />
+         <PwaInstallButton />
+         <FacktsTicker />
+diff --git a/app/components/FacktsMotionSystem.tsx b/app/components/FacktsMotionSystem.tsx
+new file mode 100644
+index 0000000..61019e9
+--- /dev/null
++++ b/app/components/FacktsMotionSystem.tsx
+@@ -0,0 +1,131 @@
++"use client";
++
++import { useEffect } from "react";
++import { usePathname } from "next/navigation";
++
++const REVEAL_SELECTOR = [
++  "main section",
++  "main article",
++  "main li",
++  "main table tbody tr",
++  "main [class*='rounded-2xl']",
++  "main [class*='rounded-3xl']",
++].join(",");
++
++const NUMBER_PARENT_SELECTOR = "h1,h2,h3,h4,p,span,strong,td,th,dd,button";
++const COUNTABLE_NUMBER = /^(-?\d{1,6}(?:,\d{3})*(?:\.\d+)?)(%|\+)?$/;
++
++function animateNumber(element: HTMLElement) {
++  if (element.dataset.counted === "true") return;
++
++  const original = element.textContent?.trim() ?? "";
++  const match = original.match(COUNTABLE_NUMBER);
++  if (!match) return;
++
++  const target = Number(match[1].replaceAll(",", ""));
++  if (!Number.isFinite(target)) return;
++
++  const decimals = match[1].includes(".") ? match[1].split(".")[1]?.length ?? 0 : 0;
++  const suffix = match[2] ?? "";
++  const usesCommas = match[1].includes(",");
++  const duration = Math.min(1250, Math.max(480, Math.abs(target) * 24));
++  const startedAt = performance.now();
++
++  element.dataset.counted = "true";
++  element.classList.add("fackts-counting");
++
++  const format = (value: number) => {
++    const fixed = value.toFixed(decimals);
++    if (!usesCommas) return fixed;
++    const [whole, fraction] = fixed.split(".");
++    const formattedWhole = Number(whole).toLocaleString("en-US");
++    return fraction ? `${formattedWhole}.${fraction}` : formattedWhole;
++  };
++
++  const frame = (now: number) => {
++    const progress = Math.min(1, (now - startedAt) / duration);
++    const eased = 1 - Math.pow(1 - progress, 3);
++    element.textContent = `${format(target * eased)}${suffix}`;
++
++    if (progress < 1) {
++      requestAnimationFrame(frame);
++      return;
++    }
++
++    element.textContent = original;
++    element.classList.remove("fackts-counting");
++    element.classList.add("fackts-counted");
++  };
++
++  requestAnimationFrame(frame);
++}
++
++export default function FacktsMotionSystem() {
++  const pathname = usePathname();
++
++  useEffect(() => {
++    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
++
++    let scheduled = false;
++
++    const revealObserver = new IntersectionObserver(
++      (entries) => {
++        entries.forEach((entry) => {
++          if (!entry.isIntersecting) return;
++          (entry.target as HTMLElement).dataset.motionVisible = "true";
++          revealObserver.unobserve(entry.target);
++        });
++      },
++      { rootMargin: "0px 0px -7% 0px", threshold: 0.08 }
++    );
++
++    const numberObserver = new IntersectionObserver(
++      (entries) => {
++        entries.forEach((entry) => {
++          if (!entry.isIntersecting) return;
++          animateNumber(entry.target as HTMLElement);
++          numberObserver.unobserve(entry.target);
++        });
++      },
++      { threshold: 0.35 }
++    );
++
++    const prepare = () => {
++      scheduled = false;
++
++      document.querySelectorAll<HTMLElement>(REVEAL_SELECTOR).forEach((item, index) => {
++        if (item.dataset.motionReady === "true") return;
++        item.dataset.motionReady = "true";
++        item.style.setProperty("--fackts-motion-delay", `${(index % 8) * 42}ms`);
++        revealObserver.observe(item);
++      });
++
++      document.querySelectorAll<HTMLElement>(NUMBER_PARENT_SELECTOR).forEach((element) => {
++        if (element.children.length > 0) return;
++        if (element.closest("nav,aside,form,[role='dialog'],[data-no-count-up]")) return;
++        if (!COUNTABLE_NUMBER.test(element.textContent?.trim() ?? "")) return;
++        if (element.dataset.countObserved === "true") return;
++        element.dataset.countObserved = "true";
++        numberObserver.observe(element);
++      });
++    };
++
++    const schedulePrepare = () => {
++      if (scheduled) return;
++      scheduled = true;
++      requestAnimationFrame(prepare);
++    };
++
++    const mutationObserver = new MutationObserver(schedulePrepare);
++    mutationObserver.observe(document.body, { childList: true, subtree: true });
++    prepare();
++
++    return () => {
++      revealObserver.disconnect();
++      numberObserver.disconnect();
++      mutationObserver.disconnect();
++    };
++  }, [pathname]);
++
++  return null;
++}

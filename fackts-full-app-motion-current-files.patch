@@ -1,0 +1,218 @@
+diff --git a/app/components/FacktsMotionSystem.tsx b/app/components/FacktsMotionSystem.tsx
+new file mode 100644
+index 0000000..e227ba8
+--- /dev/null
++++ b/app/components/FacktsMotionSystem.tsx
+@@ -0,0 +1,121 @@
++"use client";
++
++import { useEffect } from "react";
++import { usePathname } from "next/navigation";
++
++const REVEAL_SELECTOR = [
++  "main > section",
++  "main article",
++  "main li",
++  "main tbody > tr",
++  "main [class*='rounded-2xl']",
++  "main [class*='rounded-3xl']",
++].join(",");
++
++const NUMBER_SELECTOR = [
++  "[data-count-up]",
++  "main .text-2xl",
++  "main .text-3xl",
++  "main .text-4xl",
++  "main .text-5xl",
++  "main .text-6xl",
++  "main td",
++].join(",");
++
++const pureNumber = /^(-?)(\d{1,6})(\.\d+)?(%|\+)?$/;
++
++function animateNumber(element: HTMLElement) {
++  if (element.dataset.counted === "true" || element.children.length > 0) return;
++
++  const original = element.textContent?.trim() ?? "";
++  const match = original.replace(/,/g, "").match(pureNumber);
++  if (!match) return;
++
++  const target = Number(`${match[1]}${match[2]}${match[3] ?? ""}`);
++  if (!Number.isFinite(target) || Math.abs(target) > 100000) return;
++
++  element.dataset.counted = "true";
++  const decimals = match[3]?.length ? match[3].length - 1 : 0;
++  const suffix = match[4] ?? "";
++  const duration = Math.min(1250, Math.max(500, Math.abs(target) * 28));
++  const startedAt = performance.now();
++
++  const render = (now: number) => {
++    const progress = Math.min(1, (now - startedAt) / duration);
++    const eased = 1 - Math.pow(1 - progress, 3);
++    const value = target * eased;
++    element.textContent = `${value.toFixed(decimals)}${suffix}`;
++
++    if (progress < 1) {
++      requestAnimationFrame(render);
++    } else {
++      element.textContent = original;
++    }
++  };
++
++  requestAnimationFrame(render);
++}
++
++export default function FacktsMotionSystem() {
++  const pathname = usePathname();
++
++  useEffect(() => {
++    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
++
++    const revealed = new WeakSet<Element>();
++    const revealObserver = new IntersectionObserver(
++      (entries) => {
++        entries.forEach((entry) => {
++          if (!entry.isIntersecting) return;
++          entry.target.classList.add("fackts-motion-visible");
++          revealObserver.unobserve(entry.target);
++        });
++      },
++      { rootMargin: "0px 0px -7% 0px", threshold: 0.08 }
++    );
++
++    const numberObserver = new IntersectionObserver(
++      (entries) => {
++        entries.forEach((entry) => {
++          if (!entry.isIntersecting) return;
++          animateNumber(entry.target as HTMLElement);
++          numberObserver.unobserve(entry.target);
++        });
++      },
++      { threshold: 0.35 }
++    );
++
++    const scan = (root: ParentNode = document) => {
++      root.querySelectorAll<HTMLElement>(REVEAL_SELECTOR).forEach((element, index) => {
++        if (revealed.has(element) || element.closest("[data-no-motion]")) return;
++        revealed.add(element);
++        element.classList.add("fackts-motion-item");
++        element.style.setProperty("--fackts-delay", `${Math.min(index % 8, 7) * 45}ms`);
++        revealObserver.observe(element);
++      });
++
++      root.querySelectorAll<HTMLElement>(NUMBER_SELECTOR).forEach((element) => {
++        if (!element.closest("[data-no-count-up]")) numberObserver.observe(element);
++      });
++    };
++
++    scan();
++    const mutationObserver = new MutationObserver((mutations) => {
++      mutations.forEach((mutation) => {
++        mutation.addedNodes.forEach((node) => {
++          if (node instanceof HTMLElement) scan(node);
++        });
++      });
++    });
++
++    mutationObserver.observe(document.body, { childList: true, subtree: true });
++
++    return () => {
++      mutationObserver.disconnect();
++      revealObserver.disconnect();
++      numberObserver.disconnect();
++    };
++  }, [pathname]);
++
++  return null;
++}
+diff --git a/app/fackts-motion.css b/app/fackts-motion.css
+index 44aa3ca..e7380a8 100644
+--- a/app/fackts-motion.css
++++ b/app/fackts-motion.css
+@@ -458,3 +458,66 @@ textarea:focus {
+ }
+ 
+ /* END FACKTS MOBILE SAFE COMPACT FIX */
++
++/* =========================================================
++   GLOBAL MOTION CONTROLLER
++   Handles server and late-loading Supabase content.
++   ========================================================= */
++
++.fackts-motion-item {
++  opacity: 0;
++  transform: translate3d(0, 18px, 0) scale(0.985);
++  transition:
++    opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
++    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
++    box-shadow 220ms ease,
++    border-color 220ms ease,
++    background-color 220ms ease;
++  transition-delay: var(--fackts-delay, 0ms);
++  will-change: opacity, transform;
++}
++
++.fackts-motion-item.fackts-motion-visible {
++  opacity: 1;
++  transform: translate3d(0, 0, 0) scale(1);
++}
++
++main tbody > tr.fackts-motion-item {
++  transform: translate3d(-14px, 0, 0);
++}
++
++main tbody > tr.fackts-motion-visible {
++  transform: translate3d(0, 0, 0);
++}
++
++main article.fackts-motion-visible:hover,
++main a.fackts-motion-visible:hover {
++  transform: translate3d(0, -4px, 0) scale(1.008);
++}
++
++header,
++nav,
++.fackts-ticker-track {
++  backface-visibility: hidden;
++  transform-style: preserve-3d;
++}
++
++@media (max-width: 768px) {
++  .fackts-motion-item {
++    transform: translate3d(0, 12px, 0) scale(0.99);
++    transition-duration: 480ms;
++  }
++
++  .fackts-motion-item.fackts-motion-visible {
++    transform: translate3d(0, 0, 0) scale(1);
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .fackts-motion-item,
++  .fackts-motion-item.fackts-motion-visible {
++    opacity: 1 !important;
++    transform: none !important;
++    transition: none !important;
++  }
++}
+diff --git a/app/layout.tsx b/app/layout.tsx
+index 1be4e5e..b4451c6 100644
+--- a/app/layout.tsx
++++ b/app/layout.tsx
+@@ -7,6 +7,7 @@ import FacktsTicker from "./components/FacktsTicker";
+ import PwaInstallButton from "./components/PwaInstallButton";
+ import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
+ import PlayerPortalReturn from "./components/PlayerPortalReturn";
++import FacktsMotionSystem from "./components/FacktsMotionSystem";
+ 
+ export const metadata: Metadata = {
+   metadataBase: new URL(
+@@ -65,6 +66,7 @@ export default function RootLayout({
+         <meta name="mobile-web-app-capable" content="yes" />
+       </head>
+       <body>
++        <FacktsMotionSystem />
+         <PwaServiceWorkerClient />
+         <PublicHeader />
+         <PwaInstallButton />

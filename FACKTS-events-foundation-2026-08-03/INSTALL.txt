@@ -1,0 +1,15 @@
+FACKTS EVENTS FOUNDATION — 3 AUGUST 2026
+
+1. Extract this ZIP into the root of fackts-hoops-web.
+2. Allow Windows to merge the app folder and replace the included files.
+3. Run: npm install
+4. Run: npm run build
+
+Included changes:
+- Public Events now reads fackts_calendar_events, matching Admin Calendar.
+- Events are separated into Live, Upcoming and Completed sections.
+- Event cards open dedicated /events/[id] pages.
+- Added the FACKTS Africa Health Checkup Cup 2025 flagship case-study page.
+- Added the reusable one-on-one photographic background class for public pages.
+
+No database migration is required for this first foundation build.

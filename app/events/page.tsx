@@ -1,15 +1,17 @@
-export const revalidate = 60;
+// Event publication is managed from Admin, so this archive must reflect a
+// newly published/unpublished event immediately instead of serving stale data.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type EventCase = { event_id: string; slug: string; title: string; summary: string | null; start_date: string | null; end_date: string | null; venue: string | null; location: string | null; poster_url: string | null; hero_image_url: string | null; photo_count: number; status: string };
 
 async function loadEvents() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return [] as EventCase[];
-  const { data } = await createClient(url, key).from("event_case_studies").select("event_id,slug,title,summary,start_date,end_date,venue,location,poster_url,hero_image_url,photo_count,status").eq("is_public", true).eq("status", "published").order("start_date", { ascending: false, nullsFirst: false });
+  const db = createSupabaseAdminClient();
+  const { data, error } = await db.from("event_case_studies").select("event_id,slug,title,summary,start_date,end_date,venue,location,poster_url,hero_image_url,photo_count,status").eq("is_public", true).eq("status", "published").order("created_at", { ascending: false });
+  if (error) throw new Error(`PUBLIC_EVENTS_LOAD_FAILED: ${error.message}`);
   return (data || []) as EventCase[];
 }
 

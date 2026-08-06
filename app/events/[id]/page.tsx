@@ -2,10 +2,12 @@ export const revalidate = 60;
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { type SupabaseClient } from "@supabase/supabase-js";
+import { getAdminAccess } from "@/lib/auth/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import EventSearch from "./EventSearch";
 
-type EventCase = { event_id:string; slug:string; title:string; summary:string|null; start_date:string|null; end_date:string|null; venue:string|null; location:string|null; poster_url:string|null; hero_image_url:string|null; photo_count:number };
+type EventCase = { event_id:string; slug:string; title:string; summary:string|null; start_date:string|null; end_date:string|null; venue:string|null; location:string|null; poster_url:string|null; hero_image_url:string|null; photo_count:number; event_type:string; age_category:string };
 type RecordRow = { id:string; record_type:string; title:string; subtitle:string|null; details:string|null; division:string|null; team_name:string|null; opponent_name:string|null; score_for:number|null; score_against:number|null; url:string|null; image_url:string|null; metadata?:Record<string,unknown>|null };
 type Standing = { name:string; played:number; wins:number; losses:number; draws:number; pf:number; pa:number; diff:number; pct:number };
 type PoolStanding = Standing & { pool:string; poolRank:number };
@@ -95,18 +97,47 @@ function canonicalTeamName(value:string|null|undefined){
   return TEAM_ALIASES[cleaned.toLowerCase()]||cleaned;
 }
 
-async function loadEvent(key:string) {
-  const url=process.env.NEXT_PUBLIC_SUPABASE_URL, anon=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if(!url||!anon) return null;
-  const db=createClient(url,anon);
-  const {data:event}=await db.from("event_case_studies").select("*").or(`slug.eq.${key},event_id.eq.${key}`).eq("is_public",true).eq("status","published").maybeSingle();
+async function findEvent(db:SupabaseClient<any,any,any>,key:string,publishedOnly:boolean) {
+  const decodedKey=decodeURIComponent(key).trim();
+  let query=db.from("event_case_studies").select("*");
+  if(publishedOnly) query=query.eq("is_public",true).eq("status","published");
+
+  // Query the two unique identifiers separately. This avoids PostgREST filter
+  // parsing edge cases in generated slugs and gives event_id a reliable fallback.
+  const bySlug=await query.eq("slug",decodedKey).maybeSingle();
+  if(bySlug.data) return bySlug.data;
+
+  let idQuery=db.from("event_case_studies").select("*").eq("event_id",decodedKey);
+  if(publishedOnly) idQuery=idQuery.eq("is_public",true).eq("status","published");
+  const byId=await idQuery.maybeSingle();
+  return byId.data||null;
+}
+
+async function loadEvent(key:string,adminPreview=false) {
+  // Public reads use the trusted server client and still apply both publication
+  // filters explicitly. This avoids stale/mismatched anonymous RLS policies
+  // hiding events that Admin has already published.
+  let db=createSupabaseAdminClient();
+  let event=await findEvent(db,key,true);
+
+  // Draft previews must also work when an older Admin page opens the clean URL
+  // without ?preview=admin. Only an active approved Admin can reach this fallback.
+  if(!event){
+    const access=await getAdminAccess();
+    if(!access.user||!access.profile) return null;
+    db=access.supabase;
+    event=await findEvent(db,key,false);
+  }
   if(!event) return null;
-  const {data:records}=await db.from("event_records").select("id,record_type,title,subtitle,details,division,team_name,opponent_name,score_for,score_against,url,image_url,metadata").eq("event_id",event.event_id).eq("is_public",true).in("status",["verified","published"]).order("sort_order").order("created_at");
+  let recordsQuery=db.from("event_records").select("id,record_type,title,subtitle,details,division,team_name,opponent_name,score_for,score_against,url,image_url,metadata").eq("event_id",event.event_id);
+  const isDraftPreview=event.status!=="published"||event.is_public!==true;
+  if(!isDraftPreview) recordsQuery=recordsQuery.eq("is_public",true).in("status",["verified","published"]);
+  const {data:records}=await recordsQuery.order("sort_order").order("created_at");
   return {event:event as EventCase,records:(records||[]) as RecordRow[]};
 }
 
 const labels:Record<string,string>={team:"Participating teams",award:"Awards & winners",person:"Officials & contributors",partner:"Event partners",media:"Videos & media",gallery:"Photo gallery"};
-const contentOrder=["team","award","person","partner","media","gallery"];
+const contentOrder=["team","award","person","partner"];
 const cleanRound=(row:RecordRow)=>String(row.metadata?.round||row.division||"").toLowerCase();
 const resultDay=(row:RecordRow)=>Number(row.metadata?.day||0);
 const isKnockout=(row:RecordRow)=>resultDay(row)===3||["quarterfinal","semifinal","final"].some(round=>cleanRound(row).includes(round));
@@ -158,8 +189,8 @@ function teamStatsMap(...groups:Standing[][]) {
   return new Map(groups.flat().map(row=>[row.name,row]));
 }
 
-export default async function EventDetailPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{gamesPage?:string;q?:string}>}) {
-  const {id}=await params; const query=await searchParams; const loaded=await loadEvent(id); if(!loaded) notFound();
+export default async function EventDetailPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{gamesPage?:string;q?:string;preview?:string}>}) {
+  const {id}=await params; const query=await searchParams; const adminPreview=query.preview==="admin"; const loaded=await loadEvent(id,adminPreview); if(!loaded) notFound();
   const {event,records}=loaded; const results=records.filter(x=>x.record_type==="result");
   const searchTerm=String(query.q||"").trim();
   const normalizedSearch=searchTerm.toLowerCase();
@@ -172,6 +203,8 @@ export default async function EventDetailPage({params,searchParams}:{params:Prom
   const knockout=results.filter(isKnockout);
   const championRows=knockout.filter(row=>cleanRound(row).includes("final")&&!cleanRound(row).includes("semi")&&!cleanRound(row).includes("quarter"));
   const teamImages=new Map(records.filter(x=>x.record_type==="team"&&x.image_url).map(x=>[canonicalTeamName(x.title),x.image_url!]));
+  const mediaRows=records.filter(x=>x.record_type==="media").filter(matchesSearch);
+  const galleryRows=records.filter(x=>x.record_type==="gallery").filter(matchesSearch);
   const totalGamePages=Math.max(1,Math.ceil(filteredResults.length/GAMES_PER_PAGE));
   const gamesPage=Math.min(totalGamePages,Math.max(1,Number(query.gamesPage)||1));
   const visibleGames=filteredResults.slice((gamesPage-1)*GAMES_PER_PAGE,gamesPage*GAMES_PER_PAGE);
@@ -185,7 +218,8 @@ export default async function EventDetailPage({params,searchParams}:{params:Prom
       <div className="relative z-10 mx-auto flex min-h-[48vh] max-w-7xl items-end px-4 py-7 sm:min-h-[62vh] sm:px-6 sm:py-10 lg:px-8"><div className="min-w-0 max-w-5xl"><Link href="/events" className="inline-flex rounded-full border border-white/15 bg-black/35 px-3 py-2 text-[9px] font-black uppercase tracking-[.14em] backdrop-blur sm:px-4 sm:text-[10px]">← All events</Link><div className="mt-3 flex flex-wrap gap-2 sm:mt-5"><Badge>Official event archive</Badge><Badge orange>Completed</Badge></div><h1 className="mt-4 break-words text-[2rem] font-black uppercase leading-[.92] tracking-[-.035em] sm:mt-5 sm:text-6xl lg:text-8xl">{event.title}</h1><p className="mt-3 max-w-3xl text-xs leading-5 text-zinc-200 sm:mt-5 sm:text-base sm:leading-7">{event.summary}</p><p className="mt-3 break-words text-xs font-bold text-orange-200 sm:mt-4 sm:text-sm">{[event.venue,event.location].filter(Boolean).join(" • ")}</p></div></div>
     </section>
 
-    <section className="relative z-20 mx-auto -mt-3 max-w-7xl px-4 sm:-mt-4 sm:px-6 lg:px-8"><div className="grid grid-cols-2 gap-2 rounded-[1.25rem] border border-white/10 bg-slate-950/90 p-2 shadow-2xl backdrop-blur-xl sm:gap-3 sm:rounded-[1.6rem] sm:p-3 md:grid-cols-4"><Stat value={String(records.filter(x=>x.record_type==="team").length)} label="Teams"/><Stat value={String(results.length)} label="Games played"/><Stat value={String(event.photo_count||records.filter(x=>x.record_type==="gallery").length)} label="Photos archived"/><Stat value="3 Days" label="Tournament run"/></div></section>
+    <section className="relative z-30 mx-auto -mt-3 flex max-w-7xl justify-center px-4 sm:-mt-4 sm:justify-end sm:px-6 lg:px-8"><Link href={`/events/${event.slug||event.event_id}/report`} className="inline-flex w-full items-center justify-center rounded-xl bg-orange-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.12em] text-black shadow-xl sm:w-auto">Download event summary</Link></section>
+    <section className="relative z-20 mx-auto mt-3 max-w-7xl px-4 sm:px-6 lg:px-8"><div className="grid grid-cols-2 gap-2 rounded-[1.25rem] border border-white/10 bg-slate-950/90 p-2 shadow-2xl backdrop-blur-xl sm:gap-3 sm:rounded-[1.6rem] sm:p-3 md:grid-cols-4"><Stat value={String(records.filter(x=>x.record_type==="team").length)} label="Teams"/><Stat value={String(results.length)} label="Games played"/><Stat value={String(event.photo_count||records.filter(x=>x.record_type==="gallery").length)} label="Photos archived"/><Stat value="3 Days" label="Tournament run"/></div></section>
 
     <EventSearch initialValue={searchTerm}/>
 
@@ -198,6 +232,8 @@ export default async function EventDetailPage({params,searchParams}:{params:Prom
     {(menStandings.length||womenStandings.length)?<section className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8"><SectionTitle kicker="Tournament table" title="Official rankings" subtitle="Calculated automatically from every verified tournament game, including the Day 3 knockout rounds, using win percentage and point differential."/><div className="mt-7 grid gap-6 xl:grid-cols-2">{menStandings.length?<Rankings title="Men's standings" rows={menStandings}/>:null}{womenStandings.length?<Rankings title="Women's standings" rows={womenStandings}/>:null}</div></section>:null}
 
     <ScoringLeaders men={menStandings} women={womenStandings}/>
+
+    <EventMedia media={mediaRows} gallery={galleryRows} searching={Boolean(searchTerm)} />
 
     <section id="games" className="mx-auto max-w-7xl scroll-mt-20 px-4 pb-9 sm:px-6 sm:pb-12 lg:px-8"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><SectionTitle kicker="Full schedule" title="Every game. Every score." subtitle="Six compact games at a time on phone, in the verified tournament sequence."/><span className="shrink-0 text-[10px] font-black uppercase tracking-[.12em] text-zinc-500">Page {gamesPage} of {totalGamePages}</span></div>{visibleGames.length?<div className="mt-4 grid gap-2 sm:mt-7 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">{visibleGames.map((row,index)=><GameCard key={row.id} row={row} index={(gamesPage-1)*GAMES_PER_PAGE+index}/>)}</div>:<EmptySearch/>}<Pagination current={gamesPage} total={totalGamePages} q={searchTerm}/></section>
 
@@ -254,3 +290,5 @@ function MiniStat({label,value}:{label:string;value:string}){return <div classNa
 function Stat({value,label}:{value:string;label:string}){return <div className="min-w-0 rounded-xl border border-white/[.06] bg-white/[.025] p-2.5 sm:p-4"><p className="break-words text-lg font-black leading-5 text-orange-300 sm:text-3xl">{value}</p><p className="mt-1 break-words text-[7px] font-black uppercase leading-3 tracking-[.04em] text-zinc-500 sm:text-[9px] sm:tracking-[.14em]">{label}</p></div>}
 function Badge({children,orange=false}:{children:React.ReactNode;orange?:boolean}){return <span className={`max-w-full break-words rounded-full border px-2.5 py-1 text-[8px] font-black uppercase leading-3 tracking-[.08em] sm:px-3 sm:text-[9px] sm:tracking-[.14em] ${orange?"border-orange-400/30 bg-orange-500/15 text-orange-300":"border-blue-400/30 bg-blue-500/15 text-blue-200"}`}>{children}</span>}
 function SectionTitle({kicker,title,subtitle}:{kicker:string;title:string;subtitle?:string}){return <div className="min-w-0"><p className="break-words text-[7px] font-black uppercase leading-3 tracking-[.06em] text-orange-300 sm:text-[10px] sm:tracking-[.22em]">{kicker}</p><h2 className="mt-1.5 break-words text-xl font-black uppercase leading-[1.05] tracking-[-.015em] sm:mt-2 sm:text-5xl">{title}</h2>{subtitle?<p className="mt-2 max-w-2xl text-[11px] leading-[1.45] text-zinc-400 sm:mt-3 sm:text-sm sm:leading-6">{subtitle}</p>:null}</div>}
+
+function EventMedia({media,gallery,searching}:{media:RecordRow[];gallery:RecordRow[];searching:boolean}) {return <section id="media" className="mx-auto max-w-7xl scroll-mt-20 px-4 pb-12 sm:px-6 lg:px-8"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><SectionTitle kicker="Watch and relive" title="Event media" subtitle="Highlights, full games, interviews, speeches and approved photography from this event."/><span className="shrink-0 text-[9px] font-black uppercase text-zinc-600">{media.length} videos · {gallery.length} photos</span></div>{media.length||gallery.length?<><div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{media.map(row=><a key={row.id} href={row.url||undefined} target={row.url?"_blank":undefined} rel={row.url?"noreferrer":undefined} className="group overflow-hidden rounded-2xl border border-white/10 bg-slate-950 transition hover:border-orange-400/50">{row.image_url?<div className="relative aspect-video overflow-hidden"><img src={row.image_url} alt={row.title} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105"/><span className="absolute inset-0 grid place-items-center"><span className="grid h-12 w-12 place-items-center rounded-full bg-orange-500 text-lg text-black shadow-xl">▶</span></span></div>:<div className="grid aspect-video place-items-center bg-gradient-to-br from-blue-950 to-orange-950/60"><span className="grid h-12 w-12 place-items-center rounded-full bg-orange-500 text-lg text-black">▶</span></div>}<div className="p-4"><p className="text-[9px] font-black uppercase tracking-[.14em] text-orange-300">{row.subtitle||row.division||"Event video"}</p><h3 className="mt-2 break-words text-lg font-black uppercase leading-tight">{row.title}</h3>{row.details?<p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-400">{row.details}</p>:null}</div></a>)}</div>{gallery.length?<div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">{gallery.map(row=><a key={row.id} href={row.url||row.image_url||undefined} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-slate-900 sm:rounded-2xl">{row.image_url?<img src={row.image_url} alt={row.title} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105"/>:null}<div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"/><p className="absolute inset-x-3 bottom-3 break-words text-[10px] font-black uppercase leading-4 sm:text-xs">{row.title}</p></a>)}</div>:null}</>:<div className="mt-6 rounded-[1.5rem] border border-dashed border-white/15 bg-slate-950/70 px-6 py-10 text-center"><p className="text-sm font-black uppercase text-zinc-200">{searching?"No matching event media":"Media coming soon"}</p><p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-zinc-500">{searching?"Clear the search to view all published media.":"Highlights, interviews, full games and approved photos will appear here after they are published in Events Admin."}</p></div>}</section>}

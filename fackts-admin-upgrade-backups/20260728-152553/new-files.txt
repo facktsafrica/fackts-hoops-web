@@ -1,0 +1,9 @@
+app\admin\mini-admins\page.tsx
+app\api\admin\mini-admins\route.ts
+app\api\player-activity\route.ts
+app\api\push\test\route.ts
+app\components\AdminActivityPanel.tsx
+app\components\PlayerActivityTracker.tsx
+lib\activity\server.ts
+lib\admin\permissions.ts
+supabase\migrations\20260727_admin_notifications_activity_permissions.sql

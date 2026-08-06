@@ -1,0 +1,2890 @@
+From b64113c85f0ace94b9a7546cd059f5a2b8974196 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Tue, 21 Jul 2026 14:50:41 -0400
+Subject: [PATCH] Add admin and player auth with Resend notifications
+
+---
+ .env.example                                 |   8 +
+ .gitignore                                   |   1 +
+ README.md                                    |   4 +
+ app/account/forgot-password/page.tsx         | 101 +++++++++
+ app/account/update-password/page.tsx         | 112 ++++++++++
+ app/admin/email/page.tsx                     | 103 +++++++++
+ app/admin/layout.tsx                         |  13 +-
+ app/admin/login/page.tsx                     | 176 +++++++---------
+ app/admin/page.tsx                           |  25 ++-
+ app/admin/player-access/page.tsx             | 184 ++++++++++++++++
+ app/api/admin/email/route.ts                 |  50 +++++
+ app/api/admin/login/route.ts                 |  23 +-
+ app/api/admin/player-access/route.ts         | 211 +++++++++++++++++++
+ app/api/auth/request-reset/route.ts          | 111 ++++++++++
+ app/api/notify-email/route.ts                | 176 +++++++---------
+ app/calendar/page.tsx                        |  97 +++++----
+ app/components/PlayerLogoutButton.tsx        |  24 +++
+ app/components/PublicHeader.tsx              |  10 +-
+ app/player/login/page.tsx                    | 147 +++++++++++++
+ app/player/page.tsx                          | 206 ++++++++++++++++++
+ docs/AUTH_AND_EMAIL_SETUP.md                 |  67 ++++++
+ lib/auth/server.ts                           |  90 ++++++++
+ lib/email/resend.ts                          |  84 ++++++++
+ lib/supabase.ts                              |  12 +-
+ lib/supabase/admin.ts                        |  19 ++
+ lib/supabase/server.ts                       |  29 +++
+ proxy.ts                                     | 106 +++++++++-
+ public/sw.js                                 | 100 +++++++--
+ supabase/migrations/20260721_player_auth.sql |  58 +++++
+ 29 files changed, 2042 insertions(+), 305 deletions(-)
+ create mode 100644 .env.example
+ create mode 100644 app/account/forgot-password/page.tsx
+ create mode 100644 app/account/update-password/page.tsx
+ create mode 100644 app/admin/email/page.tsx
+ create mode 100644 app/admin/player-access/page.tsx
+ create mode 100644 app/api/admin/email/route.ts
+ create mode 100644 app/api/admin/player-access/route.ts
+ create mode 100644 app/api/auth/request-reset/route.ts
+ create mode 100644 app/components/PlayerLogoutButton.tsx
+ create mode 100644 app/player/login/page.tsx
+ create mode 100644 app/player/page.tsx
+ create mode 100644 docs/AUTH_AND_EMAIL_SETUP.md
+ create mode 100644 lib/auth/server.ts
+ create mode 100644 lib/email/resend.ts
+ create mode 100644 lib/supabase/admin.ts
+ create mode 100644 lib/supabase/server.ts
+ create mode 100644 supabase/migrations/20260721_player_auth.sql
+
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..c46a099
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,8 @@
++NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
++NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
++SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
++NEXT_PUBLIC_SITE_URL=https://fackts-hoops-web.vercel.app
++
++RESEND_API_KEY=re_your_send_only_api_key
++EMAIL_FROM=FACKTS Hoops <notifications@your-verified-domain.com>
++FACKTS_ADMIN_EMAIL=facktsafrica@gmail.com
+diff --git a/.gitignore b/.gitignore
+index 5ef6a52..7b8da95 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -32,6 +32,7 @@ yarn-error.log*
+ 
+ # env files (can opt-in for committing if needed)
+ .env*
++!.env.example
+ 
+ # vercel
+ .vercel
+diff --git a/README.md b/README.md
+index e215bc4..2875c91 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,9 @@
+ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+ 
++## FACKTS account setup
++
++Admin login, player login, player invitations, password recovery, and Resend notifications are documented in [`docs/AUTH_AND_EMAIL_SETUP.md`](docs/AUTH_AND_EMAIL_SETUP.md).
++
+ ## Getting Started
+ 
+ First, run the development server:
+diff --git a/app/account/forgot-password/page.tsx b/app/account/forgot-password/page.tsx
+new file mode 100644
+index 0000000..f2608f9
+--- /dev/null
++++ b/app/account/forgot-password/page.tsx
+@@ -0,0 +1,101 @@
++"use client";
++
++import Link from "next/link";
++import { FormEvent, useEffect, useState } from "react";
++
++type AccountRole = "player" | "admin";
++
++export default function ForgotPasswordPage() {
++  const [role, setRole] = useState<AccountRole>("player");
++  const [email, setEmail] = useState("");
++  const [message, setMessage] = useState("");
++  const [loading, setLoading] = useState(false);
++
++  useEffect(() => {
++    const requestedRole = new URLSearchParams(window.location.search).get("role");
++    if (requestedRole === "admin") {
++      queueMicrotask(() => setRole("admin"));
++    }
++  }, []);
++
++  async function handleSubmit(event: FormEvent) {
++    event.preventDefault();
++    setLoading(true);
++    setMessage("");
++
++    const response = await fetch("/api/auth/request-reset", {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ email: email.trim(), role }),
++    });
++
++    const result = await response.json().catch(() => ({ ok: false }));
++    setMessage(
++      result.message ||
++        "If that approved account exists, a password link has been sent."
++    );
++    setLoading(false);
++  }
++
++  return (
++    <main className="min-h-screen bg-black px-4 py-10 text-white">
++      <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-zinc-950 p-6">
++        <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
++          Account Recovery
++        </div>
++        <h1 className="mt-2 text-3xl font-black">Reset Password</h1>
++        <p className="mt-2 text-sm leading-6 text-zinc-400">
++          We will send a secure password link to the approved account email.
++        </p>
++
++        <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-black p-1">
++          {(["player", "admin"] as AccountRole[]).map((item) => (
++            <button
++              key={item}
++              type="button"
++              onClick={() => setRole(item)}
++              className={`rounded-xl px-3 py-2 text-sm font-black capitalize ${
++                role === item ? "bg-orange-500 text-black" : "text-zinc-400"
++              }`}
++            >
++              {item}
++            </button>
++          ))}
++        </div>
++
++        {message ? (
++          <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-zinc-200">
++            {message}
++          </div>
++        ) : null}
++
++        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
++          <label className="block">
++            <div className="mb-2 text-sm font-bold text-zinc-300">Email</div>
++            <input
++              required
++              type="email"
++              value={email}
++              onChange={(event) => setEmail(event.target.value)}
++              className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 outline-none focus:border-orange-400"
++            />
++          </label>
++          <button
++            type="submit"
++            disabled={loading}
++            className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black disabled:opacity-60"
++          >
++            {loading ? "Sending..." : "Send Password Link"}
++          </button>
++        </form>
++
++        <Link
++          href={role === "admin" ? "/admin/login" : "/player/login"}
++          className="mt-5 block text-sm font-bold text-zinc-400 hover:text-orange-300"
++        >
++          Back to login
++        </Link>
++      </div>
++    </main>
++  );
++}
+diff --git a/app/account/update-password/page.tsx b/app/account/update-password/page.tsx
+new file mode 100644
+index 0000000..1aaa3cb
+--- /dev/null
++++ b/app/account/update-password/page.tsx
+@@ -0,0 +1,112 @@
++"use client";
++
++import { FormEvent, useEffect, useState } from "react";
++import { useRouter } from "next/navigation";
++import { supabase } from "@/lib/supabase";
++
++export default function UpdatePasswordPage() {
++  const router = useRouter();
++  const [password, setPassword] = useState("");
++  const [confirmation, setConfirmation] = useState("");
++  const [ready, setReady] = useState(false);
++  const [message, setMessage] = useState("Opening your secure password session...");
++  const [loading, setLoading] = useState(false);
++
++  useEffect(() => {
++    let active = true;
++
++    supabase.auth.getSession().then(({ data }) => {
++      if (!active) return;
++      setReady(Boolean(data.session));
++      setMessage(
++        data.session
++          ? "Create a new password for your FACKTS account."
++          : "This link is invalid or has expired. Request a new password link."
++      );
++    });
++
++    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
++      if (!active) return;
++      setReady(Boolean(session));
++      if (session) setMessage("Create a new password for your FACKTS account.");
++    });
++
++    return () => {
++      active = false;
++      data.subscription.unsubscribe();
++    };
++  }, []);
++
++  async function handleSubmit(event: FormEvent) {
++    event.preventDefault();
++
++    if (password.length < 8) {
++      setMessage("Use at least 8 characters.");
++      return;
++    }
++
++    if (password !== confirmation) {
++      setMessage("The two passwords do not match.");
++      return;
++    }
++
++    setLoading(true);
++    const { error } = await supabase.auth.updateUser({ password });
++
++    if (error) {
++      setMessage(error.message);
++      setLoading(false);
++      return;
++    }
++
++    const requestedNext = new URLSearchParams(window.location.search).get("next");
++    const safeNext = requestedNext === "/admin" ? "/admin" : "/player";
++    setMessage("Password saved. Opening your account...");
++    router.replace(safeNext);
++    router.refresh();
++  }
++
++  return (
++    <main className="min-h-screen bg-black px-4 py-10 text-white">
++      <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-zinc-950 p-6">
++        <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
++          FACKTS Account
++        </div>
++        <h1 className="mt-2 text-3xl font-black">Set Password</h1>
++        <p className="mt-3 text-sm leading-6 text-zinc-400">{message}</p>
++
++        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
++          <input
++            required
++            minLength={8}
++            type="password"
++            autoComplete="new-password"
++            value={password}
++            onChange={(event) => setPassword(event.target.value)}
++            placeholder="New password"
++            disabled={!ready || loading}
++            className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 outline-none focus:border-orange-400 disabled:opacity-50"
++          />
++          <input
++            required
++            minLength={8}
++            type="password"
++            autoComplete="new-password"
++            value={confirmation}
++            onChange={(event) => setConfirmation(event.target.value)}
++            placeholder="Confirm new password"
++            disabled={!ready || loading}
++            className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 outline-none focus:border-orange-400 disabled:opacity-50"
++          />
++          <button
++            type="submit"
++            disabled={!ready || loading}
++            className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black disabled:opacity-50"
++          >
++            {loading ? "Saving..." : "Save Password"}
++          </button>
++        </form>
++      </div>
++    </main>
++  );
++}
+diff --git a/app/admin/email/page.tsx b/app/admin/email/page.tsx
+new file mode 100644
+index 0000000..29c9812
+--- /dev/null
++++ b/app/admin/email/page.tsx
+@@ -0,0 +1,103 @@
++"use client";
++
++import Link from "next/link";
++import { useEffect, useState } from "react";
++
++type EmailStatus = {
++  configured?: boolean;
++  has_api_key?: boolean;
++  email_from?: string;
++  admin_email?: string;
++  error?: string;
++};
++
++export default function AdminEmailPage() {
++  const [status, setStatus] = useState<EmailStatus>({});
++  const [message, setMessage] = useState("");
++  const [loading, setLoading] = useState(true);
++  const [sending, setSending] = useState(false);
++
++  async function loadStatus() {
++    setLoading(true);
++    const response = await fetch("/api/admin/email", { cache: "no-store" });
++    const result = await response.json().catch(() => ({ error: "Could not load status." }));
++    setStatus(result);
++    setLoading(false);
++  }
++
++  useEffect(() => {
++    queueMicrotask(() => {
++      void loadStatus();
++    });
++  }, []);
++
++  async function sendTest() {
++    setSending(true);
++    setMessage("");
++    const response = await fetch("/api/admin/email", { method: "POST" });
++    const result = await response.json().catch(() => ({ ok: false, error: "Test failed." }));
++    setMessage(result.message || result.error || "Test finished.");
++    setSending(false);
++  }
++
++  return (
++    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
++      <div className="mx-auto max-w-3xl">
++        <div className="flex flex-wrap items-end justify-between gap-4">
++          <div>
++            <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">FACKTS Admin</p>
++            <h1 className="mt-2 text-4xl font-black">Email Notifications</h1>
++            <p className="mt-3 text-sm leading-6 text-slate-400">
++              Confirm the approved Resend sender and send a real test notification.
++            </p>
++          </div>
++          <Link href="/admin" className="rounded-full border border-slate-700 px-4 py-2 text-sm font-black">Back to Admin</Link>
++        </div>
++
++        <div className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-6">
++          {loading ? (
++            <p className="text-slate-400">Checking Resend...</p>
++          ) : (
++            <>
++              <div className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase ${
++                status.configured
++                  ? "bg-emerald-500/15 text-emerald-300"
++                  : "bg-red-500/15 text-red-200"
++              }`}>
++                {status.configured ? "Configured" : "Needs Setup"}
++              </div>
++
++              <div className="mt-5 grid gap-3 sm:grid-cols-3">
++                <StatusCard label="API Key" value={status.has_api_key ? "Present" : "Missing"} />
++                <StatusCard label="Sender" value={status.email_from || "Missing"} />
++                <StatusCard label="Admin Inbox" value={status.admin_email || "Missing"} />
++              </div>
++
++              {status.error ? <p className="mt-4 text-sm text-red-200">{status.error}</p> : null}
++
++              <button
++                type="button"
++                onClick={sendTest}
++                disabled={!status.configured || sending}
++                className="mt-5 w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black disabled:opacity-40"
++              >
++                {sending ? "Sending..." : "Send Test Email"}
++              </button>
++
++              {message ? <p className="mt-4 text-sm text-slate-300">{message}</p> : null}
++            </>
++          )}
++        </div>
++      </div>
++    </main>
++  );
++}
++
++function StatusCard({ label, value }: { label: string; value: string }) {
++  return (
++    <div className="rounded-2xl border border-slate-800 bg-black/30 p-4">
++      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
++      <p className="mt-2 break-words text-sm font-black text-white">{value}</p>
++    </div>
++  );
++}
+diff --git a/app/admin/layout.tsx b/app/admin/layout.tsx
+index 55ba8ba..c15fb5e 100644
+--- a/app/admin/layout.tsx
++++ b/app/admin/layout.tsx
+@@ -29,8 +29,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
+       setAccess("checking");
+       setMessage("Checking login session...");
+ 
+-      const sessionResult = await supabase.auth.getSession();
+-      const user = sessionResult.data.session?.user;
++      const userResult = await supabase.auth.getUser();
++      const user = userResult.data.user;
+ 
+       if (!user) {
+         if (active) {
+@@ -74,15 +74,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
+ 
+     checkAccess();
+ 
+-    const {
+-      data: { subscription },
+-    } = supabase.auth.onAuthStateChange(() => {
+-      checkAccess();
+-    });
+-
+     return () => {
+       active = false;
+-      subscription.unsubscribe();
+     };
+   }, [isLoginPage, pathname]);
+ 
+@@ -133,4 +126,4 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
+   }
+ 
+   return <>{children}</>;
+-}
+\ No newline at end of file
++}
+diff --git a/app/admin/login/page.tsx b/app/admin/login/page.tsx
+index 72ae7bf..a27f530 100644
+--- a/app/admin/login/page.tsx
++++ b/app/admin/login/page.tsx
+@@ -2,85 +2,66 @@
+ 
+ import Link from "next/link";
+ import { FormEvent, useState } from "react";
++import { useRouter } from "next/navigation";
+ import { supabase } from "@/lib/supabase";
+ 
+ export default function AdminLoginPage() {
++  const router = useRouter();
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+-
+   const [message, setMessage] = useState("");
+-  const [loginOk, setLoginOk] = useState(false);
+   const [loading, setLoading] = useState(false);
+ 
+   async function handleLogin(event: FormEvent) {
+     event.preventDefault();
+-
+     if (loading) return;
+ 
+     setLoading(true);
+-    setLoginOk(false);
+-    setMessage("Checking login...");
++    setMessage("Checking admin access...");
+ 
+-    const loginResult = await supabase.auth.signInWithPassword({
+-      email: email.trim(),
++    const { data, error } = await supabase.auth.signInWithPassword({
++      email: email.trim().toLowerCase(),
+       password,
+     });
+ 
+-    if (loginResult.error) {
++    if (error || !data.user) {
+       setMessage(
+-        loginResult.error.message === "Invalid login credentials"
+-          ? "Invalid login credentials. Reset this user's password in Supabase Auth."
+-          : loginResult.error.message
++        error?.message === "Invalid login credentials"
++          ? "The email or password is incorrect."
++          : error?.message || "Login failed."
+       );
+       setLoading(false);
+       return;
+     }
+ 
+-    const userId = loginResult.data.user?.id;
+-
+-    if (!userId) {
+-      setMessage("Login failed. No user ID was returned.");
+-      setLoading(false);
+-      return;
+-    }
+-
+-    setMessage("Login accepted. Checking admin rights...");
+-
+-    const profileResult = await supabase
++    const { data: profile, error: profileError } = await supabase
+       .from("admin_profiles")
+       .select("id, role, is_active")
+-      .eq("user_id", userId)
++      .eq("user_id", data.user.id)
+       .eq("is_active", true)
+       .maybeSingle();
+ 
+-    if (profileResult.error) {
+-      await supabase.auth.signOut();
+-      setMessage(`Admin profile check failed: ${profileResult.error.message}`);
+-      setLoading(false);
+-      return;
+-    }
+-
+-    if (!profileResult.data) {
++    if (profileError || !profile) {
+       await supabase.auth.signOut();
+       setMessage(
+-        "Login worked, but this account is not approved as a FACKTS admin."
++        profileError
++          ? `Admin approval check failed: ${profileError.message}`
++          : "This account is not approved as a FACKTS administrator."
+       );
+       setLoading(false);
+       return;
+     }
+ 
+-    setLoginOk(true);
+-    setMessage("Access approved. Enter the dashboard.");
+-    setLoading(false);
++    setMessage("Access approved. Opening the control room...");
++    router.replace("/admin");
++    router.refresh();
+   }
+ 
+   async function clearSession() {
+     setLoading(true);
+     await supabase.auth.signOut();
+-    setEmail("");
+     setPassword("");
+-    setLoginOk(false);
+-    setMessage("Session cleared. Try again.");
++    setMessage("Session cleared. You can log in again.");
+     setLoading(false);
+   }
+ 
+@@ -92,83 +73,72 @@ export default function AdminLoginPage() {
+             <div className="text-xs font-black uppercase tracking-[0.3em] text-orange-300">
+               FACKTS Admin
+             </div>
+-
+             <h1 className="mt-2 text-3xl font-black">Admin Login</h1>
+-
+             <p className="mt-2 text-sm leading-6 text-zinc-400">
+-              Private access for approved FACKTS team members only.
++              Private access for approved FACKTS administrators only.
+             </p>
+           </div>
+ 
+           {message ? (
+-            <div
+-              className={
+-                loginOk
+-                  ? "mb-5 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm leading-6 text-orange-200"
+-                  : "mb-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-zinc-200"
+-              }
+-            >
++            <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-zinc-200">
+               {message}
+             </div>
+           ) : null}
+ 
+-          {loginOk ? (
++          <form onSubmit={handleLogin} className="space-y-4">
++            <label className="block">
++              <div className="mb-2 text-sm font-bold text-zinc-300">Email</div>
++              <input
++                required
++                type="email"
++                autoComplete="email"
++                value={email}
++                onChange={(event) => setEmail(event.target.value)}
++                placeholder="admin@email.com"
++                disabled={loading}
++                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400 disabled:opacity-60"
++              />
++            </label>
++
++            <label className="block">
++              <div className="mb-2 text-sm font-bold text-zinc-300">Password</div>
++              <input
++                required
++                type="password"
++                autoComplete="current-password"
++                value={password}
++                onChange={(event) => setPassword(event.target.value)}
++                placeholder="Enter password"
++                disabled={loading}
++                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400 disabled:opacity-60"
++              />
++            </label>
++
++            <button
++              type="submit"
++              disabled={loading}
++              className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-70"
++            >
++              {loading ? "Checking..." : "Login to Admin"}
++            </button>
++          </form>
++
++          <div className="mt-4 flex items-center justify-between gap-3 text-sm">
+             <Link
+-              href="/admin"
+-              className="block w-full rounded-2xl bg-orange-500 px-5 py-4 text-center text-base font-black text-black transition hover:bg-orange-400"
++              href="/account/forgot-password?role=admin"
++              className="font-bold text-orange-300 transition hover:text-orange-200"
+             >
+-              ENTER ADMIN DASHBOARD
++              Forgot password?
+             </Link>
+-          ) : (
+-            <form onSubmit={handleLogin} className="space-y-4">
+-              <label className="block">
+-                <div className="mb-2 text-sm font-bold text-zinc-300">
+-                  Email
+-                </div>
+-
+-                <input
+-                  type="email"
+-                  value={email}
+-                  onChange={(event) => setEmail(event.target.value)}
+-                  placeholder="admin@email.com"
+-                  disabled={loading}
+-                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400 disabled:opacity-60"
+-                />
+-              </label>
+-
+-              <label className="block">
+-                <div className="mb-2 text-sm font-bold text-zinc-300">
+-                  Password
+-                </div>
+-
+-                <input
+-                  type="password"
+-                  value={password}
+-                  onChange={(event) => setPassword(event.target.value)}
+-                  placeholder="Enter password"
+-                  disabled={loading}
+-                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400 disabled:opacity-60"
+-                />
+-              </label>
+-
+-              <button
+-                type="submit"
+-                disabled={loading}
+-                className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-80"
+-              >
+-                {loading ? "Checking..." : "Login"}
+-              </button>
+-            </form>
+-          )}
+-
+-          <button
+-            type="button"
+-            onClick={clearSession}
+-            disabled={loading}
+-            className="mt-4 w-full rounded-2xl border border-white/10 px-5 py-3 text-sm font-black text-zinc-300 transition hover:border-orange-400/60 hover:text-orange-300 disabled:opacity-60"
+-          >
+-            Clear session
+-          </button>
++            <button
++              type="button"
++              onClick={clearSession}
++              disabled={loading}
++              className="font-bold text-zinc-500 transition hover:text-zinc-300 disabled:opacity-60"
++            >
++              Clear session
++            </button>
++          </div>
+ 
+           <div className="mt-5 border-t border-white/10 pt-5">
+             <Link
+@@ -182,4 +152,4 @@ export default function AdminLoginPage() {
+       </div>
+     </main>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/admin/page.tsx b/app/admin/page.tsx
+index b245cf0..84c623e 100644
+--- a/app/admin/page.tsx
++++ b/app/admin/page.tsx
+@@ -1,4 +1,5 @@
+ import Link from "next/link";
++import AdminLogoutButton from "@/app/components/AdminLogoutButton";
+ 
+ export const dynamic = "force-dynamic";
+ export const revalidate = 0;
+@@ -33,6 +34,14 @@ const coreCards: AdminCard[] = [
+     badge: "Applications",
+     featured: true,
+   },
++  {
++    title: "Player Accounts",
++    description:
++      "Invite official players, resend secure access links, and revoke player portal access.",
++    href: "/admin/player-access",
++    badge: "Access",
++    featured: true,
++  },
+   {
+     title: "Games",
+     description: "Add fixtures, results, posters, scores, videos, and game notes.",
+@@ -141,6 +150,13 @@ const businessCards: AdminCard[] = [
+     badge: "Partners",
+     featured: true,
+   },
++  {
++    title: "Email Notifications",
++    description:
++      "Check the approved Resend sender and send a live notification test.",
++    href: "/admin/email",
++    badge: "Email",
++  },
+ ];
+ 
+ export default function AdminPage() {
+@@ -187,12 +203,7 @@ export default function AdminPage() {
+                 Public Partners
+               </Link>
+ 
+-              <Link
+-                href="/api/admin/logout"
+-                className="rounded-full bg-orange-500 px-4 py-2 text-sm font-black text-black transition hover:bg-orange-400"
+-              >
+-                Logout
+-              </Link>
++              <AdminLogoutButton />
+             </div>
+           </div>
+ 
+@@ -308,4 +319,4 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
+       <h2 className="mt-1 text-3xl font-black text-white">{title}</h2>
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/admin/player-access/page.tsx b/app/admin/player-access/page.tsx
+new file mode 100644
+index 0000000..c44f5fa
+--- /dev/null
++++ b/app/admin/player-access/page.tsx
+@@ -0,0 +1,184 @@
++"use client";
++
++import Link from "next/link";
++import { useEffect, useMemo, useState } from "react";
++import { supabase } from "@/lib/supabase";
++
++type PlayerRow = {
++  id: string;
++  user_id?: string | null;
++  full_name?: string | null;
++  name?: string | null;
++  nickname?: string | null;
++  role?: string | null;
++  email?: string | null;
++  is_active?: boolean | null;
++};
++
++function playerName(player: PlayerRow) {
++  return player.full_name || player.name || player.nickname || "Unnamed Player";
++}
++
++function officialPlayer(player: PlayerRow) {
++  const role = String(player.role ?? "").toLowerCase();
++  return player.is_active !== false && !role.includes("guest") && !role.includes("prospect");
++}
++
++export default function AdminPlayerAccessPage() {
++  const [players, setPlayers] = useState<PlayerRow[]>([]);
++  const [emails, setEmails] = useState<Record<string, string>>({});
++  const [loading, setLoading] = useState(true);
++  const [busyId, setBusyId] = useState("");
++  const [message, setMessage] = useState("");
++
++  const officialPlayers = useMemo(
++    () => players.filter(officialPlayer).sort((a, b) => playerName(a).localeCompare(playerName(b))),
++    [players]
++  );
++
++  async function loadPlayers() {
++    setLoading(true);
++    const { data, error } = await supabase
++      .from("players")
++      .select("id, user_id, full_name, name, nickname, role, email, is_active")
++      .order("full_name", { ascending: true });
++
++    if (error) {
++      setMessage(
++        error.message.includes("user_id")
++          ? "Run the supplied player-auth migration in Supabase first."
++          : error.message
++      );
++      setPlayers([]);
++      setLoading(false);
++      return;
++    }
++
++    const rows = (data ?? []) as PlayerRow[];
++    setPlayers(rows);
++    setEmails(
++      rows.reduce<Record<string, string>>((acc, player) => {
++        acc[player.id] = player.email || "";
++        return acc;
++      }, {})
++    );
++    setLoading(false);
++  }
++
++  useEffect(() => {
++    queueMicrotask(() => {
++      void loadPlayers();
++    });
++  }, []);
++
++  async function updateAccess(player: PlayerRow, action: "invite" | "unlink") {
++    setBusyId(player.id);
++    setMessage("");
++
++    const response = await fetch("/api/admin/player-access", {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({
++        action,
++        player_id: player.id,
++        email: emails[player.id] || player.email || "",
++      }),
++    });
++
++    const result = await response.json().catch(() => ({
++      ok: false,
++      error: "Could not read the access response.",
++    }));
++
++    setMessage(result.message || result.error || "Player access request finished.");
++    setBusyId("");
++    if (result.ok) await loadPlayers();
++  }
++
++  return (
++    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
++      <div className="mx-auto max-w-6xl">
++        <div className="flex flex-wrap items-end justify-between gap-4">
++          <div>
++            <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
++              FACKTS Admin
++            </p>
++            <h1 className="mt-2 text-4xl font-black">Player Accounts</h1>
++            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
++              Issue secure access only to active official players. Guests and prospects remain separate.
++            </p>
++          </div>
++          <Link href="/admin" className="rounded-full border border-slate-700 px-4 py-2 text-sm font-black">
++            Back to Admin
++          </Link>
++        </div>
++
++        {message ? (
++          <div className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 text-sm text-orange-100">
++            {message}
++          </div>
++        ) : null}
++
++        {loading ? (
++          <div className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
++            Loading players...
++          </div>
++        ) : (
++          <div className="mt-6 grid gap-4 md:grid-cols-2">
++            {officialPlayers.map((player) => (
++              <div key={player.id} className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
++                <div className="flex items-start justify-between gap-3">
++                  <div>
++                    <h2 className="text-xl font-black">{playerName(player)}</h2>
++                    <p className="mt-1 text-sm text-slate-500">{player.role || "Player"}</p>
++                  </div>
++                  <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${
++                    player.user_id
++                      ? "bg-emerald-500/15 text-emerald-300"
++                      : "bg-slate-800 text-slate-400"
++                  }`}>
++                    {player.user_id ? "Access Active" : "No Account"}
++                  </span>
++                </div>
++
++                <input
++                  type="email"
++                  value={emails[player.id] || ""}
++                  onChange={(event) =>
++                    setEmails((current) => ({ ...current, [player.id]: event.target.value }))
++                  }
++                  placeholder="player@email.com"
++                  disabled={Boolean(player.user_id) || busyId === player.id}
++                  className="mt-4 w-full rounded-2xl border border-slate-700 bg-black px-4 py-3 outline-none focus:border-orange-400 disabled:opacity-60"
++                />
++
++                <div className="mt-4 grid grid-cols-2 gap-2">
++                  <button
++                    type="button"
++                    onClick={() => updateAccess(player, "invite")}
++                    disabled={busyId === player.id}
++                    className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-black disabled:opacity-60"
++                  >
++                    {busyId === player.id
++                      ? "Working..."
++                      : player.user_id
++                        ? "Resend Access"
++                        : "Invite Player"}
++                  </button>
++                  <button
++                    type="button"
++                    onClick={() => updateAccess(player, "unlink")}
++                    disabled={!player.user_id || busyId === player.id}
++                    className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-black text-red-100 disabled:opacity-30"
++                  >
++                    Revoke Access
++                  </button>
++                </div>
++              </div>
++            ))}
++          </div>
++        )}
++      </div>
++    </main>
++  );
++}
+diff --git a/app/api/admin/email/route.ts b/app/api/admin/email/route.ts
+new file mode 100644
+index 0000000..e803c45
+--- /dev/null
++++ b/app/api/admin/email/route.ts
+@@ -0,0 +1,50 @@
++import { NextResponse } from "next/server";
++import { getAdminAccess } from "@/lib/auth/server";
++import { getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
++
++export const runtime = "nodejs";
++
++async function authorized() {
++  const { user, profile } = await getAdminAccess();
++  return Boolean(user && profile);
++}
++
++export async function GET() {
++  if (!(await authorized())) {
++    return NextResponse.json({ ok: false, error: "Admin login required." }, { status: 403 });
++  }
++
++  const config = getEmailConfiguration();
++  return NextResponse.json({
++    ok: true,
++    configured: Boolean(config.apiKey && config.from && config.adminEmail),
++    has_api_key: Boolean(config.apiKey),
++    email_from: config.from || "Not configured",
++    admin_email: config.adminEmail || "Not configured",
++  });
++}
++
++export async function POST() {
++  if (!(await authorized())) {
++    return NextResponse.json({ ok: false, error: "Admin login required." }, { status: 403 });
++  }
++
++  try {
++    const config = getEmailConfiguration();
++    if (!config.adminEmail) throw new Error("FACKTS_ADMIN_EMAIL is not configured.");
++
++    const result = await sendResendEmail({
++      to: config.adminEmail,
++      subject: "FACKTS Hoops email test",
++      text: "Resend notifications are connected and working for FACKTS Hoops.",
++      html: '<div style="font-family:Arial,sans-serif;background:#09090b;color:#fff;padding:28px;border-radius:18px"><p style="color:#fb923c;font-weight:800">FACKTS HOOPS</p><h1>Email is working.</h1><p style="color:#d4d4d8">Resend notifications are connected to the live app.</p></div>',
++    });
++
++    return NextResponse.json({ ok: true, message: "Test email sent.", id: result.id });
++  } catch (error) {
++    return NextResponse.json(
++      { ok: false, error: error instanceof Error ? error.message : "Test email failed." },
++      { status: 400 }
++    );
++  }
++}
+diff --git a/app/api/admin/login/route.ts b/app/api/admin/login/route.ts
+index f9671a8..03173aa 100644
+--- a/app/api/admin/login/route.ts
++++ b/app/api/admin/login/route.ts
+@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
+ export async function POST(request: NextRequest) {
+   const { email, password } = await request.json();
+ 
+-  let response = NextResponse.json({ ok: true });
++  const response = NextResponse.json({ ok: true });
+ 
+   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+@@ -34,29 +34,28 @@ export async function POST(request: NextRequest) {
+     password,
+   });
+ 
+-  if (error || !data.user?.email) {
++  if (error || !data.user) {
+     return NextResponse.json(
+       { ok: false, error: error?.message ?? "Login failed." },
+       { status: 401 }
+     );
+   }
+ 
+-  const allowedEmails = (process.env.ADMIN_EMAILS ?? "")
+-    .split(",")
+-    .map((item) => item.trim().toLowerCase())
+-    .filter(Boolean);
++  const { data: profile, error: profileError } = await supabase
++    .from("admin_profiles")
++    .select("id, role, is_active")
++    .eq("user_id", data.user.id)
++    .eq("is_active", true)
++    .maybeSingle();
+ 
+-  if (
+-    allowedEmails.length > 0 &&
+-    !allowedEmails.includes(data.user.email.toLowerCase())
+-  ) {
++  if (profileError || !profile) {
+     await supabase.auth.signOut();
+ 
+     return NextResponse.json(
+-      { ok: false, error: "This email is not allowed to access admin." },
++      { ok: false, error: "This account is not approved for admin access." },
+       { status: 403 }
+     );
+   }
+ 
+   return response;
+-}
+\ No newline at end of file
++}
+diff --git a/app/api/admin/player-access/route.ts b/app/api/admin/player-access/route.ts
+new file mode 100644
+index 0000000..4025a59
+--- /dev/null
++++ b/app/api/admin/player-access/route.ts
+@@ -0,0 +1,211 @@
++import { NextRequest, NextResponse } from "next/server";
++import { getAdminAccess } from "@/lib/auth/server";
++import { escapeHtml, sendResendEmail } from "@/lib/email/resend";
++import { createSupabaseAdminClient } from "@/lib/supabase/admin";
++
++export const runtime = "nodejs";
++
++function officialPlayerRole(role?: string | null) {
++  const cleanRole = String(role ?? "").toLowerCase();
++  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
++}
++
++export async function POST(request: NextRequest) {
++  try {
++    const { user, profile } = await getAdminAccess();
++
++    if (!user || !profile) {
++      return NextResponse.json(
++        { ok: false, error: "Admin login required." },
++        { status: 403 }
++      );
++    }
++
++    const body = await request.json();
++    const action = body.action === "unlink" ? "unlink" : "invite";
++    const playerId = String(body.player_id ?? "").trim();
++    const requestedEmail = String(body.email ?? "").trim().toLowerCase();
++
++    if (!playerId) {
++      return NextResponse.json(
++        { ok: false, error: "Choose a player first." },
++        { status: 400 }
++      );
++    }
++
++    const admin = createSupabaseAdminClient();
++    const { data: player, error: playerError } = await admin
++      .from("players")
++      .select("id, user_id, full_name, name, nickname, role, email, is_active")
++      .eq("id", playerId)
++      .maybeSingle();
++
++    if (playerError) {
++      const migrationHint = playerError.message.includes("user_id")
++        ? " Run the supplied player-auth migration in Supabase first."
++        : "";
++      return NextResponse.json(
++        { ok: false, error: `${playerError.message}${migrationHint}` },
++        { status: 400 }
++      );
++    }
++
++    if (!player || !player.is_active || !officialPlayerRole(player.role)) {
++      return NextResponse.json(
++        { ok: false, error: "Only active official FACKTS players can receive access." },
++        { status: 400 }
++      );
++    }
++
++    if (action === "unlink") {
++      const { error } = await admin
++        .from("players")
++        .update({ user_id: null })
++        .eq("id", playerId);
++
++      if (error) {
++        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
++      }
++
++      return NextResponse.json({ ok: true, message: "Player access revoked." });
++    }
++
++    if (!requestedEmail.includes("@")) {
++      return NextResponse.json(
++        { ok: false, error: "Add a valid player email." },
++        { status: 400 }
++      );
++    }
++
++    const playerName =
++      player.full_name || player.name || player.nickname || "FACKTS Player";
++    let authUserId = player.user_id as string | null;
++    let accountEmail = requestedEmail;
++    let linkType: "invite" | "recovery" = "invite";
++
++    if (authUserId) {
++      const { data: linkedUser, error: linkedError } =
++        await admin.auth.admin.getUserById(authUserId);
++
++      if (linkedError || !linkedUser.user?.email) {
++        return NextResponse.json(
++          { ok: false, error: "The linked Auth user could not be loaded." },
++          { status: 400 }
++        );
++      }
++
++      accountEmail = linkedUser.user.email.toLowerCase();
++      linkType = "recovery";
++    } else {
++      const { data: usersData, error: usersError } =
++        await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
++
++      if (usersError) {
++        return NextResponse.json(
++          { ok: false, error: usersError.message },
++          { status: 400 }
++        );
++      }
++
++      const existingUser = usersData.users.find(
++        (candidate) => candidate.email?.toLowerCase() === requestedEmail
++      );
++
++      if (existingUser) {
++        const [{ data: adminProfile }, { data: otherPlayer }] = await Promise.all([
++          admin
++            .from("admin_profiles")
++            .select("id")
++            .eq("user_id", existingUser.id)
++            .maybeSingle(),
++          admin
++            .from("players")
++            .select("id")
++            .eq("user_id", existingUser.id)
++            .neq("id", playerId)
++            .maybeSingle(),
++        ]);
++
++        if (adminProfile || otherPlayer) {
++          return NextResponse.json(
++            {
++              ok: false,
++              error:
++                "That email already belongs to another FACKTS account. Use a separate player email.",
++            },
++            { status: 400 }
++          );
++        }
++
++        authUserId = existingUser.id;
++        linkType = "recovery";
++      }
++    }
++
++    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
++    const redirectTo = `${siteUrl}/account/update-password?next=${encodeURIComponent("/player")}`;
++
++    const { data: linkData, error: linkError } =
++      await admin.auth.admin.generateLink(
++        linkType === "invite"
++          ? {
++              type: "invite",
++              email: accountEmail,
++              options: {
++                redirectTo,
++                data: { role: "player", player_id: player.id, name: playerName },
++              },
++            }
++          : {
++              type: "recovery",
++              email: accountEmail,
++              options: { redirectTo },
++            }
++      );
++
++    if (linkError || !linkData.user || !linkData.properties?.action_link) {
++      return NextResponse.json(
++        { ok: false, error: linkError?.message || "Could not create access link." },
++        { status: 400 }
++      );
++    }
++
++    authUserId = authUserId || linkData.user.id;
++
++    const { error: linkPlayerError } = await admin
++      .from("players")
++      .update({ user_id: authUserId, email: accountEmail })
++      .eq("id", playerId);
++
++    if (linkPlayerError) {
++      return NextResponse.json(
++        { ok: false, error: linkPlayerError.message },
++        { status: 400 }
++      );
++    }
++
++    const actionLink = linkData.properties.action_link;
++    await sendResendEmail({
++      to: accountEmail,
++      subject:
++        linkType === "invite"
++          ? "Your FACKTS Hoops player account"
++          : "Your FACKTS Hoops access link",
++      text: `Hi ${playerName}. Use this secure link to set your password and access the FACKTS Hoops player portal: ${actionLink}`,
++      html: `<div style="font-family:Arial,sans-serif;background:#09090b;color:#fff;padding:28px;border-radius:18px"><p style="color:#fb923c;font-weight:800;letter-spacing:.12em">FACKTS HOOPS</p><h1>Welcome, ${escapeHtml(playerName)}</h1><p style="color:#d4d4d8;line-height:1.6">Your official player portal is ready. Set your password to access your profile, stats, game calls, availability, challenges, and alerts.</p><p><a href="${escapeHtml(actionLink)}" style="display:inline-block;background:#f97316;color:#000;padding:13px 20px;border-radius:12px;font-weight:800;text-decoration:none">Activate Player Account</a></p><p style="color:#71717a;font-size:12px">This secure link is for ${escapeHtml(accountEmail)}.</p></div>`,
++    });
++
++    return NextResponse.json({
++      ok: true,
++      message:
++        linkType === "invite"
++          ? `Player invitation sent to ${accountEmail}.`
++          : `Fresh access link sent to ${accountEmail}.`,
++    });
++  } catch (error) {
++    return NextResponse.json(
++      { ok: false, error: error instanceof Error ? error.message : "Access setup failed." },
++      { status: 500 }
++    );
++  }
++}
+diff --git a/app/api/auth/request-reset/route.ts b/app/api/auth/request-reset/route.ts
+new file mode 100644
+index 0000000..e25a079
+--- /dev/null
++++ b/app/api/auth/request-reset/route.ts
+@@ -0,0 +1,111 @@
++import { NextRequest, NextResponse } from "next/server";
++import { createSupabaseAdminClient } from "@/lib/supabase/admin";
++import { escapeHtml, sendResendEmail } from "@/lib/email/resend";
++
++export const runtime = "nodejs";
++
++const attempts = new Map<string, { count: number; resetAt: number }>();
++const WINDOW_MS = 15 * 60 * 1000;
++const MAX_ATTEMPTS = 3;
++
++function allowedAttempt(key: string) {
++  const now = Date.now();
++  const current = attempts.get(key);
++
++  if (!current || current.resetAt <= now) {
++    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
++    return true;
++  }
++
++  if (current.count >= MAX_ATTEMPTS) return false;
++  current.count += 1;
++  return true;
++}
++
++function officialPlayerRole(role?: string | null) {
++  const cleanRole = String(role ?? "").toLowerCase();
++  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
++}
++
++export async function POST(request: NextRequest) {
++  const genericMessage =
++    "If that approved account exists, a secure password link has been sent.";
++
++  try {
++    const origin = request.headers.get("origin");
++    if (origin && origin !== request.nextUrl.origin) {
++      return NextResponse.json({ ok: false, message: "Request rejected." }, { status: 403 });
++    }
++
++    const body = await request.json();
++    const email = String(body.email ?? "").trim().toLowerCase();
++    const role = body.role === "admin" ? "admin" : "player";
++    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
++
++    if (!email.includes("@")) {
++      return NextResponse.json({ ok: true, message: genericMessage });
++    }
++
++    if (!allowedAttempt(`${ip}:${email}`)) {
++      return NextResponse.json({ ok: true, message: genericMessage });
++    }
++
++    const admin = createSupabaseAdminClient();
++    const { data: usersData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
++    const user = usersData.users.find(
++      (candidate) => candidate.email?.toLowerCase() === email
++    );
++
++    if (!user) {
++      return NextResponse.json({ ok: true, message: genericMessage });
++    }
++
++    let approved = false;
++
++    if (role === "admin") {
++      const { data: profile } = await admin
++        .from("admin_profiles")
++        .select("id")
++        .eq("user_id", user.id)
++        .eq("is_active", true)
++        .maybeSingle();
++      approved = Boolean(profile);
++    } else {
++      const { data: player } = await admin
++        .from("players")
++        .select("id, role")
++        .eq("user_id", user.id)
++        .eq("is_active", true)
++        .maybeSingle();
++      approved = Boolean(player && officialPlayerRole(player.role));
++    }
++
++    if (!approved) {
++      return NextResponse.json({ ok: true, message: genericMessage });
++    }
++
++    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
++    const nextPath = role === "admin" ? "/admin" : "/player";
++    const redirectTo = `${siteUrl}/account/update-password?next=${encodeURIComponent(nextPath)}`;
++    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
++      type: "recovery",
++      email,
++      options: { redirectTo },
++    });
++
++    if (linkError || !linkData.properties?.action_link) {
++      return NextResponse.json({ ok: true, message: genericMessage });
++    }
++
++    await sendResendEmail({
++      to: email,
++      subject: "Reset your FACKTS Hoops password",
++      text: `Use this secure link to set a new FACKTS Hoops password: ${linkData.properties.action_link}`,
++      html: `<div style="font-family:Arial,sans-serif;background:#09090b;color:#fff;padding:28px;border-radius:18px"><p style="color:#fb923c;font-weight:800;letter-spacing:.12em">FACKTS HOOPS</p><h1>Reset your password</h1><p style="color:#d4d4d8;line-height:1.6">Use the secure button below to create a new ${escapeHtml(role)} password.</p><p><a href="${escapeHtml(linkData.properties.action_link)}" style="display:inline-block;background:#f97316;color:#000;padding:13px 20px;border-radius:12px;font-weight:800;text-decoration:none">Set New Password</a></p><p style="color:#71717a;font-size:12px">If you did not request this, ignore this email.</p></div>`,
++    });
++
++    return NextResponse.json({ ok: true, message: genericMessage });
++  } catch {
++    return NextResponse.json({ ok: true, message: genericMessage });
++  }
++}
+diff --git a/app/api/notify-email/route.ts b/app/api/notify-email/route.ts
+index dd33c03..9d49c5c 100644
+--- a/app/api/notify-email/route.ts
++++ b/app/api/notify-email/route.ts
+@@ -1,4 +1,6 @@
+-import { NextResponse } from "next/server";
++import { NextRequest, NextResponse } from "next/server";
++import { createServerSupabaseClient } from "@/lib/supabase/server";
++import { getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
+ 
+ export const runtime = "nodejs";
+ 
+@@ -9,122 +11,94 @@ type EmailPayload = {
+   html?: string;
+ };
+ 
+-function cleanEmailList(value: unknown, adminEmail: string) {
+-  if (value === "admin" || !value) return [adminEmail];
+-
+-  if (Array.isArray(value)) {
+-    return value
+-      .map((item) => String(item).trim())
+-      .filter((item) => item.includes("@"));
+-  }
+-
+-  return String(value)
+-    .split(",")
+-    .map((item) => item.trim())
+-    .filter((item) => item.includes("@"));
+-}
+-
+-function getErrorMessage(result: any) {
+-  if (!result) return "Unknown Resend error.";
+-  if (typeof result.message === "string") return result.message;
+-  if (typeof result.error === "string") return result.error;
+-  if (typeof result?.error?.message === "string") return result.error.message;
+-
+-  try {
+-    return JSON.stringify(result);
+-  } catch {
+-    return "Resend rejected the request.";
+-  }
++function officialPlayerRole(role?: string | null) {
++  const cleanRole = String(role ?? "").toLowerCase();
++  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
+ }
+ 
+-export async function GET() {
+-  return NextResponse.json({
+-    ok: true,
+-    has_resend_api_key: Boolean(process.env.RESEND_API_KEY),
+-    admin_email: process.env.FACKTS_ADMIN_EMAIL || "facktsafrica@gmail.com",
+-    email_from:
+-      process.env.EMAIL_FROM || "FACKTS Hoops <onboarding@resend.dev>",
+-  });
++function cleanRecipients(value: unknown) {
++  const raw = Array.isArray(value) ? value : String(value ?? "").split(",");
++  return raw
++    .map((item) => String(item).trim().toLowerCase())
++    .filter((item) => item.includes("@"))
++    .slice(0, 5);
+ }
+ 
+-export async function POST(request: Request) {
++export async function POST(request: NextRequest) {
+   try {
+-    const body = (await request.json()) as EmailPayload;
+-
+-    const apiKey = process.env.RESEND_API_KEY;
+-    const adminEmail =
+-      process.env.FACKTS_ADMIN_EMAIL || "facktsafrica@gmail.com";
+-    const from =
+-      process.env.EMAIL_FROM || "FACKTS Hoops <onboarding@resend.dev>";
+-
+-    const to = cleanEmailList(body.to, adminEmail);
+-    const subject = String(body.subject || "").trim();
+-    const text = String(body.text || "").trim();
+-    const html = String(body.html || "").trim();
+-
+-    if (!apiKey) {
+-      return NextResponse.json({
+-        ok: false,
+-        error:
+-          "RESEND_API_KEY missing. Add it in Vercel Environment Variables and redeploy.",
+-      });
++    const origin = request.headers.get("origin");
++    if (origin && origin !== request.nextUrl.origin) {
++      return NextResponse.json({ ok: false, error: "Request rejected." }, { status: 403 });
+     }
+ 
+-    if (to.length === 0) {
+-      return NextResponse.json({
+-        ok: false,
+-        error: "No valid recipient email.",
+-      });
+-    }
++    const supabase = await createServerSupabaseClient();
++    const { data: userData } = await supabase.auth.getUser();
++    const user = userData.user;
+ 
+-    if (!subject) {
+-      return NextResponse.json({
+-        ok: false,
+-        error: "Email subject missing.",
+-      });
++    if (!user) {
++      return NextResponse.json({ ok: false, error: "Login required." }, { status: 401 });
+     }
+ 
+-    if (!text && !html) {
+-      return NextResponse.json({
+-        ok: false,
+-        error: "Email body missing.",
+-      });
++    const [{ data: adminProfile }, { data: player }] = await Promise.all([
++      supabase
++        .from("admin_profiles")
++        .select("id")
++        .eq("user_id", user.id)
++        .eq("is_active", true)
++        .maybeSingle(),
++      supabase
++        .from("players")
++        .select("id, role")
++        .eq("user_id", user.id)
++        .eq("is_active", true)
++        .maybeSingle(),
++    ]);
++
++    const body = (await request.json()) as EmailPayload;
++    const config = getEmailConfiguration();
++    const isAdmin = Boolean(adminProfile);
++    const isPlayer = Boolean(player && officialPlayerRole(player.role));
++
++    if (!isAdmin && !isPlayer) {
++      return NextResponse.json({ ok: false, error: "Approved account required." }, { status: 403 });
+     }
+ 
+-    const response = await fetch("https://api.resend.com/emails", {
+-      method: "POST",
+-      headers: {
+-        Authorization: `Bearer ${apiKey}`,
+-        "Content-Type": "application/json",
+-      },
+-      body: JSON.stringify({
+-        from,
+-        to,
+-        subject,
+-        text: text || undefined,
+-        html: html || undefined,
+-      }),
+-    });
++    const wantsAdmin = body.to === "admin" || !body.to;
++    const recipients = wantsAdmin
++      ? config.adminEmail
++        ? [config.adminEmail]
++        : []
++      : cleanRecipients(body.to);
++
++    if (!wantsAdmin && !isAdmin) {
++      return NextResponse.json(
++        { ok: false, error: "Only admins can email player recipients." },
++        { status: 403 }
++      );
++    }
+ 
+-    const result = await response.json().catch(() => ({}));
++    const subject = String(body.subject ?? "").trim().slice(0, 160);
++    const text = String(body.text ?? "").trim().slice(0, 4000);
+ 
+-    if (!response.ok) {
+-      return NextResponse.json({
+-        ok: false,
+-        error: getErrorMessage(result),
+-        details: result,
+-      });
++    if (!subject || !text || recipients.length === 0) {
++      return NextResponse.json(
++        { ok: false, error: "Email recipient, subject, or message is missing." },
++        { status: 400 }
++      );
+     }
+ 
+-    return NextResponse.json({
+-      ok: true,
+-      message: "Email sent.",
+-      result,
++    const result = await sendResendEmail({
++      to: recipients,
++      subject,
++      text,
++      html: isAdmin ? String(body.html ?? "").slice(0, 12000) || undefined : undefined,
+     });
++
++    return NextResponse.json({ ok: true, message: "Email sent.", id: result.id });
+   } catch (error) {
+-    return NextResponse.json({
+-      ok: false,
+-      error: error instanceof Error ? error.message : "Unknown email error.",
+-    });
++    return NextResponse.json(
++      { ok: false, error: error instanceof Error ? error.message : "Email failed." },
++      { status: 400 }
++    );
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/app/calendar/page.tsx b/app/calendar/page.tsx
+index 7ec104c..c26d6a9 100644
+--- a/app/calendar/page.tsx
++++ b/app/calendar/page.tsx
+@@ -21,12 +21,15 @@ const DEFAULT_COURTS = [
+ 
+ type Person = {
+   id: string;
++  user_id?: string | null;
+   source: "players" | "guest_hoopers";
+   full_name: string;
+   nickname?: string | null;
+   role?: string | null;
+   photo_url?: string | null;
+   photo_position?: string | null;
++  email?: string | null;
++  phone?: string | null;
+   label: string;
+ };
+ 
+@@ -528,7 +531,14 @@ export default function CalendarPage() {
+   const pendingPlayerRequests = matchups.filter(
+     (matchup) =>
+       matchup.matchup_source === "player_request" &&
+-      matchup.matchup_status === "suggested"
++      matchup.matchup_status === "suggested" &&
++      Boolean(
++        selectedPerson &&
++          ((matchup.player_one_source === selectedPerson.source &&
++            matchup.player_one_id === selectedPerson.id) ||
++            (matchup.player_two_source === selectedPerson.source &&
++              matchup.player_two_id === selectedPerson.id))
++      )
+   );
+ 
+   const unreadNotifications = notifications.filter((note) => !note.is_read);
+@@ -565,6 +575,14 @@ export default function CalendarPage() {
+     setLoadingPage(true);
+     setMessage("");
+ 
++    const { data: userData, error: userError } = await supabase.auth.getUser();
++
++    if (userError || !userData.user) {
++      setMessage("Player login required. Please log in again.");
++      setLoadingPage(false);
++      return;
++    }
++
+     const [
+       playersResult,
+       guestsResult,
+@@ -598,12 +616,15 @@ export default function CalendarPage() {
+ 
+         return {
+           id: player.id,
++          user_id: player.user_id,
+           source: "players",
+           full_name: displayPersonName(player),
+           nickname: player.nickname,
+           role: guestRole ? "Guest Hooper" : player.role || "Player",
+           photo_url: player.photo_url,
+           photo_position: player.photo_position,
++          email: player.email,
++          phone: player.phone,
+           label: guestRole ? "Guest Hooper" : "FACKTS Player",
+         };
+       });
+@@ -619,7 +640,22 @@ export default function CalendarPage() {
+       label: "Guest Hooper",
+     }));
+ 
+-    setPeople(dedupePeople([...playerPeople, ...guestPeople]));
++    const allPeople = dedupePeople([...playerPeople, ...guestPeople]);
++    const signedInPlayer = playerPeople.find(
++      (person) => person.user_id === userData.user.id && !isGuestRole(person)
++    );
++
++    if (!signedInPlayer) {
++      setMessage("This login is not linked to an active official FACKTS player.");
++      setPeople(allPeople);
++      setLoadingPage(false);
++      return;
++    }
++
++    setPeople(allPeople);
++    setSelectedPersonKey(getPersonKey(signedInPlayer));
++    setContactEmail(signedInPlayer.email || userData.user.email || "");
++    setContactPhone(signedInPlayer.phone || "");
+     setGames(((gamesResult.data ?? []) as Game[]).filter(isUpcomingGame));
+     setEvents(
+       ((eventsResult.data ?? []) as CalendarEvent[]).filter(isUpcomingEvent)
+@@ -649,8 +685,8 @@ export default function CalendarPage() {
+       selectedPerson.id
+     );
+ 
+-    setContactEmail(latest.email || "");
+-    setContactPhone(latest.phone || "");
++    setContactEmail(latest.email || selectedPerson.email || "");
++    setContactPhone(latest.phone || selectedPerson.phone || "");
+   }, [selectedPersonKey, selectedPerson, availability]);
+ 
+   async function markNotificationRead(notificationId: string) {
+@@ -1000,7 +1036,7 @@ export default function CalendarPage() {
+               </h1>
+ 
+               <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">
+-                Pick your identity once, then use Check-In or Call Out separately.
++                Your verified player account controls Check-In and Call Out.
+               </p>
+             </div>
+ 
+@@ -1027,21 +1063,26 @@ export default function CalendarPage() {
+           <>
+             <section className="mt-6 rounded-3xl border border-white/10 bg-zinc-950/90 p-5 shadow-xl shadow-black/30 backdrop-blur">
+               <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
+-                Player Identity
++                Verified Player Identity
+               </div>
+ 
+-              <h2 className="mt-2 text-2xl font-black">Start Here</h2>
++              <h2 className="mt-2 text-2xl font-black">
++                {selectedPerson?.full_name || "Player Account"}
++              </h2>
+ 
+               <p className="mt-2 text-sm leading-6 text-zinc-400">
+-                Pick yourself once. Both Check-In and Call Out will use this identity.
++                Your name is locked to your login. Keep the contact details current for game follow-up.
+               </p>
+ 
+               <div className="mt-5 grid gap-4 lg:grid-cols-3">
+-                <NameSelect
+-                  people={people}
+-                  value={selectedPersonKey}
+-                  onChange={setSelectedPersonKey}
+-                />
++                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3">
++                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">
++                    Signed In As
++                  </div>
++                  <div className="mt-1 font-black text-white">
++                    {selectedPerson?.full_name || "Loading player..."}
++                  </div>
++                </div>
+ 
+                 <FieldLabel label="Email">
+                   <input
+@@ -1520,34 +1561,6 @@ function DateField({
+   );
+ }
+ 
+-function NameSelect({
+-  people,
+-  value,
+-  onChange,
+-}: {
+-  people: Person[];
+-  value: string;
+-  onChange: (value: string) => void;
+-}) {
+-  return (
+-    <FieldLabel label="Your Name">
+-      <select
+-        value={value}
+-        onChange={(event) => onChange(event.target.value)}
+-        className={selectClass}
+-      >
+-        <option value="">Select player or guest hooper</option>
+-        {people.map((person) => (
+-          <option key={getPersonKey(person)} value={getPersonKey(person)}>
+-            {person.full_name}
+-            {person.nickname ? ` "${person.nickname}"` : ""} — {person.label}
+-          </option>
+-        ))}
+-      </select>
+-    </FieldLabel>
+-  );
+-}
+-
+ function CourtSelect({
+   courts,
+   value,
+@@ -1822,4 +1835,4 @@ function EmptyBox({ text }: { text: string }) {
+       {text}
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/components/PlayerLogoutButton.tsx b/app/components/PlayerLogoutButton.tsx
+new file mode 100644
+index 0000000..ae4dbfa
+--- /dev/null
++++ b/app/components/PlayerLogoutButton.tsx
+@@ -0,0 +1,24 @@
++"use client";
++
++import { useRouter } from "next/navigation";
++import { supabase } from "@/lib/supabase";
++
++export default function PlayerLogoutButton() {
++  const router = useRouter();
++
++  async function handleLogout() {
++    await supabase.auth.signOut();
++    router.replace("/player/login");
++    router.refresh();
++  }
++
++  return (
++    <button
++      type="button"
++      onClick={handleLogout}
++      className="rounded-full border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-black text-red-100 transition hover:bg-red-500/20"
++    >
++      Logout
++    </button>
++  );
++}
+diff --git a/app/components/PublicHeader.tsx b/app/components/PublicHeader.tsx
+index 1020c0f..36b9d2f 100644
+--- a/app/components/PublicHeader.tsx
++++ b/app/components/PublicHeader.tsx
+@@ -15,6 +15,7 @@ type NavItem = {
+ 
+ const mainItems: NavItem[] = [
+   { label: "Home", href: "/" },
++  { label: "Player Portal", href: "/player", highlight: true },
+   { label: "Official Players", href: "/players" },
+   { label: "Events", href: "/events" },
+   { label: "Merch", href: "/merch" },
+@@ -100,6 +101,13 @@ export default function PublicHeader() {
+           </Link>
+ 
+           <div className="flex shrink-0 items-center gap-2">
++            <Link
++              href="/player"
++              className="hidden rounded-full border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm font-black text-blue-200 transition hover:bg-blue-500 hover:text-white lg:inline-flex"
++            >
++              Player Login
++            </Link>
++
+             <Link
+               href="/court-takeover"
+               className="hidden rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-black md:inline-flex"
+@@ -233,4 +241,4 @@ export default function PublicHeader() {
+       ) : null}
+     </>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/player/login/page.tsx b/app/player/login/page.tsx
+new file mode 100644
+index 0000000..cfc5395
+--- /dev/null
++++ b/app/player/login/page.tsx
+@@ -0,0 +1,147 @@
++"use client";
++
++import Link from "next/link";
++import { FormEvent, useState } from "react";
++import { useRouter } from "next/navigation";
++import { supabase } from "@/lib/supabase";
++
++function officialPlayerRole(role?: string | null) {
++  const cleanRole = String(role ?? "").toLowerCase();
++  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
++}
++
++export default function PlayerLoginPage() {
++  const router = useRouter();
++  const [email, setEmail] = useState("");
++  const [password, setPassword] = useState("");
++  const [message, setMessage] = useState("");
++  const [loading, setLoading] = useState(false);
++
++  async function handleLogin(event: FormEvent) {
++    event.preventDefault();
++    if (loading) return;
++
++    setLoading(true);
++    setMessage("Checking player access...");
++
++    const { data, error } = await supabase.auth.signInWithPassword({
++      email: email.trim().toLowerCase(),
++      password,
++    });
++
++    if (error || !data.user) {
++      setMessage(
++        error?.message === "Invalid login credentials"
++          ? "The email or password is incorrect."
++          : error?.message || "Login failed."
++      );
++      setLoading(false);
++      return;
++    }
++
++    const { data: player, error: playerError } = await supabase
++      .from("players")
++      .select("id, role, is_active")
++      .eq("user_id", data.user.id)
++      .eq("is_active", true)
++      .maybeSingle();
++
++    if (playerError || !player || !officialPlayerRole(player.role)) {
++      await supabase.auth.signOut();
++      setMessage(
++        playerError
++          ? `Player access check failed: ${playerError.message}`
++          : "This account is not linked to an active FACKTS player."
++      );
++      setLoading(false);
++      return;
++    }
++
++    setMessage("Welcome back. Opening your player portal...");
++    router.replace("/player");
++    router.refresh();
++  }
++
++  return (
++    <main className="min-h-screen bg-black px-4 py-10 text-white">
++      <div className="mx-auto flex min-h-[80vh] max-w-md items-center">
++        <div className="w-full overflow-hidden rounded-[2rem] border border-orange-500/20 bg-zinc-950 shadow-2xl shadow-orange-950/20">
++          <div className="border-b border-white/10 bg-gradient-to-br from-orange-500/20 via-zinc-950 to-blue-950/40 p-6">
++            <div className="text-xs font-black uppercase tracking-[0.3em] text-orange-300">
++              FACKTS Hoops
++            </div>
++            <h1 className="mt-2 text-4xl font-black uppercase">Player Login</h1>
++            <p className="mt-3 text-sm leading-6 text-zinc-300">
++              Access your profile, stats, availability, challenges, and player alerts.
++            </p>
++          </div>
++
++          <div className="p-6">
++            {message ? (
++              <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-zinc-200">
++                {message}
++              </div>
++            ) : null}
++
++            <form onSubmit={handleLogin} className="space-y-4">
++              <label className="block">
++                <div className="mb-2 text-sm font-bold text-zinc-300">Email</div>
++                <input
++                  required
++                  type="email"
++                  autoComplete="email"
++                  value={email}
++                  onChange={(event) => setEmail(event.target.value)}
++                  placeholder="player@email.com"
++                  disabled={loading}
++                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400 disabled:opacity-60"
++                />
++              </label>
++
++              <label className="block">
++                <div className="mb-2 text-sm font-bold text-zinc-300">Password</div>
++                <input
++                  required
++                  type="password"
++                  autoComplete="current-password"
++                  value={password}
++                  onChange={(event) => setPassword(event.target.value)}
++                  placeholder="Enter password"
++                  disabled={loading}
++                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-400 disabled:opacity-60"
++                />
++              </label>
++
++              <button
++                type="submit"
++                disabled={loading}
++                className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-70"
++              >
++                {loading ? "Checking..." : "Enter Player Portal"}
++              </button>
++            </form>
++
++            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
++              <Link
++                href="/account/forgot-password?role=player"
++                className="font-bold text-orange-300 transition hover:text-orange-200"
++              >
++                Forgot password?
++              </Link>
++              <span className="text-zinc-500">Accounts are issued by FACKTS admin.</span>
++            </div>
++
++            <div className="mt-5 border-t border-white/10 pt-5">
++              <Link
++                href="/"
++                className="text-sm font-bold text-zinc-400 transition hover:text-orange-300"
++              >
++                Back to FACKTS Hoops
++              </Link>
++            </div>
++          </div>
++        </div>
++      </div>
++    </main>
++  );
++}
+diff --git a/app/player/page.tsx b/app/player/page.tsx
+new file mode 100644
+index 0000000..b327a64
+--- /dev/null
++++ b/app/player/page.tsx
+@@ -0,0 +1,206 @@
++import Link from "next/link";
++import { redirect } from "next/navigation";
++import PlayerLogoutButton from "@/app/components/PlayerLogoutButton";
++import { getPlayerAccess } from "@/lib/auth/server";
++
++export const dynamic = "force-dynamic";
++export const revalidate = 0;
++
++type StatRow = {
++  points?: number | null;
++  rebounds?: number | null;
++  assists?: number | null;
++  steals?: number | null;
++  blocks?: number | null;
++};
++
++function average(stats: StatRow[], key: keyof StatRow) {
++  if (stats.length === 0) return "0.0";
++  const total = stats.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
++  return (total / stats.length).toFixed(1);
++}
++
++export default async function PlayerPortalPage() {
++  const { user, player, supabase } = await getPlayerAccess();
++
++  if (!user || !player) {
++    redirect("/player/login");
++  }
++
++  const [statsResult, availabilityResult, matchupResult, notificationResult] =
++    await Promise.all([
++      supabase
++        .from("player_game_stats")
++        .select("points, rebounds, assists, steals, blocks")
++        .eq("player_id", player.id),
++      supabase
++        .from("fackts_availability")
++        .select("id, status, availability_type, availability_date")
++        .eq("participant_source", "players")
++        .eq("participant_id", player.id)
++        .order("created_at", { ascending: false })
++        .limit(8),
++      supabase
++        .from("fackts_matchups")
++        .select("id, matchup_status, player_one_id, player_two_id")
++        .or(`player_one_id.eq.${player.id},player_two_id.eq.${player.id}`)
++        .neq("matchup_status", "deleted"),
++      supabase
++        .from("fackts_notifications")
++        .select("id, title, body, is_read, created_at")
++        .eq("recipient_role", "player")
++        .eq("recipient_source", "players")
++        .eq("recipient_id", player.id)
++        .order("created_at", { ascending: false })
++        .limit(5),
++    ]);
++
++  const stats = (statsResult.data ?? []) as StatRow[];
++  const availability = availabilityResult.data ?? [];
++  const matchups = matchupResult.data ?? [];
++  const notifications = notificationResult.data ?? [];
++  const unreadAlerts = notifications.filter((item) => !item.is_read).length;
++  const playerName = player.full_name || player.name || player.nickname || "Player";
++
++  return (
++    <main className="min-h-screen bg-slate-950 text-white">
++      <section className="border-b border-slate-800 bg-gradient-to-br from-black via-slate-950 to-blue-950/40">
++        <div className="mx-auto max-w-7xl px-5 py-9 sm:px-6">
++          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
++            <div className="flex items-center gap-5">
++              <div className="h-24 w-24 overflow-hidden rounded-3xl border border-orange-500/30 bg-slate-900">
++                {player.photo_url ? (
++                  <img
++                    src={player.photo_url}
++                    alt={playerName}
++                    className="h-full w-full object-cover"
++                  />
++                ) : (
++                  <div className="flex h-full items-center justify-center text-4xl">🏀</div>
++                )}
++              </div>
++              <div>
++                <div className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
++                  Player Portal
++                </div>
++                <h1 className="mt-2 text-4xl font-black uppercase sm:text-5xl">
++                  {playerName}
++                </h1>
++                <p className="mt-2 text-sm text-slate-400">
++                  #{player.jersey_number ?? "—"} • {player.position || "Position TBA"}
++                </p>
++              </div>
++            </div>
++            <PlayerLogoutButton />
++          </div>
++
++          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
++            <PortalStat label="Games" value={String(stats.length)} />
++            <PortalStat label="PPG" value={average(stats, "points")} />
++            <PortalStat label="Open Responses" value={String(availability.length)} />
++            <PortalStat label="Unread Alerts" value={String(unreadAlerts)} />
++          </div>
++        </div>
++      </section>
++
++      <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6">
++        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
++          <PortalLink href="/calendar" title="Player Calendar" text="Check in, respond to games, and request 1v1 matchups." featured />
++          <PortalLink href={`/players/${player.id}`} title="My Public Profile" text="View your player card, stats, bio, and game log." />
++          <PortalLink href="/games" title="Games" text="See fixtures, results, posters, coverage, and reports." />
++          <PortalLink href="/leaderboards" title="Leaderboards" text="Track FACKTS rankings and current performance." />
++        </div>
++      </section>
++
++      <section className="mx-auto grid max-w-7xl gap-6 px-5 pb-12 sm:px-6 lg:grid-cols-2">
++        <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
++          <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
++            Performance
++          </p>
++          <h2 className="mt-2 text-2xl font-black">Current Averages</h2>
++          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
++            <MiniStat label="PTS" value={average(stats, "points")} />
++            <MiniStat label="REB" value={average(stats, "rebounds")} />
++            <MiniStat label="AST" value={average(stats, "assists")} />
++            <MiniStat label="STL" value={average(stats, "steals")} />
++            <MiniStat label="BLK" value={average(stats, "blocks")} />
++          </div>
++        </div>
++
++        <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
++          <div className="flex items-center justify-between gap-3">
++            <div>
++              <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
++                Player Alerts
++              </p>
++              <h2 className="mt-2 text-2xl font-black">Latest Updates</h2>
++            </div>
++            <Link href="/calendar" className="text-sm font-black text-orange-300">
++              Open
++            </Link>
++          </div>
++
++          {notifications.length === 0 ? (
++            <p className="mt-5 text-sm text-slate-500">No player alerts yet.</p>
++          ) : (
++            <div className="mt-5 space-y-3">
++              {notifications.map((note) => (
++                <div
++                  key={note.id}
++                  className={`rounded-2xl border p-4 ${
++                    note.is_read
++                      ? "border-slate-800 bg-black/30"
++                      : "border-orange-500/30 bg-orange-500/10"
++                  }`}
++                >
++                  <p className="font-black">{note.title}</p>
++                  {note.body ? (
++                    <p className="mt-1 text-sm leading-6 text-slate-400">{note.body}</p>
++                  ) : null}
++                </div>
++              ))}
++            </div>
++          )}
++
++          <p className="mt-5 text-xs text-slate-600">
++            Active matchup records: {matchups.length}
++          </p>
++        </div>
++      </section>
++    </main>
++  );
++}
++
++function PortalStat({ label, value }: { label: string; value: string }) {
++  return (
++    <div className="rounded-2xl border border-slate-800 bg-black/40 p-4">
++      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
++      <p className="mt-2 text-3xl font-black text-orange-300">{value}</p>
++    </div>
++  );
++}
++
++function PortalLink({ href, title, text, featured = false }: { href: string; title: string; text: string; featured?: boolean }) {
++  return (
++    <Link
++      href={href}
++      className={`rounded-3xl border p-5 transition hover:-translate-y-1 ${
++        featured
++          ? "border-orange-500/30 bg-orange-500/10"
++          : "border-slate-800 bg-slate-900 hover:border-orange-400/50"
++      }`}
++    >
++      <p className="text-xl font-black">{title}</p>
++      <p className="mt-2 text-sm leading-6 text-slate-400">{text}</p>
++    </Link>
++  );
++}
++
++function MiniStat({ label, value }: { label: string; value: string }) {
++  return (
++    <div className="rounded-2xl border border-slate-800 bg-black/40 p-3 text-center">
++      <p className="text-[10px] font-black text-slate-500">{label}</p>
++      <p className="mt-1 text-xl font-black text-white">{value}</p>
++    </div>
++  );
++}
+diff --git a/docs/AUTH_AND_EMAIL_SETUP.md b/docs/AUTH_AND_EMAIL_SETUP.md
+new file mode 100644
+index 0000000..ce6b1f4
+--- /dev/null
++++ b/docs/AUTH_AND_EMAIL_SETUP.md
+@@ -0,0 +1,67 @@
++# FACKTS Hoops authentication and email setup
++
++This release keeps the two account types separate:
++
++- Admins are Supabase Auth users approved in `admin_profiles`.
++- Players are Supabase Auth users linked to one active official row in `players.user_id`.
++- Guest hoopers and prospects are not eligible for player portal access.
++
++## 1. Run the Supabase migration
++
++Open the Supabase SQL Editor for the FACKTS project and run:
++
++`supabase/migrations/20260721_player_auth.sql`
++
++This adds the player-to-auth link and the focused access policies used by the login flow.
++
++## 2. Add Vercel environment variables
++
++Add these variables to Production, Preview, and Development where appropriate:
++
++- `NEXT_PUBLIC_SUPABASE_URL`
++- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
++- `SUPABASE_SERVICE_ROLE_KEY`
++- `NEXT_PUBLIC_SITE_URL=https://fackts-hoops-web.vercel.app`
++- `RESEND_API_KEY`
++- `EMAIL_FROM=FACKTS Hoops <notifications@your-verified-domain.com>`
++- `FACKTS_ADMIN_EMAIL=facktsafrica@gmail.com`
++
++Important:
++
++- Never prefix the service-role key or Resend key with `NEXT_PUBLIC_`.
++- `EMAIL_FROM` must use the exact domain that Resend approved.
++- Use a Resend API key restricted to sending if possible.
++- Redeploy after changing Vercel environment variables.
++
++In Supabase **Authentication → URL Configuration**, add the live site URL and allow this redirect path:
++
++`https://fackts-hoops-web.vercel.app/account/update-password`
++
++For local testing, also allow:
++
++`http://localhost:3000/account/update-password`
++
++## 3. Verify admin access
++
++1. Open `/admin/login`.
++2. Log in using an existing Supabase Auth administrator.
++3. The user must have an active row in `admin_profiles`.
++4. Open **Email Notifications** and send a test email.
++
++## 4. Issue player accounts
++
++1. Open `/admin/player-access`.
++2. Choose an active official player.
++3. Confirm the player email.
++4. Select **Invite Player**.
++5. Resend delivers a branded secure activation link.
++6. The player sets a password and enters `/player`.
++
++Use **Resend Access** when the player needs a fresh secure link. **Revoke Access** removes the player-to-account link without deleting the public player profile.
++
++## 5. Notification rules
++
++- A player availability response emails `FACKTS_ADMIN_EMAIL`.
++- A player 1v1 challenge request emails `FACKTS_ADMIN_EMAIL`.
++- Admin approval emails the available player recipients.
++- The email API requires an approved FACKTS login and no longer acts as a public email relay.
+diff --git a/lib/auth/server.ts b/lib/auth/server.ts
+new file mode 100644
+index 0000000..b17cf22
+--- /dev/null
++++ b/lib/auth/server.ts
+@@ -0,0 +1,90 @@
++import type { User } from "@supabase/supabase-js";
++import { createServerSupabaseClient } from "@/lib/supabase/server";
++
++export type AdminProfile = {
++  id: string;
++  user_id: string;
++  role?: string | null;
++  is_active?: boolean | null;
++};
++
++export type PlayerAccount = {
++  id: string;
++  user_id: string;
++  full_name?: string | null;
++  name?: string | null;
++  nickname?: string | null;
++  role?: string | null;
++  email?: string | null;
++  phone?: string | null;
++  photo_url?: string | null;
++  jersey_number?: string | number | null;
++  position?: string | null;
++  is_active?: boolean | null;
++};
++
++function isOfficialPlayerRole(role?: string | null) {
++  const cleanRole = String(role ?? "").toLowerCase();
++  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
++}
++
++export async function getAuthenticatedUser(): Promise<User | null> {
++  const supabase = await createServerSupabaseClient();
++  const { data, error } = await supabase.auth.getUser();
++
++  if (error) return null;
++  return data.user ?? null;
++}
++
++export async function getAdminAccess() {
++  const supabase = await createServerSupabaseClient();
++  const { data: userData, error: userError } = await supabase.auth.getUser();
++  const user = userData.user ?? null;
++
++  if (userError || !user) {
++    return { user: null, profile: null, supabase };
++  }
++
++  const { data: profile } = await supabase
++    .from("admin_profiles")
++    .select("id, user_id, role, is_active")
++    .eq("user_id", user.id)
++    .eq("is_active", true)
++    .maybeSingle();
++
++  return {
++    user,
++    profile: (profile as AdminProfile | null) ?? null,
++    supabase,
++  };
++}
++
++export async function getPlayerAccess() {
++  const supabase = await createServerSupabaseClient();
++  const { data: userData, error: userError } = await supabase.auth.getUser();
++  const user = userData.user ?? null;
++
++  if (userError || !user) {
++    return { user: null, player: null, supabase };
++  }
++
++  const { data: player } = await supabase
++    .from("players")
++    .select(
++      "id, user_id, full_name, name, nickname, role, email, phone, photo_url, jersey_number, position, is_active"
++    )
++    .eq("user_id", user.id)
++    .eq("is_active", true)
++    .maybeSingle();
++
++  const officialPlayer = player as PlayerAccount | null;
++
++  return {
++    user,
++    player:
++      officialPlayer && isOfficialPlayerRole(officialPlayer.role)
++        ? officialPlayer
++        : null,
++    supabase,
++  };
++}
+diff --git a/lib/email/resend.ts b/lib/email/resend.ts
+new file mode 100644
+index 0000000..ce77cd7
+--- /dev/null
++++ b/lib/email/resend.ts
+@@ -0,0 +1,84 @@
++type SendEmailInput = {
++  to: string | string[];
++  subject: string;
++  text: string;
++  html?: string;
++  replyTo?: string;
++};
++
++type ResendErrorPayload = {
++  message?: string;
++  error?: string | { message?: string };
++};
++
++export function escapeHtml(value: string) {
++  return value
++    .replaceAll("&", "&amp;")
++    .replaceAll("<", "&lt;")
++    .replaceAll(">", "&gt;")
++    .replaceAll('"', "&quot;")
++    .replaceAll("'", "&#039;");
++}
++
++function resendErrorMessage(result: ResendErrorPayload) {
++  if (typeof result.message === "string") return result.message;
++  if (typeof result.error === "string") return result.error;
++  if (typeof result.error?.message === "string") return result.error.message;
++  return "Resend rejected the email request.";
++}
++
++export function getEmailConfiguration() {
++  return {
++    apiKey: process.env.RESEND_API_KEY ?? "",
++    from: process.env.EMAIL_FROM ?? "",
++    adminEmail: process.env.FACKTS_ADMIN_EMAIL ?? "",
++  };
++}
++
++export async function sendResendEmail(input: SendEmailInput) {
++  const { apiKey, from } = getEmailConfiguration();
++
++  if (!apiKey) {
++    throw new Error("RESEND_API_KEY is not configured.");
++  }
++
++  if (!from) {
++    throw new Error(
++      "EMAIL_FROM is not configured. Use an address on the verified Resend domain."
++    );
++  }
++
++  const recipients = (Array.isArray(input.to) ? input.to : [input.to])
++    .map((email) => email.trim().toLowerCase())
++    .filter((email) => email.includes("@"));
++
++  if (recipients.length === 0) {
++    throw new Error("No valid email recipient was provided.");
++  }
++
++  const response = await fetch("https://api.resend.com/emails", {
++    method: "POST",
++    headers: {
++      Authorization: `Bearer ${apiKey}`,
++      "Content-Type": "application/json",
++    },
++    body: JSON.stringify({
++      from,
++      to: recipients,
++      subject: input.subject,
++      text: input.text,
++      html: input.html,
++      reply_to: input.replyTo,
++    }),
++  });
++
++  const result = (await response.json().catch(() => ({}))) as ResendErrorPayload & {
++    id?: string;
++  };
++
++  if (!response.ok) {
++    throw new Error(resendErrorMessage(result));
++  }
++
++  return result;
++}
+diff --git a/lib/supabase.ts b/lib/supabase.ts
+index 9bb28b8..a32b489 100644
+--- a/lib/supabase.ts
++++ b/lib/supabase.ts
+@@ -1,6 +1,16 @@
++import { createBrowserClient } from "@supabase/ssr";
+ import { createClient } from "@supabase/supabase-js";
+ 
+ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ 
+-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+\ No newline at end of file
++export const supabase =
++  typeof window === "undefined"
++    ? createClient(supabaseUrl, supabaseAnonKey, {
++        auth: {
++          autoRefreshToken: false,
++          detectSessionInUrl: false,
++          persistSession: false,
++        },
++      })
++    : createBrowserClient(supabaseUrl, supabaseAnonKey);
+diff --git a/lib/supabase/admin.ts b/lib/supabase/admin.ts
+new file mode 100644
+index 0000000..0dedd3e
+--- /dev/null
++++ b/lib/supabase/admin.ts
+@@ -0,0 +1,19 @@
++import { createClient } from "@supabase/supabase-js";
++
++export function createSupabaseAdminClient() {
++  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
++  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
++
++  if (!supabaseUrl || !serviceRoleKey) {
++    throw new Error(
++      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY."
++    );
++  }
++
++  return createClient(supabaseUrl, serviceRoleKey, {
++    auth: {
++      autoRefreshToken: false,
++      persistSession: false,
++    },
++  });
++}
+diff --git a/lib/supabase/server.ts b/lib/supabase/server.ts
+new file mode 100644
+index 0000000..8d67528
+--- /dev/null
++++ b/lib/supabase/server.ts
+@@ -0,0 +1,29 @@
++import { createServerClient } from "@supabase/ssr";
++import { cookies } from "next/headers";
++
++export async function createServerSupabaseClient() {
++  const cookieStore = await cookies();
++  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
++  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
++
++  if (!supabaseUrl || !supabaseAnonKey) {
++    throw new Error("Missing Supabase public environment variables.");
++  }
++
++  return createServerClient(supabaseUrl, supabaseAnonKey, {
++    cookies: {
++      getAll() {
++        return cookieStore.getAll();
++      },
++      setAll(cookiesToSet) {
++        try {
++          cookiesToSet.forEach(({ name, value, options }) => {
++            cookieStore.set(name, value, options);
++          });
++        } catch {
++          // Server Components cannot always write cookies. The proxy refreshes them.
++        }
++      },
++    },
++  });
++}
+diff --git a/proxy.ts b/proxy.ts
+index 4a23608..03233ef 100644
+--- a/proxy.ts
++++ b/proxy.ts
+@@ -1,9 +1,105 @@
+-﻿import { NextResponse, type NextRequest } from "next/server";
++import { createServerClient } from "@supabase/ssr";
++import { NextResponse, type NextRequest } from "next/server";
+ 
+-export async function proxy(_request: NextRequest) {
+-  return NextResponse.next();
++function copyCookies(source: NextResponse, target: NextResponse) {
++  source.cookies.getAll().forEach((cookie) => {
++    target.cookies.set(cookie);
++  });
++  return target;
++}
++
++function officialPlayerRole(role?: string | null) {
++  const cleanRole = String(role ?? "").toLowerCase();
++  return !cleanRole.includes("guest") && !cleanRole.includes("prospect");
++}
++
++export async function proxy(request: NextRequest) {
++  let response = NextResponse.next({ request });
++  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
++  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
++
++  if (!supabaseUrl || !supabaseAnonKey) {
++    return response;
++  }
++
++  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
++    cookies: {
++      getAll() {
++        return request.cookies.getAll();
++      },
++      setAll(cookiesToSet) {
++        cookiesToSet.forEach(({ name, value }) => {
++          request.cookies.set(name, value);
++        });
++
++        response = NextResponse.next({ request });
++
++        cookiesToSet.forEach(({ name, value, options }) => {
++          response.cookies.set(name, value, options);
++        });
++      },
++    },
++  });
++
++  const pathname = request.nextUrl.pathname;
++  const { data } = await supabase.auth.getUser();
++  const user = data.user ?? null;
++
++  const adminLogin = pathname === "/admin/login";
++  const adminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
++  const playerLogin = pathname === "/player/login";
++  const playerRoute = pathname === "/player" || pathname.startsWith("/player/");
++  const playerOnlyRoute = playerRoute && !playerLogin;
++  const calendarRoute = pathname === "/calendar";
++
++  let isAdmin = false;
++  let isPlayer = false;
++
++  if (user && adminRoute) {
++    const { data: profile } = await supabase
++      .from("admin_profiles")
++      .select("id")
++      .eq("user_id", user.id)
++      .eq("is_active", true)
++      .maybeSingle();
++
++    isAdmin = Boolean(profile);
++  }
++
++  if (user && (playerRoute || calendarRoute)) {
++    const { data: player } = await supabase
++      .from("players")
++      .select("id, role")
++      .eq("user_id", user.id)
++      .eq("is_active", true)
++      .maybeSingle();
++
++    isPlayer = Boolean(player && officialPlayerRole(player.role));
++  }
++
++  if (adminLogin && isAdmin) {
++    return copyCookies(response, NextResponse.redirect(new URL("/admin", request.url)));
++  }
++
++  if (adminRoute && !adminLogin && !isAdmin) {
++    const loginUrl = new URL("/admin/login", request.url);
++    loginUrl.searchParams.set("next", pathname);
++    return copyCookies(response, NextResponse.redirect(loginUrl));
++  }
++
++  if (playerLogin && isPlayer) {
++    return copyCookies(response, NextResponse.redirect(new URL("/player", request.url)));
++  }
++
++  if ((playerOnlyRoute || calendarRoute) && !isPlayer) {
++    const loginUrl = new URL("/player/login", request.url);
++    loginUrl.searchParams.set("next", pathname);
++    return copyCookies(response, NextResponse.redirect(loginUrl));
++  }
++
++  return response;
+ }
+ 
+ export const config = {
+-  matcher: [],
+-};
+\ No newline at end of file
++  matcher: ["/admin/:path*", "/player/:path*", "/calendar"],
++};
+diff --git a/public/sw.js b/public/sw.js
+index 4ff49f6..06fb18b 100644
+--- a/public/sw.js
++++ b/public/sw.js
+@@ -1,9 +1,23 @@
+-const CACHE_NAME = "fackts-hoops-pwa-v1";
+-const URLS_TO_CACHE = ["/", "/manifest.webmanifest", "/offline.html", "/fackts-hoops-logo.png", "/apple-touch-icon.png"];
++const CACHE_NAME = "fackts-hoops-pwa-v2";
++const PRECACHE_URLS = [
++  "/",
++  "/manifest.webmanifest",
++  "/offline.html",
++  "/fackts-hoops-logo.png",
++  "/apple-touch-icon.png",
++];
++
++const PRIVATE_PREFIXES = [
++  "/admin",
++  "/player",
++  "/calendar",
++  "/account",
++  "/api",
++];
+ 
+ self.addEventListener("install", (event) => {
+   event.waitUntil(
+-    caches.open(CACHE_NAME).then((cache) => cache.addAll(URLS_TO_CACHE))
++    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
+   );
+   self.skipWaiting();
+ });
+@@ -13,9 +27,7 @@ self.addEventListener("activate", (event) => {
+     caches.keys().then((keys) =>
+       Promise.all(
+         keys.map((key) => {
+-          if (key !== CACHE_NAME) {
+-            return caches.delete(key);
+-          }
++          if (key !== CACHE_NAME) return caches.delete(key);
+           return Promise.resolve();
+         })
+       )
+@@ -24,26 +36,68 @@ self.addEventListener("activate", (event) => {
+   self.clients.claim();
+ });
+ 
++function isPrivateRequest(url) {
++  return PRIVATE_PREFIXES.some(
++    (prefix) => url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)
++  );
++}
++
++async function publicNavigation(request) {
++  try {
++    const response = await fetch(request);
++
++    if (response.ok && response.type === "basic") {
++      const cache = await caches.open(CACHE_NAME);
++      await cache.put(request, response.clone());
++    }
++
++    return response;
++  } catch {
++    return (await caches.match(request)) || caches.match("/offline.html");
++  }
++}
++
++async function staticAsset(request) {
++  const cached = await caches.match(request);
++
++  const network = fetch(request)
++    .then(async (response) => {
++      if (response.ok && response.type === "basic") {
++        const cache = await caches.open(CACHE_NAME);
++        await cache.put(request, response.clone());
++      }
++      return response;
++    })
++    .catch(() => cached);
++
++  return cached || network;
++}
++
+ self.addEventListener("fetch", (event) => {
+   if (event.request.method !== "GET") return;
+ 
+-  event.respondWith(
+-    caches.match(event.request).then((cachedResponse) => {
+-      if (cachedResponse) {
+-        return cachedResponse;
+-      }
++  const url = new URL(event.request.url);
+ 
+-      return fetch(event.request)
+-        .then((response) => {
+-          if (!response || response.status !== 200 || response.type !== "basic") {
+-            return response;
+-          }
++  if (url.origin !== self.location.origin) return;
+ 
+-          const responseToCache = response.clone();
+-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+-          return response;
+-        })
+-        .catch(() => caches.match("/offline.html"));
+-    })
+-  );
++  if (isPrivateRequest(url)) {
++    event.respondWith(
++      fetch(event.request).catch(() => {
++        if (event.request.mode === "navigate") {
++          return caches.match("/offline.html");
++        }
++        return Response.error();
++      })
++    );
++    return;
++  }
++
++  if (event.request.mode === "navigate") {
++    event.respondWith(publicNavigation(event.request));
++    return;
++  }
++
++  if (["image", "style", "script", "font"].includes(event.request.destination)) {
++    event.respondWith(staticAsset(event.request));
++  }
+ });
+diff --git a/supabase/migrations/20260721_player_auth.sql b/supabase/migrations/20260721_player_auth.sql
+new file mode 100644
+index 0000000..de3fb47
+--- /dev/null
++++ b/supabase/migrations/20260721_player_auth.sql
+@@ -0,0 +1,58 @@
++begin;
++
++alter table public.players
++  add column if not exists user_id uuid references auth.users(id) on delete set null;
++
++create unique index if not exists players_user_id_unique
++  on public.players(user_id)
++  where user_id is not null;
++
++comment on column public.players.user_id is
++  'Links one approved Supabase Auth user to one official FACKTS player profile.';
++
++alter table public.players enable row level security;
++
++drop policy if exists "players_read_own_account" on public.players;
++create policy "players_read_own_account"
++  on public.players
++  for select
++  to authenticated
++  using (user_id = auth.uid());
++
++drop policy if exists "admins_read_all_players" on public.players;
++create policy "admins_read_all_players"
++  on public.players
++  for select
++  to authenticated
++  using (
++    exists (
++      select 1
++      from public.admin_profiles
++      where admin_profiles.user_id = auth.uid()
++        and admin_profiles.is_active = true
++    )
++  );
++
++drop policy if exists "admins_update_players" on public.players;
++create policy "admins_update_players"
++  on public.players
++  for update
++  to authenticated
++  using (
++    exists (
++      select 1
++      from public.admin_profiles
++      where admin_profiles.user_id = auth.uid()
++        and admin_profiles.is_active = true
++    )
++  )
++  with check (
++    exists (
++      select 1
++      from public.admin_profiles
++      where admin_profiles.user_id = auth.uid()
++        and admin_profiles.is_active = true
++    )
++  );
++
++commit;
+-- 
+2.51.1
+

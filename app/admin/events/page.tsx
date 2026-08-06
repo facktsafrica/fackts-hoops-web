@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type EventCase = { id: string; event_id: string; title: string; slug: string; summary: string | null; start_date: string | null; end_date: string | null; venue: string | null; location: string | null; poster_url: string | null; hero_image_url: string | null; status: string; photo_count: number; is_public: boolean };
+type EventCase = { id: string; event_id: string; title: string; slug: string; summary: string | null; start_date: string | null; end_date: string | null; venue: string | null; location: string | null; poster_url: string | null; hero_image_url: string | null; status: string; photo_count: number; is_public: boolean; event_type: string; age_category: string; deletion_protected: boolean };
 type RecordType = "team" | "person" | "result" | "partner" | "media" | "gallery" | "award" | "consent" | "prize";
 type RecordRow = { id: string; event_id: string; record_type: RecordType; title: string; subtitle: string | null; details: string | null; division: string | null; team_name: string | null; opponent_name: string | null; score_for: number | null; score_against: number | null; url: string | null; image_url: string | null; status: string; is_public: boolean; metadata?: Record<string, unknown> | null };
 type RecordForm = { record_type: RecordType; title: string; subtitle: string; details: string; division: string; team_name: string; opponent_name: string; score_for: string; score_against: string; url: string; image_url: string; status: string; is_public: boolean; day: string; game_number: string; walkover: boolean };
@@ -15,6 +15,8 @@ const emptyRecord: RecordForm = { record_type: "team", title: "", subtitle: "", 
 const privateTypes = new Set<RecordType>(["consent", "prize"]);
 const imageRecordTypes = new Set<RecordType>(["team", "person", "partner", "media", "gallery", "award"]);
 const EVENT_IMAGE_BUCKET = "event-images";
+const EVENT_TYPES = ["1v1", "2v2", "3v3", "5v5", "Dunk Contest", "Skills Challenge", "Shooting Contest", "Creators League", "Camp / Clinic", "Other"];
+const AGE_CATEGORIES = ["Open", "Under 10", "Under 12", "Under 14", "Under 16", "Under 18", "University / College", "Creators", "Corporate", "Masters", "Other"];
 
 function safeFileName(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "") || `event-image-${Date.now()}.jpg`;
@@ -81,6 +83,9 @@ export default function AdminEventsPage() {
   const [showEventEditor, setShowEventEditor] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [eventSaveMessage, setEventSaveMessage] = useState("");
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState(false);
 
   const loadEvents = useCallback(async () => {
     const { data, error } = await supabase.from("event_case_studies").select("*").order("created_at", { ascending: false });
@@ -104,12 +109,28 @@ export default function AdminEventsPage() {
   function switchTab(next: RecordType) { setTab(next); setEditingId(null); setForm({ ...emptyRecord, record_type: next, status: sections[next].statuses[0] }); }
   function update(key: FieldKey, value: string) { setForm((current) => ({ ...current, [key]: value })); }
 
+  async function createEvent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (creatingEvent) return;
+    const data = new FormData(event.currentTarget);
+    setCreatingEvent(true); setMessage("Creating event...");
+    try {
+      const response = await fetch("/api/admin/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: data.get("title"), event_type: data.get("event_type"), age_category: data.get("age_category"), summary: data.get("summary") }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Event could not be created.");
+      const created = result.event as EventCase;
+      setEvents((current) => [created, ...current]); setSelected(created.event_id); setRecords([]); setShowCreateEvent(false); setShowEventEditor(true); setMessage("New event created. Complete its setup, then add teams, results, media and partners.");
+      event.currentTarget.reset();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Event could not be created."); }
+    finally { setCreatingEvent(false); }
+  }
+
   async function saveEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected || savingEvent) return;
 
     const data = new FormData(event.currentTarget);
-    const payload = { title: String(data.get("title") || "").trim(), summary: String(data.get("summary") || "").trim(), venue: String(data.get("venue") || "").trim(), location: String(data.get("location") || "").trim(), poster_url: normalizeHostedImageUrl(String(data.get("poster_url") || "")) || null, hero_image_url: normalizeHostedImageUrl(String(data.get("hero_image_url") || "")) || null, start_date: String(data.get("start_date") || "") || null, end_date: String(data.get("end_date") || "") || null, photo_count: Number(data.get("photo_count") || 0), status: String(data.get("status") || "draft"), is_public: data.get("is_public") === "on", updated_at: new Date().toISOString() };
+    const payload = { title: String(data.get("title") || "").trim(), summary: String(data.get("summary") || "").trim(), event_type: String(data.get("event_type") || "5v5"), age_category: String(data.get("age_category") || "Open"), venue: String(data.get("venue") || "").trim(), location: String(data.get("location") || "").trim(), poster_url: normalizeHostedImageUrl(String(data.get("poster_url") || "")) || null, hero_image_url: normalizeHostedImageUrl(String(data.get("hero_image_url") || "")) || null, start_date: String(data.get("start_date") || "") || null, end_date: String(data.get("end_date") || "") || null, photo_count: Number(data.get("photo_count") || 0), status: String(data.get("status") || "draft"), is_public: data.get("is_public") === "on", deletion_protected: data.get("deletion_protected") === "on", updated_at: new Date().toISOString() };
 
     if (!payload.title) {
       setEventSaveMessage("Event title is required.");
@@ -141,6 +162,67 @@ export default function AdminEventsPage() {
     }
   }
 
+  async function publishEvent() {
+    if (!selected || !active || savingEvent) return;
+    setSavingEvent(true);
+    setEventSaveMessage("Publishing event...");
+    try {
+      const response = await fetch("/api/admin/events", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id: selected, status: "published", is_public: true }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Event could not be published.");
+      const published = result.event as EventCase;
+      setEvents((current) => current.map((item) => item.event_id === selected ? published : item));
+      setEventSaveMessage("Event published. It is now visible on the public Events page.");
+      setMessage("Event published successfully.");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Unknown publish error.";
+      setEventSaveMessage(`Event could not be published: ${reason}`);
+      setMessage(`Event could not be published: ${reason}`);
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+
+  async function deleteEvent() {
+    if (!active || deletingEvent) return;
+    const confirmationTitle = window.prompt(
+      `Delete “${active.title}” and all of its teams, results, media and records?\n\nType the exact event title to confirm:`,
+    );
+    if (confirmationTitle === null) return;
+    if (confirmationTitle.trim() !== active.title) {
+      setMessage("Event not deleted: the title did not match exactly.");
+      return;
+    }
+
+    setDeletingEvent(true);
+    setMessage("Deleting event and its linked records...");
+    try {
+      const response = await fetch("/api/admin/events", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id: active.event_id, confirmation_title: confirmationTitle.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Event could not be deleted.");
+
+      const remaining = events.filter((item) => item.event_id !== active.event_id);
+      setEvents(remaining);
+      setSelected(remaining[0]?.event_id || "");
+      setRecords([]);
+      setShowEventEditor(false);
+      setEventSaveMessage("");
+      setMessage(`“${active.title}” and all of its linked records were deleted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Event could not be deleted.");
+    } finally {
+      setDeletingEvent(false);
+    }
+  }
+
   async function saveRecord(event: FormEvent) {
     event.preventDefault();
     if (!form.title.trim()) return setMessage(`Add the ${config.fields[0].label.toLowerCase()} first.`);
@@ -165,15 +247,18 @@ export default function AdminEventsPage() {
       <header className="rounded-[1.75rem] border border-white/10 bg-gradient-to-br from-blue-950 via-slate-950 to-orange-950/50 p-5 shadow-2xl sm:p-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div><p className="text-[10px] font-black uppercase tracking-[.24em] text-orange-300 sm:text-xs">FACKTS operations</p><h1 className="mt-2 text-3xl font-black uppercase leading-none sm:text-5xl">Events control centre</h1><p className="mt-3 max-w-2xl text-sm text-slate-300">Build the event record, publish its story and protect private operational information.</p></div>
-          <div className="flex flex-col gap-2 sm:flex-row">{active ? <Link href={`/events/${active.slug}`} target="_blank" className="rounded-xl border border-orange-400/40 bg-orange-500/10 px-5 py-3 text-center text-xs font-black uppercase text-orange-200">Preview public page</Link> : null}<button onClick={() => setShowEventEditor((value) => !value)} className="rounded-xl bg-white px-5 py-3 text-xs font-black uppercase text-slate-950">{showEventEditor ? "Close event setup" : "Edit event setup"}</button></div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">{active ? <Link href={`/events/${active.slug}?preview=admin`} target="_blank" className="rounded-xl border border-orange-400/40 bg-orange-500/10 px-5 py-3 text-center text-xs font-black uppercase text-orange-200">Preview event page</Link> : null}{active && (active.status !== "published" || !active.is_public) ? <button type="button" onClick={publishEvent} disabled={savingEvent} className="rounded-xl bg-emerald-500 px-5 py-3 text-xs font-black uppercase text-slate-950 disabled:opacity-50">{savingEvent ? "Publishing..." : "Publish event now"}</button> : active ? <span className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-5 py-3 text-center text-xs font-black uppercase text-emerald-300">Published publicly</span> : null}<button onClick={() => setShowCreateEvent((value) => !value)} className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black uppercase text-black">{showCreateEvent ? "Cancel new event" : "+ Create new event"}</button>{active ? <button onClick={() => setShowEventEditor((value) => !value)} className="rounded-xl bg-white px-5 py-3 text-xs font-black uppercase text-slate-950">{showEventEditor ? "Close event setup" : "Edit event setup"}</button> : null}{active && !active.deletion_protected ? <button type="button" onClick={deleteEvent} disabled={deletingEvent} className="rounded-xl border border-red-400/50 bg-red-500/10 px-5 py-3 text-xs font-black uppercase text-red-200 disabled:opacity-50">{deletingEvent ? "Deleting event..." : "Delete this event"}</button> : active ? <span className="rounded-xl border border-slate-500/40 bg-slate-800 px-5 py-3 text-center text-xs font-black uppercase text-slate-300">Deletion protected</span> : null}</div>
         </div>
       </header>
 
+      {active ? <div className="mt-4 flex justify-end"><Link href={`/events/${active.slug}/report`} target="_blank" className="w-full rounded-xl border border-blue-400/40 bg-blue-500/10 px-5 py-3 text-center text-xs font-black uppercase text-blue-200 sm:w-auto">Download event summary</Link></div> : null}
       {message ? <button onClick={() => setMessage("")} className="mt-4 w-full rounded-2xl border border-blue-400/30 bg-blue-500/10 p-4 text-left text-sm text-blue-100">{message}</button> : null}
+
+      {showCreateEvent ? <section className="mt-5 rounded-[1.75rem] border border-orange-400/30 bg-gradient-to-br from-orange-500/15 via-slate-950 to-blue-950 p-4 sm:p-7"><p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-300">New basketball event</p><h2 className="mt-2 text-2xl font-black uppercase">Create the event workspace</h2><form onSubmit={createEvent} className="mt-5 grid gap-4 sm:grid-cols-2"><BasicField name="title" label="Event title" value="" wide /><label className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Basketball format<select name="event_type" defaultValue="5v5" className="mt-2 h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm normal-case text-white">{EVENT_TYPES.map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Age / league category<select name="age_category" defaultValue="Open" className="mt-2 h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm normal-case text-white">{AGE_CATEGORIES.map((value) => <option key={value}>{value}</option>)}</select></label><BasicArea name="summary" label="Short event description" value="" /><button disabled={creatingEvent} className="min-h-12 rounded-xl bg-orange-500 px-6 py-3 text-xs font-black uppercase text-black disabled:opacity-50 sm:col-span-2 sm:justify-self-end">{creatingEvent ? "Creating..." : "Create event"}</button></form></section> : null}
 
       <section className="mt-5">
         <p className="mb-2 text-[10px] font-black uppercase tracking-[.2em] text-slate-500">Active event</p>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{events.map((item) => <button key={item.id} onClick={() => setSelected(item.event_id)} className={`rounded-2xl border p-4 text-left transition ${selected === item.event_id ? "border-orange-400 bg-orange-500/15 shadow-lg shadow-orange-950/30" : "border-white/10 bg-slate-900/80 hover:border-blue-400/40"}`}><span className="block text-sm font-black uppercase leading-tight">{item.title}</span><span className="mt-2 block text-xs text-slate-400">{item.start_date || "Date pending"} · {item.venue || "Venue pending"}</span></button>)}</div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{events.map((item) => <button key={item.id} onClick={() => setSelected(item.event_id)} className={`rounded-2xl border p-4 text-left transition ${selected === item.event_id ? "border-orange-400 bg-orange-500/15 shadow-lg shadow-orange-950/30" : "border-white/10 bg-slate-900/80 hover:border-blue-400/40"}`}><span className="block text-sm font-black uppercase leading-tight">{item.title}</span><span className="mt-2 block text-[10px] font-black uppercase text-orange-300">{item.event_type || "5v5"} · {item.age_category || "Open"}</span><span className="mt-1 block text-xs text-slate-400">{item.start_date || "Date pending"} · {item.venue || "Venue pending"}</span></button>)}</div>
       </section>
 
       {showEventEditor && active ? <EventEditor active={active} saveEvent={saveEvent} saving={savingEvent} saveMessage={eventSaveMessage} /> : null}
@@ -214,7 +299,7 @@ function EventEditor({ active, saveEvent, saving, saveMessage }: { active: Event
     catch (error) { setUploadMessage(error instanceof Error ? error.message : "Image upload failed."); }
     finally { setUploading(null); event.target.value = ""; }
   }
-  return <section className="mt-5 rounded-[1.75rem] border border-white/10 bg-slate-900 p-4 sm:p-7"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-blue-300">Event setup</p><h2 className="mt-1 text-xl font-black uppercase">Core public information</h2></div><form key={active.id} noValidate onSubmit={saveEvent} className="mt-5 grid gap-4 sm:grid-cols-2"><BasicField name="title" label="Event title" value={active.title} wide /><BasicArea name="summary" label="Public event summary" value={active.summary || ""} /><ImageSourceField name="poster_url" label="Event poster" value={posterUrl} set={setPosterUrl} uploading={uploading === "poster"} onFile={(event) => upload(event, "poster")} /><ImageSourceField name="hero_image_url" label="Event cover / hero photo" value={heroUrl} set={setHeroUrl} uploading={uploading === "hero"} onFile={(event) => upload(event, "hero")} /><BasicField name="start_date" label="Start date" type="date" value={active.start_date || ""} /><BasicField name="end_date" label="End date" type="date" value={active.end_date || ""} /><BasicField name="venue" label="Venue" value={active.venue || ""} /><BasicField name="location" label="Location" value={active.location || ""} /><BasicField name="photo_count" label="Archived photograph count" type="number" value={String(active.photo_count || 0)} /><label className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Publication status<select name="status" defaultValue={active.status} className="mt-2 h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm normal-case text-white"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><label className="flex min-h-12 items-center gap-3 rounded-xl border border-white/10 bg-slate-950 px-4 text-sm font-bold"><input name="is_public" type="checkbox" defaultChecked={active.is_public} className="h-5 w-5 accent-orange-500" /> Show event publicly</label>{uploadMessage ? <p className="rounded-xl border border-blue-400/30 bg-blue-500/10 p-3 text-xs text-blue-100 sm:col-span-2">{uploadMessage}</p> : null}{saveMessage ? <p role="status" aria-live="polite" className="rounded-xl border border-blue-400/30 bg-blue-500/10 p-3 text-sm font-bold text-blue-100 sm:col-span-2">{saveMessage}</p> : null}<button type="submit" disabled={Boolean(uploading) || saving} className="min-h-12 rounded-xl bg-white px-5 py-3 text-xs font-black uppercase text-slate-950 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 sm:justify-self-end">{saving ? "Saving event setup..." : "Save event setup"}</button></form></section>;
+  return <section className="mt-5 rounded-[1.75rem] border border-white/10 bg-slate-900 p-4 sm:p-7"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-blue-300">Event setup</p><h2 className="mt-1 text-xl font-black uppercase">Core public information</h2></div><form key={active.id} noValidate onSubmit={saveEvent} className="mt-5 grid gap-4 sm:grid-cols-2"><BasicField name="title" label="Event title" value={active.title} wide /><BasicArea name="summary" label="Public event summary" value={active.summary || ""} /><label className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Basketball format<select name="event_type" defaultValue={active.event_type || "5v5"} className="mt-2 h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm normal-case text-white">{EVENT_TYPES.map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Age / league category<select name="age_category" defaultValue={active.age_category || "Open"} className="mt-2 h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm normal-case text-white">{AGE_CATEGORIES.map((value) => <option key={value}>{value}</option>)}</select></label><ImageSourceField name="poster_url" label="Event poster" value={posterUrl} set={setPosterUrl} uploading={uploading === "poster"} onFile={(event) => upload(event, "poster")} /><ImageSourceField name="hero_image_url" label="Event cover / hero photo" value={heroUrl} set={setHeroUrl} uploading={uploading === "hero"} onFile={(event) => upload(event, "hero")} /><BasicField name="start_date" label="Start date" type="date" value={active.start_date || ""} /><BasicField name="end_date" label="End date" type="date" value={active.end_date || ""} /><BasicField name="venue" label="Venue" value={active.venue || ""} /><BasicField name="location" label="Location" value={active.location || ""} /><BasicField name="photo_count" label="Archived photograph count" type="number" value={String(active.photo_count || 0)} /><label className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Publication status<select name="status" defaultValue={active.status} className="mt-2 h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm normal-case text-white"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><label className="flex min-h-12 items-center gap-3 rounded-xl border border-white/10 bg-slate-950 px-4 text-sm font-bold"><input name="is_public" type="checkbox" defaultChecked={active.is_public} className="h-5 w-5 accent-orange-500" /> Show event publicly</label><label className="flex min-h-12 items-start gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm font-bold sm:col-span-2"><input name="deletion_protected" type="checkbox" defaultChecked={active.deletion_protected} className="mt-0.5 h-5 w-5 shrink-0 accent-amber-500" /><span><span className="block">Protect event from deletion</span><span className="mt-1 block text-xs font-normal text-slate-400">When enabled, the Delete button is disabled until an admin turns protection off and saves.</span></span></label>{uploadMessage ? <p className="rounded-xl border border-blue-400/30 bg-blue-500/10 p-3 text-xs text-blue-100 sm:col-span-2">{uploadMessage}</p> : null}{saveMessage ? <p role="status" aria-live="polite" className="rounded-xl border border-blue-400/30 bg-blue-500/10 p-3 text-sm font-bold text-blue-100 sm:col-span-2">{saveMessage}</p> : null}<button type="submit" disabled={Boolean(uploading) || saving} className="min-h-12 rounded-xl bg-white px-5 py-3 text-xs font-black uppercase text-slate-950 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 sm:justify-self-end">{saving ? "Saving event setup..." : "Save event setup"}</button></form></section>;
 }
 
 function PurposeField({ spec, value, set, eventId, folder, onMessage, allowUpload }: { spec: FieldSpec; value: string; set: (value: string) => void; eventId: string; folder: string; onMessage: (value: string) => void; allowUpload: boolean }) {
