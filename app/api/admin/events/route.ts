@@ -4,7 +4,6 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 const allowedFields = [
   "title", "summary", "venue", "location", "poster_url", "hero_image_url",
   "start_date", "end_date", "photo_count", "status", "is_public", "event_type", "age_category",
-  "deletion_protected",
 ] as const;
 
 async function approvedAdmin() {
@@ -39,7 +38,6 @@ export async function POST(request: NextRequest) {
       age_category: typeof body.age_category === "string" && body.age_category.trim() ? body.age_category.trim() : "Open",
       status: "draft",
       is_public: false,
-      deletion_protected: false,
     };
     const { data, error } = await approved.supabase.from("event_case_studies").insert(payload).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -81,14 +79,11 @@ export async function DELETE(request: NextRequest) {
     if (!eventId) return NextResponse.json({ error: "Missing event ID." }, { status: 400 });
     const { data: existing, error: lookupError } = await approved.supabase
       .from("event_case_studies")
-      .select("event_id,title,deletion_protected")
+      .select("event_id,title")
       .eq("event_id", eventId)
       .maybeSingle();
     if (lookupError) return NextResponse.json({ error: lookupError.message }, { status: 400 });
     if (!existing) return NextResponse.json({ error: "Event not found." }, { status: 404 });
-    if (existing.deletion_protected) {
-      return NextResponse.json({ error: "This event is protected from deletion. Turn off deletion protection in Event Setup first." }, { status: 409 });
-    }
     if (confirmationTitle !== existing.title) {
       return NextResponse.json({ error: "The confirmation title did not match. The event was not deleted." }, { status: 400 });
     }
