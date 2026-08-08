@@ -6,6 +6,7 @@ import PwaInstallButton from "./components/PwaInstallButton";
 import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
 import PlayerPortalReturn from "./components/PlayerPortalReturn";
 import FacktsMotionSystem from "./components/FacktsMotionSystem";
+import PublicPageShell from "./components/PublicPageShell";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -71,7 +72,7 @@ export default function RootLayout({
         <PwaServiceWorkerClient />
         <PublicHeader />
         <PwaInstallButton />
-        {children}
+        <PublicPageShell>{children}</PublicPageShell>
         <PlayerPortalReturn />
       </body>
     </html>

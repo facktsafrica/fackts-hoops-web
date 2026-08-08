@@ -64,6 +64,24 @@ type GameRow = {
   created_at?: string | null;
 };
 
+type KingsMatchRow = {
+  id: string;
+  match_number?: string | null;
+  match_title?: string | null;
+  participant_name?: string | null;
+  opponent_name?: string | null;
+  match_date?: string | null;
+  venue?: string | null;
+  points_scored?: number | string | null;
+  points_allowed?: number | string | null;
+  status?: string | null;
+  result?: string | null;
+  poster_url?: string | null;
+  participant_cutout_url?: string | null;
+  opponent_cutout_url?: string | null;
+  created_at?: string | null;
+};
+
 type PlayerRow = {
   id: string;
   full_name?: string | null;
@@ -178,6 +196,30 @@ function getGameStatus(game?: GameRow | null) {
     : "upcoming";
 }
 
+function getKingsMatchStatus(match?: KingsMatchRow | null) {
+  const status = String(match?.status || "").toLowerCase();
+
+  if (["completed", "played", "final"].includes(status)) return "completed";
+  if (["upcoming", "scheduled", "pending"].includes(status)) return "upcoming";
+
+  return numberValue(match?.points_scored) !== null &&
+    numberValue(match?.points_allowed) !== null
+    ? "completed"
+    : "upcoming";
+}
+
+function kingsMatchLabel(match?: KingsMatchRow | null) {
+  return match?.match_number || match?.match_title || "FACKTS Kings";
+}
+
+function kingsParticipant(match?: KingsMatchRow | null) {
+  return canonicalName(match?.participant_name) || "Player 1";
+}
+
+function kingsOpponent(match?: KingsMatchRow | null) {
+  return canonicalName(match?.opponent_name) || "Player 2";
+}
+
 function nairobiToday() {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Nairobi",
@@ -246,7 +288,7 @@ function playerContribution(row: PlayerStatRow) {
 }
 
 async function loadHomepageData() {
-  const [eventsResult, recordsResult, gamesResult] = await Promise.all([
+  const [eventsResult, recordsResult, gamesResult, kingsResult] = await Promise.all([
     supabase
       .from("event_case_studies")
       .select("*")
@@ -260,12 +302,17 @@ async function loadHomepageData() {
       .in("status", ["verified", "published"])
       .order("created_at", { ascending: false }),
     supabase.from("games").select("*").order("game_date", { ascending: false }),
+    supabase
+      .from("guest_one_on_one_stats")
+      .select("*")
+      .order("created_at", { ascending: false }),
   ]);
 
   return {
     events: (eventsResult.data || []) as EventRow[],
     records: (recordsResult.data || []) as EventRecordRow[],
     games: (gamesResult.data || []) as GameRow[],
+    kingsMatches: (kingsResult.data || []) as KingsMatchRow[],
   };
 }
 
@@ -307,7 +354,7 @@ async function loadTopPerformers(game?: GameRow | null): Promise<Performer[]> {
 }
 
 export default async function HomePage() {
-  const { events, records, games } = await loadHomepageData();
+  const { events, records, games, kingsMatches } = await loadHomepageData();
   const today = nairobiToday();
 
   const orderedEvents = [...events].sort((left, right) => {
@@ -339,22 +386,28 @@ export default async function HomePage() {
     (event) => getEventState(event, today) === "completed"
   );
 
-  const featuredEvent =
-    liveEvents[0] || upcomingEvents[0] || completedEvents[0] || null;
-  const featuredRecords = featuredEvent
-    ? records.filter((record) => record.event_id === featuredEvent.event_id)
-    : [];
-  const featuredTeams = featuredRecords.filter(
-    (record) => record.record_type === "team"
-  );
-  const featuredResults = featuredRecords.filter(
-    (record) => record.record_type === "result"
-  );
-  const featuredLatestResult = featuredResults[0] || null;
-  const featuredLeader = featuredRecords.find(
-    (record) =>
-      record.record_type === "award" &&
-      /(most valuable|mvp|top scorer|leading scorer)/i.test(record.title)
+  const kingsCompleted = kingsMatches
+    .filter((match) => getKingsMatchStatus(match) === "completed")
+    .sort(
+      (left, right) =>
+        dateTime(right.match_date || right.created_at) -
+        dateTime(left.match_date || left.created_at)
+    );
+  const kingsUpcoming = kingsMatches
+    .filter((match) => getKingsMatchStatus(match) === "upcoming")
+    .sort(
+      (left, right) =>
+        dateTime(left.match_date || left.created_at) -
+        dateTime(right.match_date || right.created_at)
+    );
+  const latestKingsResult = kingsCompleted[0] || null;
+  const nextKingsMatch = kingsUpcoming[0] || null;
+  const featuredKingsMatch = nextKingsMatch || latestKingsResult;
+  const kingsCompetitors = new Set(
+    kingsMatches.flatMap((match) => [
+      canonicalName(match.participant_name).toLowerCase(),
+      canonicalName(match.opponent_name).toLowerCase(),
+    ]).filter(Boolean)
   );
 
   const completedGames = games
@@ -363,24 +416,8 @@ export default async function HomePage() {
   const latestCompletedGame = completedGames[0] || null;
   const performers = await loadTopPerformers(latestCompletedGame);
 
-  const allResults = records.filter(
-    (record) =>
-      record.record_type === "result" &&
-      record.score_for != null &&
-      record.score_against != null
-  );
-  const heroEventResult =
-    (featuredEvent
-      ? allResults.find((record) => record.event_id === featuredEvent.event_id)
-      : null) || allResults[0] || null;
-  const resultEvent = heroEventResult
-    ? events.find((event) => event.event_id === heroEventResult.event_id) || null
-    : null;
-
-  const heroImage =
-    eventImage(featuredEvent) ||
-    eventImage(orderedEvents[0]) ||
-    gameImage(latestCompletedGame);
+  const kingsHeroImage =
+    featuredKingsMatch?.poster_url || "/images/one-on-one-bg.png";
 
   const partnerRecords = records
     .filter((record) => record.record_type === "partner")
@@ -412,10 +449,10 @@ export default async function HomePage() {
 
             <div className="mt-7 grid gap-3 sm:flex">
               <Link
-                href="/events"
+                href="/one-on-one"
                 className="inline-flex min-h-12 items-center justify-center rounded-lg bg-white px-6 py-3 text-sm font-black text-[#0B1F3A] transition hover:bg-slate-100"
               >
-                View Events
+                Enter FACKTS Kings
               </Link>
               <Link
                 href="/book-coverage"
@@ -426,74 +463,70 @@ export default async function HomePage() {
             </div>
 
             <div className="mt-8 grid grid-cols-3 gap-3 border-t border-white/15 pt-5">
-              <ContextStat value={String(liveEvents.length)} label="Live events" />
-              <ContextStat value={String(upcomingEvents.length)} label="Upcoming" />
-              <ContextStat value={String(completedEvents.length)} label="Event archive" />
+              <ContextStat value={String(kingsCompleted.length)} label="Kings games" />
+              <ContextStat value={String(kingsUpcoming.length)} label="Upcoming" />
+              <ContextStat value={String(kingsCompetitors.size)} label="Competitors" />
             </div>
           </div>
 
           <div className="relative min-h-[360px] overflow-hidden rounded-2xl border border-white/15 bg-[#102A4C] shadow-[0_24px_70px_rgba(0,0,0,0.28)] sm:min-h-[470px]">
-            {heroImage ? (
-              <img
-                src={heroImage}
-                alt={featuredEvent?.title || getGameTitle(latestCompletedGame)}
-                className="absolute inset-0 h-full w-full object-cover"
-                fetchPriority="high"
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-[linear-gradient(135deg,#102A4C_0%,#071426_100%)] px-8 text-center">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
-                    Event photography
-                  </p>
-                  <p className="mt-3 max-w-sm text-xl font-black uppercase leading-tight text-white sm:text-2xl">
-                    Published competition media will appear here.
-                  </p>
-                </div>
-              </div>
-            )}
+            <img
+              src={kingsHeroImage}
+              alt="FACKTS Kings one-on-one competition"
+              className="absolute inset-0 h-full w-full object-cover"
+              fetchPriority="high"
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-[#0B1F3A]/20 to-transparent" />
 
+            <div className="absolute left-4 top-4 rounded-lg border border-white/15 bg-[#071426]/85 px-3 py-2 backdrop-blur-md sm:left-6 sm:top-6">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">
+                Primary FACKTS competition
+              </p>
+              <p className="mt-1 text-xl font-black uppercase text-white">
+                FACKTS Kings
+              </p>
+            </div>
+
             <div className="absolute inset-x-4 bottom-4 rounded-xl border border-white/15 bg-[#071426]/90 p-4 shadow-xl backdrop-blur-md sm:inset-x-6 sm:bottom-6 sm:p-5">
-              {heroEventResult ? (
+              {latestKingsResult ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
                     <p className="min-w-0 truncate text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">
-                      {resultEvent?.title || "Verified event result"}
+                      {kingsMatchLabel(latestKingsResult)}
                     </p>
                     <span className="shrink-0 rounded-md bg-[#1F8A5B] px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">
-                      Verified result
+                      Latest Kings result
                     </span>
                   </div>
                   <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                     <ScoreTeam
-                      name={heroEventResult.team_name || heroEventResult.title}
-                      score={heroEventResult.score_for}
+                      name={kingsParticipant(latestKingsResult)}
+                      score={numberValue(latestKingsResult.points_scored)}
                     />
                     <span className="text-xs font-black uppercase text-slate-500">Final</span>
                     <ScoreTeam
-                      name={heroEventResult.opponent_name || "Opponent"}
-                      score={heroEventResult.score_against}
+                      name={kingsOpponent(latestKingsResult)}
+                      score={numberValue(latestKingsResult.points_allowed)}
                       align="right"
                     />
                   </div>
                 </>
-              ) : latestCompletedGame ? (
+              ) : nextKingsMatch ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
                     <p className="min-w-0 truncate text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">
-                      {getGameTitle(latestCompletedGame)}
+                      {kingsMatchLabel(nextKingsMatch)}
                     </p>
-                    <span className="shrink-0 rounded-md bg-[#1F8A5B] px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">
-                      Latest score
+                    <span className="shrink-0 rounded-md bg-[#F58220] px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">
+                      Next matchup
                     </span>
                   </div>
                   <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                    <ScoreTeam name="FACKTS" score={getTeamScore(latestCompletedGame)} />
-                    <span className="text-xs font-black uppercase text-slate-500">Final</span>
+                    <ScoreTeam name={kingsParticipant(nextKingsMatch)} score={null} />
+                    <span className="text-xs font-black uppercase text-slate-500">VS</span>
                     <ScoreTeam
-                      name={getOpponent(latestCompletedGame)}
-                      score={getOpponentScore(latestCompletedGame)}
+                      name={kingsOpponent(nextKingsMatch)}
+                      score={null}
                       align="right"
                     />
                   </div>
@@ -501,10 +534,10 @@ export default async function HomePage() {
               ) : (
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">
-                    FACKTS Hoops event record
+                    FACKTS Kings · 2026 season
                   </p>
                   <p className="mt-2 text-lg font-black">
-                    {featuredEvent?.title || "Competition coverage in one place"}
+                    One-on-one competition, documented game by game.
                   </p>
                 </div>
               )}
@@ -600,130 +633,113 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {featuredEvent ? (
-        <section className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-          <SectionHeading
-            eyebrow="Featured competition"
-            title={featuredEvent.title}
-            text="A connected view of the latest competition record, results, teams and documentation."
-          />
+      <section className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+        <SectionHeading
+          eyebrow="Featured competition"
+          title="FACKTS Kings"
+          text="The flagship FACKTS one-on-one competition: every matchup, result, player record and highlight connected in one place."
+        />
 
-          <div className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-[#0B1F3A] text-white shadow-sm">
-            <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
-              <div className="relative min-h-[340px] overflow-hidden lg:min-h-[520px]">
-                {eventImage(featuredEvent) ? (
-                  <img
-                    src={eventImage(featuredEvent)}
-                    alt={featuredEvent.title}
-                    loading="lazy"
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#102A4C] to-[#071426]" />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-transparent to-[#0B1F3A]/20" />
-                <div className="absolute inset-x-5 bottom-5 sm:inset-x-7 sm:bottom-7">
-                  <span
-                    className={`inline-flex rounded-md px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] ${statusClass(
-                      getEventState(featuredEvent, today)
-                    )}`}
-                  >
-                    {statusLabel(getEventState(featuredEvent, today))}
-                  </span>
-                  <h3 className="mt-3 max-w-2xl text-3xl font-black uppercase leading-[0.98] tracking-[-0.03em] sm:text-5xl">
-                    {featuredEvent.title}
-                  </h3>
-                  <p className="mt-3 text-sm font-semibold text-slate-200">
-                    {eventDateLabel(featuredEvent)} ·{" "}
-                    {[featuredEvent.venue, featuredEvent.location]
-                      .filter(Boolean)
-                      .join(" · ") || "Venue to be confirmed"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-5 sm:p-7 lg:p-9">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
-                  Competition snapshot
+        <div className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-[#0B1F3A] text-white shadow-sm">
+          <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="relative min-h-[340px] overflow-hidden lg:min-h-[520px]">
+              <img
+                src={kingsHeroImage}
+                alt="FACKTS Kings one-on-one basketball"
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-[#0B1F3A]/20 to-transparent" />
+              <div className="absolute inset-x-5 bottom-5 sm:inset-x-7 sm:bottom-7">
+                <span className="inline-flex rounded-md bg-[#F58220] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+                  2026 season
+                </span>
+                <h3 className="mt-3 max-w-2xl text-4xl font-black uppercase leading-[0.92] tracking-[-0.04em] sm:text-6xl">
+                  Run the court. Earn the crown.
+                </h3>
+                <p className="mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-200">
+                  FACKTS Kings continues until every listed competitor completes
+                  the season target. Results stay tied to the right player and matchup.
                 </p>
-                <p className="mt-3 text-sm leading-7 text-slate-300">
-                  {featuredEvent.summary ||
-                    "Open the event hub for the complete competition record."}
-                </p>
-
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                  <CompetitionMetric
-                    value={String(featuredTeams.length)}
-                    label="Teams documented"
-                  />
-                  <CompetitionMetric
-                    value={String(featuredResults.length)}
-                    label="Games recorded"
-                  />
-                  <CompetitionMetric
-                    value={String(featuredEvent.photo_count || 0)}
-                    label="Photos archived"
-                  />
-                  <CompetitionMetric
-                    value={featuredEvent.event_type || "5v5"}
-                    label="Competition format"
-                  />
-                </div>
-
-                {featuredLatestResult ? (
-                  <div className="mt-6 rounded-xl border border-white/15 bg-white/5 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">
-                        Latest result
-                      </p>
-                      <span className="text-[10px] font-bold uppercase text-slate-400">
-                        {featuredLatestResult.division || "Official game"}
-                      </span>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black">
-                          {featuredLatestResult.team_name || featuredLatestResult.title}
-                        </p>
-                        <p className="mt-1 truncate text-sm font-black text-slate-300">
-                          {featuredLatestResult.opponent_name || "Opponent"}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right text-2xl font-black leading-tight text-orange-300">
-                        <div>{featuredLatestResult.score_for ?? "–"}</div>
-                        <div>{featuredLatestResult.score_against ?? "–"}</div>
-                      </div>
-                    </div>
-                    {resultWinner(featuredLatestResult) ? (
-                      <p className="mt-3 border-t border-white/10 pt-3 text-xs font-bold text-emerald-300">
-                        Winner: {resultWinner(featuredLatestResult)}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {featuredLeader ? (
-                  <div className="mt-4 rounded-xl border border-white/15 px-4 py-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-                      {featuredLeader.title}
-                    </p>
-                    <p className="mt-1 font-black text-white">
-                      {featuredLeader.subtitle || featuredLeader.team_name}
-                    </p>
-                  </div>
-                ) : null}
-
-                <Link
-                  href={`/events/${featuredEvent.slug}`}
-                  className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-[#F58220] px-5 py-3 text-sm font-black text-white transition hover:bg-[#dc6d10] sm:w-auto"
-                >
-                  Open Competition Hub
-                </Link>
               </div>
             </div>
+
+            <div className="p-5 sm:p-7 lg:p-9">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
+                Competition snapshot
+              </p>
+              <p className="mt-3 text-sm leading-7 text-slate-300">
+                FACKTS Kings is the primary home-grown competition on the platform.
+                Tournament and partner events remain discoverable in Events without
+                replacing the identity of FACKTS Hoops.
+              </p>
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <CompetitionMetric
+                  value={String(kingsCompleted.length)}
+                  label="Games completed"
+                />
+                <CompetitionMetric
+                  value={String(kingsUpcoming.length)}
+                  label="Upcoming games"
+                />
+                <CompetitionMetric
+                  value={String(kingsCompetitors.size)}
+                  label="Listed competitors"
+                />
+                <CompetitionMetric value="1-on-1" label="Competition format" />
+              </div>
+
+              {latestKingsResult ? (
+                <div className="mt-6 rounded-xl border border-white/15 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">
+                      Latest result
+                    </p>
+                    <span className="text-[10px] font-bold uppercase text-slate-400">
+                      {kingsMatchLabel(latestKingsResult)}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                    <ScoreTeam
+                      name={kingsParticipant(latestKingsResult)}
+                      score={numberValue(latestKingsResult.points_scored)}
+                    />
+                    <span className="text-xs font-black uppercase text-slate-500">Final</span>
+                    <ScoreTeam
+                      name={kingsOpponent(latestKingsResult)}
+                      score={numberValue(latestKingsResult.points_allowed)}
+                      align="right"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {nextKingsMatch ? (
+                <div className="mt-4 rounded-xl border border-white/15 px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                    Next matchup
+                  </p>
+                  <p className="mt-1 font-black text-white">
+                    {kingsParticipant(nextKingsMatch)} vs {kingsOpponent(nextKingsMatch)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {formatDate(nextKingsMatch.match_date, true)}
+                    {nextKingsMatch.venue ? ` · ${nextKingsMatch.venue}` : ""}
+                  </p>
+                </div>
+              ) : null}
+
+              <Link
+                href="/one-on-one"
+                className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-[#F58220] px-5 py-3 text-sm font-black text-white transition hover:bg-[#dc6d10] sm:w-auto"
+              >
+                Open FACKTS Kings
+              </Link>
+            </div>
           </div>
-        </section>
-      ) : null}
+        </div>
+      </section>
 
       {performers.length && latestCompletedGame ? (
         <section className="border-y border-slate-200 bg-white">
@@ -912,6 +928,7 @@ export default async function HomePage() {
               ["Teams", "/teams"],
               ["Players", "/players"],
               ["Media", "/media"],
+              ["Merchandise", "/merch"],
             ]}
           />
           <FooterLinks

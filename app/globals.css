@@ -41,6 +41,27 @@ html {
   background-attachment: fixed;
 }
 
+.fackts-public-shell {
+  min-height: 100vh;
+  isolation: isolate;
+  background-color: #020617;
+  background-image:
+    linear-gradient(rgba(2, 6, 23, 0.8), rgba(2, 6, 23, 0.95)),
+    url("/images/one-on-one-bg.png");
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+@media (max-width: 767px) {
+  .fackts-public-shell {
+    background-position: center top;
+    background-size: auto 100vh;
+    background-attachment: scroll;
+  }
+}
+
 @media (max-width: 767px) {
   .fackts-public-bg {
     background-position: center top;

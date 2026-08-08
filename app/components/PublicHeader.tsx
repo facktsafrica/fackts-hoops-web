@@ -31,6 +31,7 @@ const primaryItems: NavItem[] = [
     activePaths: ["/players", "/guest-hoopers"],
   },
   { label: "Media", href: "/media" },
+  { label: "Merch", href: "/merch" },
   { label: "Partners", href: "/partners" },
 ];
 
@@ -619,6 +620,7 @@ export default function PublicHeader() {
                     { label: "Teams", href: "/teams" },
                     { label: "Players", href: "/players" },
                     { label: "FACKTS Kings", href: "/one-on-one" },
+                    { label: "Merchandise", href: "/merch" },
                   ].map((item) => (
                     <Link
                       key={item.href}

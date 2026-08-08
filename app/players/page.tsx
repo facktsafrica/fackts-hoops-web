@@ -1,5 +1,14 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import {
+  getCareerGameTotals,
+  mergeCareerGameStats,
+  type CareerGameStatRow,
+} from "@/lib/hoops/careerStats";
+import {
+  isOfficialFacktsPlayer,
+  playerClassificationLabel,
+} from "@/lib/hoops/playerClassification";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,6 +30,8 @@ type PlayerCard = {
   roster_status?: string | null;
   category?: string | null;
   is_guest?: boolean | null;
+  profile_href: string;
+  relationship_label: string;
 
   games_played: number;
   points_per_game: number;
@@ -36,13 +47,30 @@ type PlayerRecord = Omit<
   | "rebounds_per_game"
   | "assists_per_game"
   | "total_points"
+  | "profile_href"
+  | "relationship_label"
 >;
 
-type PlayerStatRecord = {
+type GuestRecord = {
+  id: string;
+  source_player_id?: string | null;
+  guest_type?: string | null;
+  full_name?: string | null;
+  name?: string | null;
+  nickname?: string | null;
+  position?: string | null;
+  role?: string | null;
+  photo_url?: string | null;
+  photo_position?: string | null;
+  is_active?: boolean | null;
+};
+
+type PlayerStatRecord = CareerGameStatRow & {
   player_id: string;
-  points?: number | null;
-  rebounds?: number | null;
-  assists?: number | null;
+};
+
+type GuestStatRecord = CareerGameStatRow & {
+  guest_hooper_id: string;
 };
 
 function hasValue(value?: string | number | null) {
@@ -63,35 +91,21 @@ function getInitials(player: PlayerCard) {
     .join("");
 }
 
-function isOfficialRosterPlayer(player: PlayerRecord) {
-  const combinedType = [
-    player.player_type,
-    player.roster_status,
-    player.category,
-    player.role,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  if (player.is_guest === true) return false;
-  if (combinedType.includes("guest")) return false;
-  if (combinedType.includes("prospect")) return false;
-  if (combinedType.includes("external")) return false;
-  if (combinedType.includes("partner team")) return false;
-
-  return true;
-}
-
 async function getPlayersWithStats() {
-  const [playersResult, statsResult] = await Promise.all([
+  const [playersResult, guestsResult, statsResult, guestStatsResult] =
+    await Promise.all([
     supabase
       .from("players")
       .select("*")
       .eq("is_active", true)
       .order("jersey_number", { ascending: true }),
-
+    supabase
+      .from("guest_hoopers")
+      .select("*")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false }),
     supabase.from("player_game_stats").select("*"),
+    supabase.from("guest_game_stats").select("*"),
   ]);
 
   if (playersResult.error || statsResult.error) {
@@ -99,62 +113,133 @@ async function getPlayersWithStats() {
   }
 
   const players = ((playersResult.data ?? []) as PlayerRecord[]).filter(
-    isOfficialRosterPlayer
+    isOfficialFacktsPlayer
   );
+  const guests = guestsResult.error
+    ? []
+    : ((guestsResult.data ?? []) as GuestRecord[]);
   const stats = (statsResult.data ?? []) as PlayerStatRecord[];
+  const guestStats = guestStatsResult.error
+    ? []
+    : ((guestStatsResult.data ?? []) as GuestStatRecord[]);
+  const officialPlayerIds = new Set(players.map((player) => String(player.id)));
 
-  const rows: PlayerCard[] = players.map((player) => {
-    const playerStats = stats.filter((row) => row.player_id === player.id);
-    const gamesPlayed = playerStats.length;
-
-    const totals = playerStats.reduce(
-      (acc, row) => {
-        acc.points += Number(row.points ?? 0);
-        acc.rebounds += Number(row.rebounds ?? 0);
-        acc.assists += Number(row.assists ?? 0);
-        return acc;
-      },
-      {
-        points: 0,
-        rebounds: 0,
-        assists: 0,
-      }
-    );
-
-    function avg(value: number) {
-      return gamesPlayed > 0 ? Number((value / gamesPlayed).toFixed(1)) : 0;
-    }
+  function withCareerStats(
+    player: Omit<
+      PlayerCard,
+      | "games_played"
+      | "points_per_game"
+      | "rebounds_per_game"
+      | "assists_per_game"
+      | "total_points"
+    >,
+    careerRows: CareerGameStatRow[]
+  ): PlayerCard {
+    const totals = getCareerGameTotals(careerRows);
+    const average = (value: number) =>
+      totals.gamesPlayed > 0
+        ? Number((value / totals.gamesPlayed).toFixed(1))
+        : 0;
 
     return {
-      id: player.id,
-      full_name: player.full_name || player.name,
-      name: player.name,
-      nickname: player.nickname,
-      jersey_number: player.jersey_number,
-      position: player.position,
-      role: player.role,
-      photo_url: player.photo_url,
-      photo_position: player.photo_position,
-      is_featured: player.is_featured,
-      player_type: player.player_type,
-      roster_status: player.roster_status,
-      category: player.category,
-      is_guest: player.is_guest,
-      games_played: gamesPlayed,
-      points_per_game: avg(totals.points),
-      rebounds_per_game: avg(totals.rebounds),
-      assists_per_game: avg(totals.assists),
+      ...player,
+      games_played: totals.gamesPlayed,
+      points_per_game: average(totals.points),
+      rebounds_per_game: average(totals.rebounds),
+      assists_per_game: average(totals.assists),
       total_points: totals.points,
     };
+  }
+
+  const rows: PlayerCard[] = players.map((player) => {
+    const playerStats = stats.filter(
+      (row) => String(row.player_id) === String(player.id)
+    );
+
+    return withCareerStats(
+      {
+        id: player.id,
+        full_name: player.full_name || player.name,
+        name: player.name,
+        nickname: player.nickname,
+        jersey_number: player.jersey_number,
+        position: player.position,
+        role: player.role,
+        photo_url: player.photo_url,
+        photo_position: player.photo_position,
+        is_featured: player.is_featured,
+        player_type: player.player_type,
+        roster_status: player.roster_status,
+        category: player.category,
+        is_guest: player.is_guest,
+        profile_href: `/players/${player.id}`,
+        relationship_label: "Official FACKTS Player",
+      },
+      playerStats
+    );
   });
 
-  return rows;
+  for (const guest of guests) {
+    if (
+      guest.source_player_id &&
+      officialPlayerIds.has(String(guest.source_player_id))
+    ) {
+      continue;
+    }
+
+    const currentGuestStats = guestStats.filter(
+      (row) => String(row.guest_hooper_id) === String(guest.id)
+    );
+    const formerPlayerStats = guest.source_player_id
+      ? stats.filter(
+          (row) => String(row.player_id) === String(guest.source_player_id)
+        )
+      : [];
+    const careerStats = mergeCareerGameStats(
+      currentGuestStats,
+      formerPlayerStats
+    );
+
+    rows.push(
+      withCareerStats(
+        {
+          id: `guest-${guest.id}`,
+          full_name: guest.full_name || guest.name,
+          name: guest.name,
+          nickname: guest.nickname,
+          jersey_number: null,
+          position: guest.position,
+          role: guest.role || "Guest Hooper",
+          photo_url: guest.photo_url,
+          photo_position: guest.photo_position,
+          is_featured: false,
+          player_type: guest.guest_type || "guest_hooper",
+          roster_status: null,
+          category: null,
+          is_guest: true,
+          profile_href: `/guest-hoopers/guest-${guest.id}`,
+          relationship_label: playerClassificationLabel(
+            guest.guest_type || "guest_hooper"
+          ),
+        },
+        careerStats
+      )
+    );
+  }
+
+  return rows.sort((left, right) =>
+    getPlayerName(left).localeCompare(getPlayerName(right))
+  );
 }
 
 export default async function PlayersPage() {
   const players = await getPlayersWithStats();
 
   const totalPlayers = players.length;
+  const officialPlayerCount = players.filter(
+    (player) => !player.is_guest
+  ).length;
+  const guestHooperCount = totalPlayers - officialPlayerCount;
   const totalRecordedPoints = players.reduce(
     (acc, player) => acc + player.total_points,
     0
@@ -186,7 +271,7 @@ export default async function PlayersPage() {
           <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
             <div>
               <div className="mb-3 inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                Official FACKTS Roster
+                FACKTS Player Directory
               </div>
 
               <h1 className="text-4xl font-black uppercase tracking-tight sm:text-6xl">
@@ -194,19 +279,12 @@ export default async function PlayersPage() {
               </h1>
 
               <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 sm:text-base">
-                Official FACKTS Hoops players only. Guest hoopers, external
-                ballers, and battle-only players live inside the Court Takeover
-                portal.
+                One public directory for official FACKTS players, guest hoopers
+                and external competitors. Every profile keeps a visible
+                relationship badge and the correct career record.
               </p>
 
               <div className="mt-5 flex flex-wrap gap-3">
-                <Link
-                  href="/guest-hoopers"
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-zinc-200 transition hover:border-orange-400 hover:text-orange-300"
-                >
-                  View Guest Hoopers
-                </Link>
-
                 <Link
                   href="/court-takeover"
                   className="rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
@@ -217,22 +295,12 @@ export default async function PlayersPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <HeroMiniStat label="Players" value={String(totalPlayers)} />
+              <HeroMiniStat label="All Players" value={String(totalPlayers)} />
+              <HeroMiniStat label="FACKTS" value={String(officialPlayerCount)} />
+              <HeroMiniStat label="Guests" value={String(guestHooperCount)} />
               <HeroMiniStat
                 label="Points Recorded"
                 value={String(totalRecordedPoints)}
-              />
-              <HeroMiniStat
-                label="Top PPG"
-                value={topScorer ? String(topScorer.points_per_game) : "0"}
-                sub={topScorer ? getPlayerName(topScorer) : "No data"}
-              />
-              <HeroMiniStat
-                label="Most Games"
-                value={
-                  mostExperienced ? String(mostExperienced.games_played) : "0"
-                }
-                sub={mostExperienced ? getPlayerName(mostExperienced) : "No data"}
               />
             </div>
           </div>
@@ -241,7 +309,7 @@ export default async function PlayersPage() {
 
       {featuredPlayers.length > 0 ? (
         <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
-          <SectionHeader eyebrow="Spotlight" title="Featured Official Players" />
+          <SectionHeader eyebrow="Spotlight" title="Featured Players" />
 
           <div className="grid gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3">
             {featuredPlayers.map((player) => (
@@ -252,10 +320,10 @@ export default async function PlayersPage() {
       ) : null}
 
       <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Roster" title="Official Active Players" />
+        <SectionHeader eyebrow="Directory" title="All Active Players" />
 
         {players.length === 0 ? (
-          <EmptyBox text="No official active players found yet." />
+          <EmptyBox text="No active player profiles found yet." />
         ) : (
           <div className="grid gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
             {[...featuredPlayers, ...regularPlayers].map((player) => (
@@ -292,7 +360,7 @@ function MobilePlayerRow({
 }) {
   return (
     <Link
-      href={`/players/${player.id}`}
+      href={player.profile_href}
       className="fackts-mobile-player-row group relative grid h-[100px] grid-cols-[5.5rem_minmax(0,1fr)] overflow-hidden rounded-[1.05rem] bg-[linear-gradient(112deg,#161616_0%,#090909_64%,#180a02_100%)] shadow-lg shadow-black/30 transition duration-300 active:scale-[0.985] md:hidden"
     >
       <div className="relative h-[100px] overflow-hidden bg-zinc-950">
@@ -314,7 +382,7 @@ function MobilePlayerRow({
                 {getInitials(player) || "FH"}
               </div>
               <div className="mt-1 whitespace-nowrap text-[7px] font-black uppercase tracking-[0.08em] text-zinc-600">
-                FACKTS Player
+                {player.relationship_label}
               </div>
             </div>
           </div>
@@ -337,11 +405,9 @@ function MobilePlayerRow({
               {getPlayerName(player)}
             </div>
 
-            {featured ? (
-              <span className="shrink-0 rounded bg-orange-500/15 px-1.5 py-0.5 text-[6px] font-black uppercase leading-none tracking-[0.04em] text-orange-300">
-                Featured
-              </span>
-            ) : null}
+            <span className="shrink-0 rounded bg-orange-500/15 px-1.5 py-0.5 text-[6px] font-black uppercase leading-none tracking-[0.04em] text-orange-300">
+              {player.relationship_label}
+            </span>
           </div>
 
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0 text-[8px] font-bold leading-none">
@@ -383,7 +449,7 @@ function DesktopPlayerCard({
 }) {
   return (
     <Link
-      href={`/players/${player.id}`}
+      href={player.profile_href}
       className="group hidden overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/90 shadow-xl shadow-black/20 backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-orange-400/60 hover:shadow-orange-950/30 md:block"
     >
       <div className="relative overflow-hidden bg-black">
@@ -395,7 +461,7 @@ function DesktopPlayerCard({
           ) : null}
 
           <span className="rounded-full border border-white/10 bg-black/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white backdrop-blur">
-            FACKTS Player
+            {player.relationship_label}
           </span>
 
           {featured ? (
@@ -423,7 +489,7 @@ function DesktopPlayerCard({
                 {getInitials(player) || "FH"}
               </p>
               <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-600">
-                FACKTS Player
+                {player.relationship_label}
               </p>
             </div>
           </div>
