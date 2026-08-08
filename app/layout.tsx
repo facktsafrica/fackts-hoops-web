@@ -2,8 +2,6 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./fackts-motion.css";
 import PublicHeader from "./components/PublicHeader";
-import PublicMobileNav from "./components/PublicMobileNav";
-import FacktsTicker from "./components/FacktsTicker";
 import PwaInstallButton from "./components/PwaInstallButton";
 import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
 import PlayerPortalReturn from "./components/PlayerPortalReturn";
@@ -14,7 +12,8 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_SITE_URL || "https://fackts-hoops-web.vercel.app"
   ),
   title: "FACKTS Hoops",
-  description: "Basketball. Culture. Data.",
+  description:
+    "Tournament statistics, player profiles, game media and organizer reporting — all in one basketball platform.",
   applicationName: "FACKTS Hoops",
   icons: {
     icon: [
@@ -26,7 +25,8 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "FACKTS Hoops",
-    description: "Basketball. Culture. Data.",
+    description:
+      "Tournament statistics, player profiles, game media and organizer reporting — all in one basketball platform.",
     type: "website",
     url: "/",
     siteName: "FACKTS Hoops",
@@ -42,13 +42,14 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary",
     title: "FACKTS Hoops",
-    description: "Basketball. Culture. Data.",
+    description:
+      "Tournament statistics, player profiles, game media and organizer reporting — all in one basketball platform.",
     images: ["/fackts-hoops-logo.png?v=20260722"],
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f97316",
+  themeColor: "#0B1F3A",
 };
 
 export default function RootLayout({
@@ -70,10 +71,8 @@ export default function RootLayout({
         <PwaServiceWorkerClient />
         <PublicHeader />
         <PwaInstallButton />
-        <FacktsTicker />
         {children}
         <PlayerPortalReturn />
-        <PublicMobileNav />
       </body>
     </html>
   );
