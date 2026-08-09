@@ -103,34 +103,36 @@ export default function FacktsMotionSystem() {
       });
     };
 
-    scan();
-    let scanFrame: number | null = null;
-    const pendingRoots = new Set<ParentNode>();
+    // Next streams Server Component HTML into the document before every
+    // Suspense segment has hydrated. Mutating those streamed nodes from a
+    // MutationObserver changes their class/style attributes before React can
+    // compare them, which produces hydration mismatch warnings. Wait for the
+    // initial document to finish loading and two paint frames before applying
+    // the progressive-enhancement motion classes. Client navigations also run
+    // this effect after their route commit because pathname is a dependency.
+    let firstFrame: number | null = null;
+    let secondFrame: number | null = null;
+    let startTimer: number | null = null;
 
-    const scheduleScan = (root: ParentNode) => {
-      pendingRoots.add(root);
-      if (scanFrame !== null) return;
-
-      scanFrame = requestAnimationFrame(() => {
-        pendingRoots.forEach((pendingRoot) => scan(pendingRoot));
-        pendingRoots.clear();
-        scanFrame = null;
-      });
+    const startMotion = () => {
+      startTimer = window.setTimeout(() => {
+        firstFrame = requestAnimationFrame(() => {
+          secondFrame = requestAnimationFrame(() => scan());
+        });
+      }, 0);
     };
 
-    const mutationObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node instanceof HTMLElement) scheduleScan(node);
-        });
-      });
-    });
-
-    mutationObserver.observe(document.body, { childList: true, subtree: true });
+    if (document.readyState === "complete") {
+      startMotion();
+    } else {
+      window.addEventListener("load", startMotion, { once: true });
+    }
 
     return () => {
-      mutationObserver.disconnect();
-      if (scanFrame !== null) cancelAnimationFrame(scanFrame);
+      window.removeEventListener("load", startMotion);
+      if (startTimer !== null) window.clearTimeout(startTimer);
+      if (firstFrame !== null) cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) cancelAnimationFrame(secondFrame);
       revealObserver.disconnect();
       numberObserver.disconnect();
     };
