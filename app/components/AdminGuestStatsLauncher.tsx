@@ -39,7 +39,7 @@ export default function AdminGuestStatsLauncher() {
               </Link>
 
               <Link
-                href="/guest-leaderboards"
+                href="/competitions/fackts-kings#standings"
                 className="rounded-2xl border border-slate-700 px-4 py-3 text-sm font-bold text-slate-200 transition hover:bg-slate-800"
               >
                 View Guest Leaders

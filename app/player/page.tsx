@@ -136,7 +136,7 @@ export default async function PlayerPortalPage() {
             imageUrl={player.photo_url}
           />
           <PortalLink
-            href="/leaderboards"
+            href="/competitions/fackts-kings#standings"
             eyebrow="Rankings"
             title="Leaderboards"
             text="Track FACKTS rankings and current performance."

@@ -37,14 +37,14 @@ const primaryItems: NavItem[] = [
 
 const competitionItems: NavItem[] = [
   {
-    label: "FACKTS Kings",
-    href: "/one-on-one",
-    activePaths: ["/one-on-one", "/court-takeover"],
+    label: "All Competitions",
+    href: "/competitions",
+    activePaths: ["/competitions"],
   },
   {
-    label: "Competition Leaderboards",
-    href: "/leaderboards",
-    activePaths: ["/leaderboards", "/guest-leaderboards"],
+    label: "FACKTS Kings",
+    href: "/competitions/fackts-kings",
+    activePaths: ["/competitions/fackts-kings", "/one-on-one", "/court-takeover", "/leaderboards", "/guest-leaderboards"],
   },
 ];
 
@@ -132,10 +132,13 @@ export default function PublicHeader() {
   );
 
   useEffect(() => {
-    setMenuOpen(false);
-    setSearchOpen(false);
-    setSearch("");
-    setContentResults([]);
+    const timer = window.setTimeout(() => {
+      setMenuOpen(false);
+      setSearchOpen(false);
+      setSearch("");
+      setContentResults([]);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   useEffect(() => {
@@ -162,25 +165,31 @@ export default function PublicHeader() {
   useEffect(() => {
     if (!searchOpen) return;
 
-    try {
-      const stored = JSON.parse(
-        window.localStorage.getItem(RECENT_SEARCHES_KEY) || "[]"
-      );
-      setRecentSearches(Array.isArray(stored) ? stored.slice(0, 5) : []);
-    } catch {
-      setRecentSearches([]);
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = JSON.parse(
+          window.localStorage.getItem(RECENT_SEARCHES_KEY) || "[]"
+        );
+        setRecentSearches(Array.isArray(stored) ? stored.slice(0, 5) : []);
+      } catch {
+        setRecentSearches([]);
+      }
 
-    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+      window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [searchOpen]);
 
   useEffect(() => {
     const query = search.trim();
 
     if (query.length < 2) {
-      setContentResults([]);
-      setSearching(false);
-      return;
+      const clearTimer = window.setTimeout(() => {
+        setContentResults([]);
+        setSearching(false);
+      }, 0);
+      return () => window.clearTimeout(clearTimer);
     }
 
     const controller = new AbortController();
@@ -619,7 +628,8 @@ export default function PublicHeader() {
                     { label: "Events", href: "/events" },
                     { label: "Teams", href: "/teams" },
                     { label: "Players", href: "/players" },
-                    { label: "FACKTS Kings", href: "/one-on-one" },
+                    { label: "Competitions", href: "/competitions" },
+                    { label: "FACKTS Kings", href: "/competitions/fackts-kings" },
                     { label: "Merchandise", href: "/merch" },
                   ].map((item) => (
                     <Link

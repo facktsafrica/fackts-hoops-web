@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import AnimatedNumber from "@/app/components/AnimatedNumber";
+import GameMedia, { type GameMediaItem } from "@/app/games/[id]/GameMedia";
 
 export const revalidate = 60;
 
@@ -28,6 +29,11 @@ type GuestHooper = {
 type OneOnOneRow = {
   id: string;
 
+  competition_slug?: string | null;
+  season_label?: string | null;
+  verification_status?: string | null;
+  is_public?: boolean | null;
+
   participant_type?: string | null;
   fackts_player_id?: string | null;
   guest_hooper_id?: string | null;
@@ -44,6 +50,7 @@ type OneOnOneRow = {
   points_scored?: number | string | null;
   points_allowed?: number | string | null;
   result?: string | null;
+  status?: string | null;
   notes?: string | null;
   poster_url?: string | null;
   video_url?: string | null;
@@ -259,54 +266,6 @@ function getStatusClass(result: string) {
   return "bg-orange-500/15 text-orange-300";
 }
 
-function getEmbedUrl(videoUrl?: string | null): string | null {
-  if (!videoUrl) return "";
-
-  try {
-    const url = new URL(videoUrl);
-
-    if (url.hostname.includes("youtu.be")) {
-      const id = url.pathname.replace("/", "");
-      return id ? `https://www.youtube.com/embed/${id}` : null;
-    }
-
-    if (url.hostname.includes("youtube.com")) {
-      if (url.pathname.startsWith("/watch")) {
-        const id = url.searchParams.get("v");
-        return id ? `https://www.youtube.com/embed/${id}` : null;
-      }
-
-      if (url.pathname.startsWith("/shorts/")) {
-        const id = url.pathname.split("/shorts/")[1]?.split("/")[0];
-        return id ? `https://www.youtube.com/embed/${id}` : null;
-      }
-
-      if (url.pathname.startsWith("/embed/")) {
-        return videoUrl;
-      }
-    }
-
-    if (url.hostname.includes("vimeo.com")) {
-      const id = url.pathname.replace("/", "");
-      return id ? `https://player.vimeo.com/video/${id}` : null;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function isDirectVideoUrl(videoUrl?: string | null) {
-  const clean = (videoUrl || "").toLowerCase().split("?")[0];
-
-  return (
-    clean.endsWith(".mp4") ||
-    clean.endsWith(".webm") ||
-    clean.endsWith(".ogg")
-  );
-}
-
 async function getData(id: string) {
   const supabase = getSupabase();
 
@@ -357,10 +316,10 @@ export default async function OneOnOneMatchPage({
       <main className="min-h-screen bg-black px-4 py-10 text-white">
         <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-zinc-950 p-6">
           <Link
-            href="/one-on-one"
+            href="/competitions/fackts-kings"
             className="inline-flex rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white"
           >
-            Back to 1-on-1
+            Back to FACKTS Kings
           </Link>
 
           <h1 className="mt-6 text-3xl font-black">Match not found</h1>
@@ -404,16 +363,39 @@ export default async function OneOnOneMatchPage({
   const opponentScore = numberValue(row.points_allowed);
   const fullVideoUrl = row.video_url || "";
   const highlightUrl = row.highlight_url || "";
+  const seasonLabel = row.season_label || "2026";
+  const verificationStatus = row.verification_status || (String(row.status).toLowerCase() === "completed" ? "verified" : "scheduled");
+  const mediaItems: GameMediaItem[] = [];
+  if (fullVideoUrl) {
+    mediaItems.push({
+      id: `${row.id}-full`,
+      title: `${participant.name} vs ${opponent.name} · Full game`,
+      mediaType: "Full game",
+      url: fullVideoUrl,
+      thumbnailUrl: row.poster_url || "",
+      rightsStatus: "Published match record",
+    });
+  }
+  if (highlightUrl && highlightUrl !== fullVideoUrl) {
+    mediaItems.push({
+      id: `${row.id}-highlight`,
+      title: `${participant.name} vs ${opponent.name} · Highlights`,
+      mediaType: "Highlights",
+      url: highlightUrl,
+      thumbnailUrl: row.poster_url || "",
+      rightsStatus: "Published match record",
+    });
+  }
 
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.22),_transparent_35%),linear-gradient(135deg,_#050505,_#111111_45%,_#020202)]">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
           <Link
-            href="/one-on-one"
+            href="/competitions/fackts-kings"
             className="inline-flex rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
           >
-            Back to 1-on-1
+            Back to FACKTS Kings
           </Link>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
@@ -439,6 +421,10 @@ export default async function OneOnOneMatchPage({
               >
                 {result}
               </div>
+
+              <p className="mb-3 text-[10px] font-black uppercase tracking-[.18em] text-orange-300">
+                FACKTS Kings · {seasonLabel} season · {verificationStatus}
+              </p>
 
               <h1 className="text-4xl font-black leading-tight sm:text-6xl">
                 {participant.name}
@@ -478,6 +464,8 @@ export default async function OneOnOneMatchPage({
                   label="Venue"
                   value={row.venue || row.location || "Location not added"}
                 />
+                <InfoCard label="Competition" value="FACKTS Kings" />
+                <InfoCard label="Record status" value={`${seasonLabel} · ${verificationStatus}`} />
               </div>
 
               {row.notes ? (
@@ -503,100 +491,13 @@ export default async function OneOnOneMatchPage({
           <h2 className="text-2xl font-black">Watch the Battle</h2>
         </div>
 
-        {fullVideoUrl || highlightUrl ? (
-          <div
-            className={`grid gap-5 ${
-              fullVideoUrl && highlightUrl ? "lg:grid-cols-2" : ""
-            }`}
-          >
-            {fullVideoUrl ? (
-              <MatchMediaCard
-                eyebrow="Full Game"
-                title="Full Game Video"
-                url={fullVideoUrl}
-                buttonLabel="Open Full Game"
-                mediaTitle={`${participant.name} vs ${opponent.name} full game`}
-              />
-            ) : null}
-
-            {highlightUrl ? (
-              <MatchMediaCard
-                eyebrow="Highlights"
-                title="Match Highlight"
-                url={highlightUrl}
-                buttonLabel="Open Match Highlight"
-                mediaTitle={`${participant.name} vs ${opponent.name} match highlight`}
-              />
-            ) : null}
-          </div>
-        ) : (
-          <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 text-sm text-zinc-400">
-            No full game video or match highlight has been linked yet.
-          </div>
-        )}
+        <GameMedia
+          items={mediaItems}
+          emptyTitle="Match media coming soon"
+          emptyText="No full game video or match highlight has been linked to this FACKTS Kings record yet."
+        />
       </section>
     </main>
-  );
-}
-
-function MatchMediaCard({
-  eyebrow,
-  title,
-  url,
-  buttonLabel,
-  mediaTitle,
-}: {
-  eyebrow: string;
-  title: string;
-  url: string;
-  buttonLabel: string;
-  mediaTitle: string;
-}) {
-  const embedUrl = getEmbedUrl(url);
-  const directVideo = isDirectVideoUrl(url);
-
-  return (
-    <article className="overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 p-3">
-      <div className="px-2 pb-3 pt-1">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
-          {eyebrow}
-        </p>
-        <h3 className="mt-1 text-xl font-black text-white">{title}</h3>
-      </div>
-
-      {directVideo ? (
-        <video
-          src={url}
-          controls
-          playsInline
-          className="aspect-video w-full rounded-2xl bg-black"
-        />
-      ) : embedUrl ? (
-        <iframe
-          src={embedUrl}
-          title={mediaTitle}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="aspect-video w-full rounded-2xl bg-black"
-        />
-      ) : (
-        <div className="rounded-2xl border border-white/10 bg-black/60 p-5">
-          <p className="text-sm leading-6 text-zinc-400">
-            This link cannot play inside the app, but the match media is
-            available through the button below.
-          </p>
-        </div>
-      )}
-
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-3 inline-flex rounded-full bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-black transition hover:bg-orange-400"
-      >
-        {buttonLabel}
-      </a>
-    </article>
   );
 }
 

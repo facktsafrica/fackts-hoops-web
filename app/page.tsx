@@ -449,7 +449,7 @@ export default async function HomePage() {
 
             <div className="mt-7 grid gap-3 sm:flex">
               <Link
-                href="/one-on-one"
+                href="/competitions/fackts-kings"
                 className="inline-flex min-h-12 items-center justify-center rounded-lg bg-white px-6 py-3 text-sm font-black text-[#0B1F3A] transition hover:bg-slate-100"
               >
                 Enter FACKTS Kings
@@ -731,7 +731,7 @@ export default async function HomePage() {
               ) : null}
 
               <Link
-                href="/one-on-one"
+                href="/competitions/fackts-kings"
                 className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-[#F58220] px-5 py-3 text-sm font-black text-white transition hover:bg-[#dc6d10] sm:w-auto"
               >
                 Open FACKTS Kings

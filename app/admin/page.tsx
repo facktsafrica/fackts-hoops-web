@@ -82,6 +82,14 @@ const coreCards: AdminCard[] = [
 
 const eventCards: AdminCard[] = [
   {
+    title: "Competitions",
+    description:
+      "Manage permanent competition identities, seasons, rules, publication and verification.",
+    href: "/admin/competitions",
+    badge: "Competitions",
+    featured: true,
+  },
+  {
     title: "Scheduling",
     description:
       "Schedule upcoming games, 1-on-1 matchups, dates, venues, and availability.",
@@ -98,9 +106,9 @@ const eventCards: AdminCard[] = [
     featured: true,
   },
   {
-    title: "1-on-1 Battles",
+    title: "FACKTS Kings Battles",
     description:
-      "Manage face-offs, matchup cards, scores, videos, and battle results.",
+      "Manage FACKTS Kings face-offs, matchup cards, season results, verification and videos.",
     href: "/admin/one-on-one",
     badge: "1v1",
     featured: true,

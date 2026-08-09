@@ -3,6 +3,7 @@ export const revalidate = 60;
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
+import GameMedia, { type GameMediaItem } from "@/app/games/[id]/GameMedia";
 
 type Player = {
   id: string;
@@ -29,6 +30,11 @@ type GuestHooper = {
 
 type OneOnOneRow = {
   id: string;
+
+  competition_slug?: string | null;
+  season_label?: string | null;
+  verification_status?: string | null;
+  is_public?: boolean | null;
 
   calendar_matchup_id?: string | null;
 
@@ -95,11 +101,15 @@ type LeaderboardItem = {
 };
 
 type OneOnOneSearchParams = Promise<{
+  season?: string | string[];
   upcomingPage?: string | string[];
   resultsPage?: string | string[];
 }>;
 
 const BATTLES_PER_PAGE = 6;
+const DEFAULT_SEASON = "2026";
+const COMPETITION_SLUG = "fackts-kings";
+const COMPETITION_PATH = "/competitions/fackts-kings";
 
 function getRequestedPage(value?: string | string[]) {
   const rawValue = Array.isArray(value) ? value[0] : value;
@@ -137,11 +147,6 @@ function numberValue(value: unknown): number | null {
   }
 
   return null;
-}
-
-function percent(value: number) {
-  if (!Number.isFinite(value)) return "0%";
-  return `${value.toFixed(1)}%`;
 }
 
 function getPersonName(person?: Player | GuestHooper | null) {
@@ -452,21 +457,6 @@ function getWinnerName(row: OneOnOneRow, player1Name: string, player2Name: strin
   return "Not decided";
 }
 
-function getResultLabel(row: OneOnOneRow) {
-  const status = getMatchStatus(row);
-
-  if (status === "Upcoming") return "Upcoming";
-  if (status === "Cancelled") return "Cancelled";
-
-  const winnerSide = getWinnerSide(row);
-
-  if (winnerSide === "player1") return "Player 1 Win";
-  if (winnerSide === "player2") return "Player 2 Win";
-  if (winnerSide === "draw") return "Draw";
-
-  return "Completed";
-}
-
 function getMargin(row: OneOnOneRow) {
   const score1 = getPlayer1Score(row);
   const score2 = getPlayer2Score(row);
@@ -483,38 +473,6 @@ function getTotalPoints(row: OneOnOneRow) {
   if (score1 === null || score2 === null) return null;
 
   return score1 + score2;
-}
-
-function getPlayer1Share(row: OneOnOneRow) {
-  const score1 = getPlayer1Score(row);
-  const total = getTotalPoints(row);
-
-  if (score1 === null || total === null || total === 0) return null;
-
-  return (score1 / total) * 100;
-}
-
-function getPlayer2Share(row: OneOnOneRow) {
-  const score2 = getPlayer2Score(row);
-  const total = getTotalPoints(row);
-
-  if (score2 === null || total === null || total === 0) return null;
-
-  return (score2 / total) * 100;
-}
-
-function getIntensity(row: OneOnOneRow) {
-  const status = getMatchStatus(row);
-  const margin = getMargin(row);
-  const totalPoints = getTotalPoints(row);
-
-  if (status === "Upcoming") return "Awaiting Tip-Off";
-  if (margin === null || totalPoints === null) return "Awaiting Data";
-  if (margin <= 2) return "Clutch Battle";
-  if (margin <= 5) return "Competitive";
-  if (margin >= 10) return "Statement Win";
-
-  return "Controlled Win";
 }
 
 function getRowLocation(row: OneOnOneRow) {
@@ -775,13 +733,29 @@ export default async function OneOnOnePage({
 }) {
   const query = await searchParams;
   const {
-    rows,
+    rows: allRows,
     players,
     guests,
     playerMap,
     guestMap,
     guestBySourcePlayerId,
   } = await getData();
+
+  const competitionRows = allRows.filter((row) => {
+    const competitionSlug = row.competition_slug || COMPETITION_SLUG;
+    return competitionSlug === COMPETITION_SLUG && row.is_public !== false;
+  });
+  const availableSeasons = Array.from(
+    new Set(competitionRows.map((row) => row.season_label || DEFAULT_SEASON))
+  ).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  if (!availableSeasons.length) availableSeasons.push(DEFAULT_SEASON);
+  const requestedSeason = Array.isArray(query.season) ? query.season[0] : query.season;
+  const activeSeason = availableSeasons.includes(requestedSeason || "")
+    ? requestedSeason!
+    : availableSeasons[0];
+  const rows = competitionRows.filter(
+    (row) => (row.season_label || DEFAULT_SEASON) === activeSeason
+  );
 
   const leaderboard = buildLeaderboard(
     rows,
@@ -825,6 +799,34 @@ export default async function OneOnOnePage({
   const closestMatch = getClosestMatch(rows);
   const biggestWin = getBiggestWin(rows);
   const topHooper = leaderboard[0] || null;
+  const verifiedResults = completedRows.filter(
+    (row) => (row.verification_status || "verified").toLowerCase() === "verified"
+  ).length;
+  const mediaItems: GameMediaItem[] = rows.flatMap((row) => {
+    const title = row.match_title || `FACKTS Kings match ${row.match_number || ""}`.trim();
+    const items: GameMediaItem[] = [];
+    if (row.video_url) {
+      items.push({
+        id: `${row.id}-full`,
+        title: `${title} · Full game`,
+        mediaType: "Full game",
+        url: row.video_url,
+        thumbnailUrl: row.poster_url || "",
+        rightsStatus: "Published match record",
+      });
+    }
+    if (row.highlight_url && row.highlight_url !== row.video_url) {
+      items.push({
+        id: `${row.id}-highlight`,
+        title: `${title} · Highlights`,
+        mediaType: "Highlights",
+        url: row.highlight_url,
+        thumbnailUrl: row.poster_url || "",
+        rightsStatus: "Published match record",
+      });
+    }
+    return items;
+  });
 
   return (
     <main
@@ -842,32 +844,32 @@ export default async function OneOnOnePage({
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="mb-3 inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                FACKTS Battle Lab
+                FACKTS flagship competition · {activeSeason} season
               </div>
 
               <h1 className="text-4xl font-black uppercase tracking-tight sm:text-6xl">
-                1-on-1 Battles
+                FACKTS Kings
               </h1>
 
               <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 sm:text-base">
-                Compact fight cards for every FACKTS 1v1 battle. Approved calendar
-                matchups appear here as pending upcoming battles.
+                One competition hub for every fixture, verified result, season standing,
+                player record and published match video.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Link
-                href="/calendar"
+                href="/competitions"
                 className="rounded-full border border-orange-400/40 bg-orange-500 px-4 py-2 text-sm font-black text-black transition hover:bg-orange-400"
               >
-                Calendar
+                All Competitions
               </Link>
 
               <Link
-                href="/court-takeover"
+                href="/games"
                 className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
               >
-                Court Takeover
+                Match Centres
               </Link>
 
               <Link
@@ -879,11 +881,29 @@ export default async function OneOnOnePage({
             </div>
           </div>
 
-          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Total Battles" value={rows.length} />
+          <div className="mt-7 flex flex-wrap gap-2">
+            {availableSeasons.map((season) => (
+              <Link
+                key={season}
+                href={`${COMPETITION_PATH}?season=${encodeURIComponent(season)}`}
+                className={`rounded-full px-4 py-2 text-[9px] font-black uppercase tracking-[.12em] transition ${season === activeSeason ? "bg-white text-[#0b1f3a]" : "border border-white/15 bg-white/5 text-zinc-300 hover:border-orange-400/60"}`}
+              >
+                {season} season
+              </Link>
+            ))}
+          </div>
+
+          <nav aria-label="Competition sections" className="mt-5 flex gap-2 overflow-x-auto pb-1 text-[8px] font-black uppercase tracking-[.12em] [scrollbar-width:none]">
+            {[['Fixtures', '#upcoming-battles'], ['Standings', '#standings'], ['Results', '#previous-battles'], ['Media', '#media'], ['Intelligence', '#intelligence']].map(([label, href]) => (
+              <a key={href} href={href} className="shrink-0 rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-zinc-300 transition hover:border-orange-400/60 hover:text-orange-300">{label}</a>
+            ))}
+          </nav>
+
+          <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label={`${activeSeason} Battles`} value={rows.length} />
             <StatCard label="Completed" value={completedRows.length} />
             <StatCard label="Upcoming" value={upcomingRows.length} />
-            <StatCard label="Ranked Hoopers" value={leaderboard.length} />
+            <StatCard label="Verified Results" value={verifiedResults} />
           </div>
         </div>
       </section>
@@ -919,6 +939,7 @@ export default async function OneOnOnePage({
               pageSize={BATTLES_PER_PAGE}
               queryKey="upcomingPage"
               anchor="upcoming-battles"
+              season={activeSeason}
             />
           </>
         ) : (
@@ -926,17 +947,18 @@ export default async function OneOnOnePage({
         )}
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
+      <section id="standings" className="scroll-mt-24 mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
         <LeaderboardCard
-          eyebrow="1-on-1 Standings"
-          title="Rankings"
-          emptyText="No completed 1-on-1 results yet."
+          eyebrow={`${activeSeason} season standings`}
+          title="FACKTS Kings Rankings"
+          emptyText={`No completed ${activeSeason} FACKTS Kings results yet.`}
           items={leaderboard}
         />
+        <p className="mt-3 text-[9px] font-bold uppercase tracking-[.1em] text-zinc-600">Ranking order: wins · win rate · point difference · points scored · games played. Seasons never mix.</p>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Data Lab" title="Battle Intelligence" />
+      <section id="intelligence" className="scroll-mt-24 mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow={`${activeSeason} data lab`} title="Competition Intelligence" />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <InsightCard
@@ -1004,6 +1026,7 @@ export default async function OneOnOnePage({
               pageSize={BATTLES_PER_PAGE}
               queryKey="resultsPage"
               anchor="previous-battles"
+              season={activeSeason}
             />
           </>
         ) : (
@@ -1025,6 +1048,15 @@ export default async function OneOnOnePage({
           />
         </section>
       ) : null}
+
+      <section id="media" className="scroll-mt-24 mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:px-8">
+        <SectionHeader eyebrow={`${activeSeason} season`} title="Watch FACKTS Kings" meta={`${mediaItems.length} published videos`} />
+        <GameMedia
+          items={mediaItems}
+          emptyTitle="FACKTS Kings media coming soon"
+          emptyText="Full games and highlights will appear here when they are published against a season matchup."
+        />
+      </section>
     </main>
   );
 }
@@ -1100,7 +1132,7 @@ function FixtureBattleCard({
 
   return (
     <Link
-      href={`/one-on-one/${row.id}`}
+      href={`${COMPETITION_PATH}/matches/${row.id}`}
       className="group mx-auto block overflow-hidden rounded-xl border border-[#1f3766] bg-[#071127]/95 shadow-[0_8px_22px_rgba(0,0,0,0.28)] transition duration-300 hover:-translate-y-0.5 hover:border-orange-400/70 hover:shadow-[0_12px_28px_rgba(14,72,160,0.2)]"
     >
       <div className="flex min-h-7 items-center justify-between gap-1.5 border-b border-white/8 bg-[#0d1d3e] px-2.5 py-1.5 md:hidden">
@@ -1248,67 +1280,14 @@ function LeaderboardCard({
 
       {items.length > 0 ? (
         <>
-          <div className="sm:hidden" data-mobile-rankings-scroll-v2>
-            <div className="flex items-center justify-between border-b border-blue-300/15 bg-[#0a1936] px-3 py-2 text-[9px] font-black uppercase tracking-[0.08em] text-blue-100">
-              <span>Swipe sideways for all stats</span>
-              <span aria-hidden="true" className="text-sm leading-none text-orange-300">
-                &harr;
-              </span>
-            </div>
-
-            <div
-              className="relative"
-              style={{
-                maxHeight: "390px",
-                overflowX: "auto",
-                overflowY: "auto",
-                overscrollBehavior: "contain",
-                WebkitOverflowScrolling: "touch",
-                touchAction: "pan-x pan-y",
-                scrollbarGutter: "stable",
-              }}
-            >
-              <table
-                className="border-separate border-spacing-0 text-center text-[10px] font-black"
-                style={{ minWidth: "760px", width: "760px" }}
-              >
-                <colgroup>
-                  <col style={{ width: "54px" }} />
-                  <col style={{ width: "190px" }} />
-                  <col style={{ width: "48px" }} />
-                  <col style={{ width: "48px" }} />
-                  <col style={{ width: "48px" }} />
-                  <col style={{ width: "48px" }} />
-                  <col style={{ width: "58px" }} />
-                  <col style={{ width: "58px" }} />
-                  <col style={{ width: "72px" }} />
-                  <col style={{ width: "80px" }} />
-                </colgroup>
-                <thead className="sticky top-0 z-20 bg-[#0d2350] text-[8px] uppercase tracking-[0.08em] text-blue-200">
-                  <tr>
-                    <th className="border-b border-white/10 px-2 py-2">Rank</th>
-                    <th className="border-b border-white/10 px-3 py-2 text-left">Player</th>
-                    <th className="border-b border-white/10 px-2 py-2">P</th>
-                    <th className="border-b border-white/10 px-2 py-2">W</th>
-                    <th className="border-b border-white/10 px-2 py-2">D</th>
-                    <th className="border-b border-white/10 px-2 py-2">L</th>
-                    <th className="border-b border-white/10 px-2 py-2">PF</th>
-                    <th className="border-b border-white/10 px-2 py-2">PA</th>
-                    <th className="border-b border-white/10 px-2 py-2">+/-</th>
-                    <th className="border-b border-white/10 px-2 py-2">Win %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, index) => (
-                    <LeaderboardMobileRow
-                      key={item.id}
-                      item={item}
-                      position={index + 1}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="divide-y divide-white/7 sm:hidden">
+            {items.map((item, index) => (
+              <LeaderboardMobileRow
+                key={item.id}
+                item={item}
+                position={index + 1}
+              />
+            ))}
           </div>
 
           <div className="hidden sm:block">
@@ -1346,17 +1325,11 @@ function LeaderboardMobileRow({
   item: LeaderboardItem;
   position: number;
 }) {
-  return (
-    <tr
-      className={
-        position === 1
-          ? "bg-orange-500/8"
-          : "bg-black/10"
-      }
-    >
-      <td className="border-b border-white/7 px-2 py-2.5">
+  const content = (
+    <div className={`grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 ${position === 1 ? "bg-orange-500/8" : "bg-black/10"}`}>
+      <div>
         <span
-          className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md ${
+          className={`flex h-7 w-7 items-center justify-center rounded-md text-[10px] font-black ${
             position === 1
               ? "bg-orange-500 text-black"
               : position <= 3
@@ -1366,27 +1339,24 @@ function LeaderboardMobileRow({
         >
           {position}
         </span>
-      </td>
-      <td className="whitespace-nowrap border-b border-white/7 px-3 py-2.5 text-left text-[11px] text-white">
-        {item.name}
-      </td>
-      <td className="border-b border-white/7 px-2 py-2.5 text-slate-300">{item.matches}</td>
-      <td className="border-b border-white/7 px-2 py-2.5 text-white">{item.wins}</td>
-      <td className="border-b border-white/7 px-2 py-2.5 text-slate-400">{item.draws}</td>
-      <td className="border-b border-white/7 px-2 py-2.5 text-slate-500">{item.losses}</td>
-      <td className="border-b border-white/7 px-2 py-2.5 text-slate-300">{item.points}</td>
-      <td className="border-b border-white/7 px-2 py-2.5 text-slate-400">{item.pointsAllowed}</td>
-      <td
-        className={`border-b border-white/7 px-2 py-2.5 ${
-          item.pointDiff >= 0 ? "text-blue-300" : "text-orange-300"
-        }`}
-      >
-        {item.pointDiff > 0 ? "+" : ""}
-        {item.pointDiff}
-      </td>
-      <td className="border-b border-white/7 px-2 py-2.5 text-white">{item.winRate}%</td>
-    </tr>
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-black uppercase text-white">{item.name}</p>
+        <p className="mt-1 text-[8px] font-black uppercase tracking-[.08em] text-zinc-500">{item.wins}W · {item.losses}L · {item.draws}D · {item.points}-{item.pointsAllowed}</p>
+      </div>
+      <div className="grid grid-cols-3 gap-1 text-center">
+        <MobileStandingStat label="GP" value={String(item.matches)} />
+        <MobileStandingStat label="+/-" value={`${item.pointDiff > 0 ? "+" : ""}${item.pointDiff}`} accent={item.pointDiff >= 0} />
+        <MobileStandingStat label="Win" value={`${item.winRate}%`} accent />
+      </div>
+    </div>
   );
+
+  return item.type === "external" ? content : <Link href={`/players/${item.id}`} className="block transition hover:bg-blue-500/8">{content}</Link>;
+}
+
+function MobileStandingStat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  return <span className="min-w-[2.35rem] rounded-md border border-white/8 bg-black/35 px-1.5 py-1"><span className={`block text-[10px] font-black ${accent ? "text-orange-300" : "text-white"}`}>{value}</span><span className="mt-0.5 block text-[6px] font-black uppercase tracking-[.08em] text-zinc-600">{label}</span></span>;
 }
 function LeaderboardDesktopRow({
   item,
@@ -1412,9 +1382,13 @@ function LeaderboardDesktopRow({
       >
         {position}
       </span>
-      <span className="min-w-0 truncate text-left text-sm text-white">
-        {item.name}
-      </span>
+      {item.type === "external" ? (
+        <span className="min-w-0 truncate text-left text-sm text-white">{item.name}</span>
+      ) : (
+        <Link href={`/players/${item.id}`} className="min-w-0 truncate text-left text-sm text-white hover:text-orange-300 hover:underline">
+          {item.name}
+        </Link>
+      )}
       <span className="text-slate-300">{item.matches}</span>
       <span className="text-white">{item.wins}</span>
       <span className="text-slate-400">{item.draws}</span>
@@ -1498,6 +1472,7 @@ function BattlePagination({
   pageSize,
   queryKey,
   anchor,
+  season,
 }: {
   currentPage: number;
   totalPages: number;
@@ -1505,6 +1480,7 @@ function BattlePagination({
   pageSize: number;
   queryKey: "upcomingPage" | "resultsPage";
   anchor: string;
+  season: string;
 }) {
   const firstItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const lastItem = Math.min(currentPage * pageSize, totalItems);
@@ -1518,7 +1494,7 @@ function BattlePagination({
       <div className="flex items-center gap-2">
         {currentPage > 1 ? (
           <Link
-            href={`/one-on-one?${queryKey}=${currentPage - 1}#${anchor}`}
+            href={`${COMPETITION_PATH}?season=${encodeURIComponent(season)}&${queryKey}=${currentPage - 1}#${anchor}`}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase text-white transition hover:border-orange-400/60 hover:text-orange-300"
             aria-label={`Go to page ${currentPage - 1}`}
           >
@@ -1536,7 +1512,7 @@ function BattlePagination({
 
         {currentPage < totalPages ? (
           <Link
-            href={`/one-on-one?${queryKey}=${currentPage + 1}#${anchor}`}
+            href={`${COMPETITION_PATH}?season=${encodeURIComponent(season)}&${queryKey}=${currentPage + 1}#${anchor}`}
             className="rounded-lg bg-orange-500 px-3 py-1.5 text-[10px] font-black uppercase text-black transition hover:bg-orange-400"
             aria-label={`Go to page ${currentPage + 1}`}
           >

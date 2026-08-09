@@ -32,6 +32,11 @@ type GuestHooper = {
 type OneOnOneRow = {
   id: string;
 
+  competition_slug?: string | null;
+  season_label?: string | null;
+  verification_status?: string | null;
+  is_public?: boolean | null;
+
   match_number: string | null;
   match_title: string | null;
   match_type: string | null;
@@ -69,6 +74,9 @@ type FormState = {
   matchTitle: string;
   matchType: string;
   court: string;
+  seasonLabel: string;
+  verificationStatus: string;
+  isPublic: boolean;
 
   player1Type: PlayerType;
   player1FacktsId: string;
@@ -98,6 +106,9 @@ const emptyForm: FormState = {
   matchTitle: "",
   matchType: "1v1",
   court: "",
+  seasonLabel: "2026",
+  verificationStatus: "scheduled",
+  isPublic: true,
 
   player1Type: "fackts_player",
   player1FacktsId: "",
@@ -134,6 +145,13 @@ const statusOptions = [
   { label: "Upcoming", value: "upcoming" },
   { label: "Completed", value: "completed" },
   { label: "Cancelled", value: "cancelled" },
+];
+
+const verificationOptions = [
+  { label: "Scheduled", value: "scheduled" },
+  { label: "Pending verification", value: "pending" },
+  { label: "Verified", value: "verified" },
+  { label: "Disputed / correction needed", value: "disputed" },
 ];
 
 const matchTypeOptions = [
@@ -313,23 +331,28 @@ export default function AdminOneOnOnePage() {
   }
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    const draft = loadDraftFromBrowser();
+    const timer = window.setTimeout(() => {
+      const draft = loadDraftFromBrowser();
 
-    if (draft?.form) {
-      setForm({
-        ...emptyForm,
-        ...draft.form,
-      });
+      if (draft?.form) {
+        setForm({
+          ...emptyForm,
+          ...draft.form,
+        });
 
-      setEditingId(draft.editingId || "");
-      setExistingPosterUrl(draft.existingPosterUrl || "");
-    }
+        setEditingId(draft.editingId || "");
+        setExistingPosterUrl(draft.existingPosterUrl || "");
+      }
 
-    setDraftLoaded(true);
+      setDraftLoaded(true);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -421,6 +444,9 @@ export default function AdminOneOnOnePage() {
       matchTitle: row.match_title || "",
       matchType: row.match_type || "1v1",
       court: row.court || "",
+      seasonLabel: row.season_label || "2026",
+      verificationStatus: row.verification_status || (row.status === "completed" ? "verified" : "scheduled"),
+      isPublic: row.is_public !== false,
 
       player1Type: (row.participant_type as PlayerType) || "fackts_player",
       player1FacktsId: row.fackts_player_id || "",
@@ -549,6 +575,10 @@ export default function AdminOneOnOnePage() {
       form.player2Score.trim() === "" ? null : Number(form.player2Score);
 
     const payload = {
+      competition_slug: "fackts-kings",
+      season_label: form.seasonLabel.trim() || "2026",
+      verification_status: form.verificationStatus,
+      is_public: form.isPublic,
       match_number: form.matchNumber.trim() || null,
       match_title: form.matchTitle.trim() || null,
       match_type: form.matchType,
@@ -642,12 +672,12 @@ export default function AdminOneOnOnePage() {
             </p>
 
             <h1 className="mt-2 text-4xl font-black tracking-tight">
-              One-on-One Match Setup
+              FACKTS Kings Match Setup
             </h1>
 
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Set up 1v1 battles using Player 1 vs Player 2, upload posters,
-              update scores, and manage the public 1v1 page.
+              Set up season-scoped FACKTS Kings battles, upload posters,
+              update scores, verify records and manage the public competition hub.
             </p>
 
             <p className="mt-2 text-xs font-bold text-slate-500">
@@ -665,10 +695,10 @@ export default function AdminOneOnOnePage() {
             </Link>
 
             <Link
-              href="/one-on-one"
+              href="/competitions/fackts-kings"
               className="rounded-full bg-orange-500 px-5 py-3 text-sm font-black text-black transition hover:bg-orange-400"
             >
-              View Public 1v1
+              View FACKTS Kings
             </Link>
           </div>
         </div>
@@ -733,6 +763,29 @@ export default function AdminOneOnOnePage() {
               onChange={(value) => updateField("court", value)}
               placeholder="Example: Court 1"
             />
+
+            <FieldInput
+              label="Season"
+              value={form.seasonLabel}
+              onChange={(value) => updateField("seasonLabel", value)}
+              placeholder="Example: 2026"
+            />
+
+            <FieldSelect
+              label="Verification Status"
+              value={form.verificationStatus}
+              onChange={(event) => updateField("verificationStatus", event.target.value)}
+              options={verificationOptions}
+            />
+
+            <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-white/10 bg-black px-4 text-sm font-bold text-slate-300">
+              <input
+                type="checkbox"
+                checked={form.isPublic}
+                onChange={(event) => updateField("isPublic", event.target.checked)}
+              />
+              Publish this matchup in the competition hub
+            </label>
 
             <FieldSelect
               label="Player 1 Type"
@@ -959,8 +1012,8 @@ export default function AdminOneOnOnePage() {
               {saving
                 ? "Saving..."
                 : editingId
-                ? "Update 1v1 Match"
-                : "Create 1v1 Match"}
+                ? "Update FACKTS Kings Match"
+                : "Create FACKTS Kings Match"}
             </button>
 
             <button
@@ -977,7 +1030,7 @@ export default function AdminOneOnOnePage() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                Existing 1v1 Matches
+                Existing FACKTS Kings Matches
               </p>
               <h2 className="mt-2 text-2xl font-black">Manage Fight Card</h2>
             </div>
@@ -1021,6 +1074,10 @@ export default function AdminOneOnOnePage() {
 
                         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-300">
                           {statusLabel(match.status)}
+                        </span>
+
+                        <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-200">
+                          {match.season_label || "2026"} · {match.verification_status || "pending"}
                         </span>
                       </div>
 

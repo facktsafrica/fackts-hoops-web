@@ -27,11 +27,12 @@ export async function GET(request: NextRequest) {
   if (!url || !key) return NextResponse.json({ results: [] });
 
   const db = createClient(url, key);
-  const [players, guests, games, battles, events, records, partners] = await Promise.all([
+  const [players, guests, games, battles, competitions, events, records, partners] = await Promise.all([
     db.from("players").select("*").limit(300),
     db.from("guest_hoopers").select("*").limit(300),
     db.from("games").select("*").limit(300),
     db.from("guest_one_on_one_stats").select("*").limit(300),
+    db.from("competitions").select("*").eq("is_public", true).limit(100),
     db.from("event_case_studies").select("*").eq("is_public", true).limit(100),
     db.from("event_records").select("*").eq("is_public", true).limit(600),
     db.from("partners").select("*").limit(200),
@@ -62,7 +63,12 @@ export async function GET(request: NextRequest) {
   for (const battle of battles.data ?? []) {
     if (!matches(battle.match_title, battle.participant_name, battle.opponent_name, battle.venue, battle.location, battle.notes, battle.match_number)) continue;
     const matchup = battle.match_title || `${battle.participant_name || "Player"} vs ${battle.opponent_name || "Player"}`;
-    results.push({ id: `battle-${battle.id}`, type: "1v1", title: matchup, subtitle: text(battle.match_number, battle.status, battle.venue), href: `/one-on-one/${battle.id}` });
+    results.push({ id: `battle-${battle.id}`, type: "FACKTS Kings", title: matchup, subtitle: text(battle.season_label || "2026", battle.match_number, battle.status, battle.venue), href: `/competitions/fackts-kings/matches/${battle.id}` });
+  }
+
+  for (const competition of competitions.data ?? []) {
+    if (!matches(competition.name, competition.short_name, competition.summary, competition.competition_format, competition.organizer_name, competition.current_season_label)) continue;
+    results.push({ id: `competition-${competition.id}`, type: "Competition", title: competition.name || "Competition", subtitle: text(competition.current_season_label, competition.competition_format, competition.status), href: `/competitions/${competition.slug}` });
   }
 
   for (const game of games.data ?? []) {

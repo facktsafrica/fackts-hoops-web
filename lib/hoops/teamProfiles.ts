@@ -190,7 +190,7 @@ const HEALTH_CHECKUP_CUP_SLUG = "fackts-africa-health-checkup-cup-2025";
 const FACKTS_KINGS_RECORD: TeamCompetitionRecord = {
   id: "fackts-kings",
   title: "FACKTS Kings",
-  href: "/one-on-one",
+  href: "/competitions/fackts-kings",
   summary:
     "The ongoing FACKTS one-on-one competition, connecting matchups, results, standings and player records.",
   record_type: "competition",

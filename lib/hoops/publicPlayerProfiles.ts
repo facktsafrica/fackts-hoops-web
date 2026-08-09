@@ -66,6 +66,10 @@ type StatRow = CareerGameStatRow & {
 
 type OneOnOneRow = Record<string, unknown> & {
   id: string;
+  competition_slug?: string | null;
+  season_label?: string | null;
+  verification_status?: string | null;
+  is_public?: boolean | null;
   fackts_player_id?: string | null;
   guest_hooper_id?: string | null;
   opponent_player_id?: string | null;
@@ -215,7 +219,11 @@ export type PublicPlayerAchievement = {
 
 export type PublicPlayerOneOnOne = {
   id: string;
+  href: string;
   title: string;
+  competition: string;
+  seasonLabel: string;
+  verificationStatus: string;
   opponent: string;
   date: string | null;
   venue: string;
@@ -481,6 +489,10 @@ function oneOnOneView(
   guestMap: Map<string, SourceRow>,
   profileName: string
 ): PublicPlayerOneOnOne | null {
+  if (row.is_public === false) return null;
+  const competitionSlug = text(row.competition_slug) || "fackts-kings";
+  if (competitionSlug !== "fackts-kings") return null;
+
   const participant = Boolean(
     (row.fackts_player_id && playerIds.has(String(row.fackts_player_id))) ||
       (row.guest_hooper_id && guestIds.has(String(row.guest_hooper_id)))
@@ -528,7 +540,11 @@ function oneOnOneView(
 
   return {
     id: row.id,
+    href: `/competitions/fackts-kings/matches/${row.id}`,
     title: text(row.match_title) || `${profileName} vs ${opponent}`,
+    competition: "FACKTS Kings",
+    seasonLabel: text(row.season_label) || "2026",
+    verificationStatus: text(row.verification_status) || "pending",
     opponent,
     date: text(row.match_date || row.created_at) || null,
     venue: text(row.venue || row.location) || "Venue not recorded",

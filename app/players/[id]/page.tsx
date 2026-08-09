@@ -312,9 +312,9 @@ export default async function PlayerProfilePage({
       <section id="one-on-one" className="border-y border-white/10 bg-[#07162b]/80">
         <div className="mx-auto max-w-7xl scroll-mt-32 px-4 py-10 sm:px-6 lg:px-8">
           <SectionHeading
-            kicker="FACKTS Kings and Court Takeover"
+            kicker="FACKTS Kings"
             title="1v1 record"
-            text="Official and guest matchups remain attached to the same person as their relationship changes."
+            text="Competition and season stay attached to every official or guest matchup as the player relationship changes."
           />
           <div className="mt-6 grid gap-5 lg:grid-cols-[.32fr_.68fr]">
             <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/90 p-6">
@@ -327,16 +327,20 @@ export default async function PlayerProfilePage({
                 {player.oneOnOne.map((battle) => (
                   <Link
                     key={battle.id}
-                    href={`/one-on-one/${battle.id}`}
+                    href={battle.href}
                     className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-950/90 p-4 transition hover:border-orange-400/50"
                   >
                     <span>
                       <span className="block font-black uppercase">{battle.title}</span>
-                      <span className="mt-1 block text-xs text-zinc-500">{formatDate(battle.date)} · {battle.venue}</span>
+                      <span className="mt-1 block text-xs text-zinc-500">
+                        {battle.competition} · {battle.seasonLabel} · {formatDate(battle.date)} · {battle.venue}
+                      </span>
                     </span>
                     <span className="text-right">
                       <span className="block text-xl font-black tabular-nums">{battle.ownScore ?? "–"} – {battle.opponentScore ?? "–"}</span>
-                      <span className={`mt-1 block text-[9px] font-black uppercase tracking-[.12em] ${battle.result === "Win" ? "text-emerald-300" : battle.result === "Loss" ? "text-red-300" : "text-orange-300"}`}>{battle.result}{battle.hasMedia ? " · Watch" : ""}</span>
+                      <span className={`mt-1 block text-[9px] font-black uppercase tracking-[.12em] ${battle.result === "Win" ? "text-emerald-300" : battle.result === "Loss" ? "text-red-300" : "text-orange-300"}`}>
+                        {battle.result} · {battle.verificationStatus === "verified" ? "Verified" : "Pending verification"}{battle.hasMedia ? " · Watch" : ""}
+                      </span>
                     </span>
                   </Link>
                 ))}
