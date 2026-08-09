@@ -1,169 +1,127 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import {
+  formatGameDate,
+  getAwayScore,
+  getAwayTeam,
+  getCompetition,
+  getGameDate,
+  getGameFormat,
+  getGameStatus,
+  getGameTitle,
+  getHomeScore,
+  getHomeTeam,
+  getStage,
+  getStatusLabel,
+  parsePeriodScores,
+  type GameRecord,
+} from "@/lib/hoops/gamePresentation";
 
-type GameStatus = "upcoming" | "completed" | "postponed" | "cancelled";
-
-type GameRow = {
-  id: string;
-  title?: string | null;
-  game_title?: string | null;
-  opponent?: string | null;
-  opponent_name?: string | null;
-  team_name?: string | null;
-  game_date?: string | null;
-  date?: string | null;
-  venue?: string | null;
-  location?: string | null;
-  status?: string | null;
-  team_score?: number | string | null;
-  fackts_score?: number | string | null;
-  opponent_score?: number | string | null;
-  home_score?: number | string | null;
-  away_score?: number | string | null;
-  is_upcoming?: boolean | null;
-  poster_url?: string | null;
-  game_poster_url?: string | null;
-  image_url?: string | null;
-  video_url?: string | null;
-  game_video_url?: string | null;
-  highlight_url?: string | null;
-  notes?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
+type EventRow = {
+  event_id: string;
+  title: string;
 };
 
 type GameForm = {
   title: string;
-  opponent: string;
+  event_id: string;
+  competition_name: string;
+  home_team_name: string;
+  away_team_name: string;
+  game_format: string;
+  game_stage: string;
   game_date: string;
   venue: string;
+  court: string;
   location: string;
-  status: GameStatus;
-  fackts_score: string;
-  opponent_score: string;
+  status: string;
+  home_score: string;
+  away_score: string;
+  period_scores: string;
+  officials: string;
+  table_officials: string;
+  home_roster: string;
+  away_roster: string;
   poster_url: string;
   video_url: string;
   highlight_url: string;
+  verification_status: string;
+  verified_by: string;
+  correction_status: string;
+  correction_note: string;
   notes: string;
+  is_public: boolean;
 };
 
 const emptyForm: GameForm = {
   title: "",
-  opponent: "",
+  event_id: "",
+  competition_name: "FACKTS Hoops",
+  home_team_name: "FACKTS",
+  away_team_name: "",
+  game_format: "5v5",
+  game_stage: "Game",
   game_date: "",
   venue: "",
+  court: "",
   location: "",
   status: "upcoming",
-  fackts_score: "",
-  opponent_score: "",
+  home_score: "",
+  away_score: "",
+  period_scores: "",
+  officials: "",
+  table_officials: "",
+  home_roster: "",
+  away_roster: "",
   poster_url: "",
   video_url: "",
   highlight_url: "",
+  verification_status: "unverified",
+  verified_by: "",
+  correction_status: "none",
+  correction_note: "",
   notes: "",
+  is_public: true,
 };
-
-function getTitle(game: GameRow) {
-  return game.game_title || game.title || "FACKTS Game";
-}
-
-function getOpponent(game: GameRow) {
-  return game.opponent || game.opponent_name || game.team_name || "Opponent";
-}
-
-function getGameDate(game: GameRow) {
-  return game.game_date || game.date || "";
-}
-
-function getPosterUrl(game: GameRow) {
-  return game.poster_url || game.game_poster_url || game.image_url || "";
-}
-
-function getVideoUrl(game: GameRow) {
-  return game.video_url || game.game_video_url || "";
-}
-
-function getFacktsScore(game: GameRow) {
-  return game.team_score ?? game.fackts_score ?? game.home_score ?? "";
-}
-
-function getOpponentScore(game: GameRow) {
-  return game.opponent_score ?? game.away_score ?? "";
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "No date added";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "No date added";
-
-  return date.toLocaleString("en-KE", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 function toDateTimeLocal(value?: string | null) {
   if (!value) return "";
-
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) return "";
-
   const offset = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offset * 60 * 1000);
-
-  return localDate.toISOString().slice(0, 16);
+  return new Date(date.getTime() - offset * 60 * 1000).toISOString().slice(0, 16);
 }
 
 function numberOrNull(value: string) {
-  if (value.trim() === "") return null;
-
+  if (!value.trim()) return null;
   const parsed = Number(value);
-
-  if (Number.isNaN(parsed)) return null;
-
-  return parsed;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeStatus(value?: string | null, game?: GameRow): GameStatus {
-  const status = (value || "").toLowerCase().trim();
+function periodsToText(value: unknown) {
+  return parsePeriodScores(value)
+    .map((period) => `${period.label}: ${period.home ?? ""}-${period.away ?? ""}`)
+    .join("\n");
+}
 
-  if (status === "completed" || status === "played" || status === "final") {
-    return "completed";
-  }
-
-  if (status === "postponed") return "postponed";
-  if (status === "cancelled") return "cancelled";
-  if (status === "upcoming") return "upcoming";
-
-  if (game?.is_upcoming === true) return "upcoming";
-  if (game?.is_upcoming === false) return "completed";
-
-  const facktsScore = getFacktsScore(game || ({} as GameRow));
-  const opponentScore = getOpponentScore(game || ({} as GameRow));
-
-  if (
-    facktsScore !== "" &&
-    facktsScore !== null &&
-    opponentScore !== "" &&
-    opponentScore !== null
-  ) {
-    return "completed";
-  }
-
-  return "upcoming";
+function parsePeriods(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const match = line.match(/^([^:]+):\s*(-?\d+)\s*[-–]\s*(-?\d+)$/);
+      if (!match) throw new Error(`Period line ${index + 1} must look like: Q1: 18-14`);
+      return { label: match[1].trim(), home: Number(match[2]), away: Number(match[3]) };
+    });
 }
 
 export default function AdminGamesPage() {
-  const [games, setGames] = useState<GameRow[]>([]);
+  const [games, setGames] = useState<GameRecord[]>([]);
+  const [events, setEvents] = useState<EventRow[]>([]);
   const [form, setForm] = useState<GameForm>(emptyForm);
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -173,59 +131,41 @@ export default function AdminGamesPage() {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const sortedGames = useMemo(() => {
-    return [...games].sort((a, b) => {
-      const aTime = new Date(getGameDate(a) || a.created_at || "").getTime();
-      const bTime = new Date(getGameDate(b) || b.created_at || "").getTime();
-
-      const safeA = Number.isNaN(aTime) ? 0 : aTime;
-      const safeB = Number.isNaN(bTime) ? 0 : bTime;
-
-      return safeB - safeA;
-    });
-  }, [games]);
+  const sortedGames = useMemo(
+    () => [...games].sort((a, b) => new Date(getGameDate(b) || 0).getTime() - new Date(getGameDate(a) || 0).getTime()),
+    [games]
+  );
 
   useEffect(() => {
-    loadGames();
+    void loadPage();
   }, []);
 
-  async function loadGames() {
+  async function loadPage() {
     setLoading(true);
     setErrorMessage("");
 
-    const { data, error } = await supabase
-      .from("games")
-      .select("*")
-      .order("game_date", { ascending: false });
+    const [gamesResult, eventsResult] = await Promise.all([
+      supabase.from("games").select("*").order("game_date", { ascending: false }),
+      supabase.from("event_case_studies").select("event_id,title").order("start_date", { ascending: false }),
+    ]);
 
-    if (error) {
-      setErrorMessage(error.message);
+    if (gamesResult.error) {
+      setErrorMessage(gamesResult.error.message);
       setGames([]);
-      setLoading(false);
-      return;
+    } else {
+      setGames((gamesResult.data || []) as GameRecord[]);
     }
 
-    setGames((data || []) as GameRow[]);
+    setEvents((eventsResult.data || []) as EventRow[]);
     setLoading(false);
   }
 
-  function handleChange(
-    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) {
+  function update(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = event.target;
-
-    setForm((current) => ({
-      ...current,
-      [name]: value,
-    }));
+    setForm((current) => ({ ...current, [name]: value }));
   }
 
-  function handlePosterChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] || null;
-    setPosterFile(file);
-  }
-
-  function resetForm() {
+  function reset() {
     setForm(emptyForm);
     setPosterFile(null);
     setEditingId(null);
@@ -233,607 +173,208 @@ export default function AdminGamesPage() {
     setErrorMessage("");
   }
 
-  function startEdit(game: GameRow) {
+  function startEdit(game: GameRecord) {
     setEditingId(game.id);
     setPosterFile(null);
     setMessage("");
     setErrorMessage("");
-
     setForm({
-      title: getTitle(game) === "FACKTS Game" ? "" : getTitle(game),
-      opponent: getOpponent(game) === "Opponent" ? "" : getOpponent(game),
+      title: getGameTitle(game),
+      event_id: game.event_id || "",
+      competition_name: getCompetition(game),
+      home_team_name: getHomeTeam(game),
+      away_team_name: getAwayTeam(game) === "Opponent" ? "" : getAwayTeam(game),
+      game_format: getGameFormat(game),
+      game_stage: getStage(game),
       game_date: toDateTimeLocal(getGameDate(game)),
       venue: game.venue || "",
+      court: game.court || "",
       location: game.location || "",
-      status: normalizeStatus(game.status, game),
-      fackts_score: String(getFacktsScore(game) ?? ""),
-      opponent_score: String(getOpponentScore(game) ?? ""),
-      poster_url: getPosterUrl(game),
-      video_url: getVideoUrl(game),
+      status: getGameStatus(game),
+      home_score: String(getHomeScore(game) ?? ""),
+      away_score: String(getAwayScore(game) ?? ""),
+      period_scores: periodsToText(game.period_scores),
+      officials: game.officials || "",
+      table_officials: game.table_officials || "",
+      home_roster: game.home_roster || "",
+      away_roster: game.away_roster || "",
+      poster_url: game.poster_url || game.game_poster_url || game.image_url || "",
+      video_url: game.video_url || game.game_video_url || "",
       highlight_url: game.highlight_url || "",
+      verification_status: game.verification_status || "unverified",
+      verified_by: game.verified_by || "",
+      correction_status: game.correction_status || "none",
+      correction_note: game.correction_note || "",
       notes: game.notes || "",
+      is_public: game.is_public !== false,
     });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function uploadPoster() {
     if (!posterFile) return form.poster_url;
-
-    const fileExt = posterFile.name.split(".").pop() || "png";
-    const fileName = `game-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2)}.${fileExt}`;
-
-    const { error } = await supabase.storage
-      .from("game-posters")
-      .upload(fileName, posterFile, {
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const { data } = supabase.storage
-      .from("game-posters")
-      .getPublicUrl(fileName);
-
-    return data.publicUrl;
+    const extension = posterFile.name.split(".").pop() || "png";
+    const fileName = `game-${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+    const result = await supabase.storage.from("game-posters").upload(fileName, posterFile, { cacheControl: "3600", upsert: false });
+    if (result.error) throw new Error(result.error.message);
+    return supabase.storage.from("game-posters").getPublicUrl(fileName).data.publicUrl;
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     setSaving(true);
     setMessage("");
     setErrorMessage("");
 
     try {
+      if (!form.home_team_name.trim() || !form.away_team_name.trim()) throw new Error("Add both home and away team names.");
+      const periodScores = parsePeriods(form.period_scores);
       const posterUrl = await uploadPoster();
-
-      const facktsScoreValue = numberOrNull(form.fackts_score);
-      const opponentScoreValue = numberOrNull(form.opponent_score);
-      const isUpcoming = form.status === "upcoming";
+      const homeScore = numberOrNull(form.home_score);
+      const awayScore = numberOrNull(form.away_score);
+      const gameDate = form.game_date ? new Date(form.game_date).toISOString() : null;
+      const now = new Date().toISOString();
+      const title = form.title.trim() || `${form.home_team_name.trim()} vs ${form.away_team_name.trim()}`;
 
       const payload = {
-        title: form.title.trim() || null,
-        game_title: form.title.trim() || null,
-
-        opponent: form.opponent.trim() || null,
-        opponent_name: form.opponent.trim() || null,
-        team_name: form.opponent.trim() || null,
-
-        game_date: form.game_date ? new Date(form.game_date).toISOString() : null,
-        date: form.game_date ? new Date(form.game_date).toISOString() : null,
-
+        title,
+        game_title: title,
+        event_id: form.event_id || null,
+        competition_name: form.competition_name.trim() || null,
+        home_team_name: form.home_team_name.trim(),
+        away_team_name: form.away_team_name.trim(),
+        opponent: form.away_team_name.trim(),
+        opponent_name: form.away_team_name.trim(),
+        team_name: form.away_team_name.trim(),
+        game_format: form.game_format.trim() || null,
+        match_type: form.game_format.trim() || null,
+        game_stage: form.game_stage.trim() || null,
+        game_date: gameDate,
+        date: gameDate,
         venue: form.venue.trim() || null,
+        court: form.court.trim() || null,
         location: form.location.trim() || null,
-
         status: form.status,
-        is_upcoming: isUpcoming,
-
-        team_score: facktsScoreValue,
-        fackts_score: facktsScoreValue,
-        home_score: facktsScoreValue,
-
-        opponent_score: opponentScoreValue,
-        away_score: opponentScoreValue,
-
+        is_upcoming: ["upcoming", "live"].includes(form.status),
+        home_score: homeScore,
+        team_score: homeScore,
+        fackts_score: homeScore,
+        away_score: awayScore,
+        opponent_score: awayScore,
+        period_scores: periodScores,
+        officials: form.officials.trim() || null,
+        table_officials: form.table_officials.trim() || null,
+        home_roster: form.home_roster.trim() || null,
+        away_roster: form.away_roster.trim() || null,
         poster_url: posterUrl || null,
         game_poster_url: posterUrl || null,
         image_url: posterUrl || null,
-
         video_url: form.video_url.trim() || null,
         game_video_url: form.video_url.trim() || null,
         highlight_url: form.highlight_url.trim() || null,
-
+        verification_status: form.verification_status,
+        verified_at: form.verification_status === "verified" ? now : null,
+        verified_by: form.verification_status === "verified" ? form.verified_by.trim() || "FACKTS Admin" : null,
+        correction_status: form.correction_status,
+        correction_note: form.correction_note.trim() || null,
         notes: form.notes.trim() || null,
-        updated_at: new Date().toISOString(),
+        is_public: form.is_public,
+        updated_at: now,
       };
 
-      let savedGameId = editingId || "";
-
+      let gameId = editingId || "";
       if (editingId) {
-        const { error } = await supabase
-          .from("games")
-          .update(payload)
-          .eq("id", editingId);
-
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        setMessage("Game updated successfully.");
+        const result = await supabase.from("games").update(payload).eq("id", editingId);
+        if (result.error) throw new Error(result.error.message);
+        setMessage("Game match centre updated.");
       } else {
-        const { data: createdGame, error } = await supabase
-          .from("games")
-          .insert({
-            ...payload,
-            created_at: new Date().toISOString(),
-          })
-          .select("id")
-          .single();
-
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        savedGameId = createdGame.id;
-
-        setMessage("Game added successfully.");
+        const result = await supabase.from("games").insert({ ...payload, created_at: now }).select("id").single();
+        if (result.error) throw new Error(result.error.message);
+        gameId = result.data.id;
+        setMessage("Game created.");
       }
 
-      if (isUpcoming && savedGameId) {
-        await fetch("/api/notification-events", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event: "admin.game_changed",
-            game_id: savedGameId,
-          }),
-        }).catch(() => undefined);
+      if (["upcoming", "live"].includes(form.status) && gameId) {
+        await fetch("/api/notification-events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "admin.game_changed", game_id: gameId }) }).catch(() => undefined);
       }
 
-      resetForm();
-      await loadGames();
+      setForm(emptyForm);
+      setPosterFile(null);
+      setEditingId(null);
+      await loadPage();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Something went wrong.";
-
-      setErrorMessage(message);
+      setErrorMessage(error instanceof Error ? error.message : "Something went wrong.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function deleteGame(gameId: string) {
-    const confirmed = window.confirm(
-      "Delete this game from admin? This will remove the game record from the website."
-    );
-
-    if (!confirmed) return;
-
+  async function remove(gameId: string) {
+    if (!window.confirm("Delete this game and remove its public match centre?")) return;
     setDeletingId(gameId);
-    setMessage("");
     setErrorMessage("");
-
-    const { error } = await supabase.from("games").delete().eq("id", gameId);
-
-    if (error) {
-      setErrorMessage(error.message);
-      setDeletingId(null);
-      return;
+    const result = await supabase.from("games").delete().eq("id", gameId);
+    if (result.error) setErrorMessage(result.error.message);
+    else {
+      setMessage("Game deleted.");
+      await loadPage();
     }
-
-    setMessage("Game deleted successfully.");
     setDeletingId(null);
-    await loadGames();
   }
 
   return (
-    <main className="min-h-screen bg-black text-white">
-      <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.22),_transparent_35%),linear-gradient(135deg,_#050505,_#111111_45%,_#020202)]">
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="mb-3 inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                Admin Panel
-              </div>
-
-              <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
-                Manage Games
-              </h1>
-
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
-                Add fixtures, update scores, restore posters, attach game video
-                links, and manage completed results.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/admin"
-                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
-              >
-                Admin Home
-              </Link>
-
-              <Link
-                href="/games"
-                className="rounded-full border border-orange-400/40 bg-orange-500 px-4 py-2 text-sm font-black text-black transition hover:bg-orange-400"
-              >
-                View Public Games
-              </Link>
-            </div>
-          </div>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,.2),transparent_35%),linear-gradient(135deg,#07162b,#020617)]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-8 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
+          <div><p className="text-[10px] font-black uppercase tracking-[.22em] text-orange-300">FACKTS Admin</p><h1 className="mt-2 text-4xl font-black uppercase">Games and match centres</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400">Schedule fixtures, publish results, link events, verify records and control every public game page.</p></div>
+          <div className="flex flex-wrap gap-2"><Link href="/admin" className="rounded-xl border border-white/15 px-4 py-3 text-xs font-black">Admin home</Link><Link href="/games" className="rounded-xl bg-orange-500 px-4 py-3 text-xs font-black text-black">View public games</Link></div>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[430px_1fr] lg:px-8">
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-3xl border border-white/10 bg-zinc-950 p-5 shadow-2xl shadow-black/40"
-        >
-          <div className="mb-5 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                {editingId ? "Editing Game" : "New Game"}
-              </p>
+      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 xl:grid-cols-[470px_1fr] lg:px-8">
+        <form onSubmit={save} className="h-fit rounded-[1.75rem] border border-white/10 bg-slate-900/80 p-5 xl:sticky xl:top-24">
+          <div className="flex items-center justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[.16em] text-orange-300">{editingId ? "Editing record" : "New record"}</p><h2 className="mt-1 text-2xl font-black">{editingId ? "Update game" : "Create game"}</h2></div>{editingId ? <button type="button" onClick={reset} className="rounded-full border border-white/15 px-3 py-2 text-[9px] font-black uppercase">Cancel</button> : null}</div>
+          {message ? <Alert color="green">{message}</Alert> : null}
+          {errorMessage ? <Alert color="red">{errorMessage}</Alert> : null}
 
-              <h2 className="mt-1 text-2xl font-black">
-                {editingId ? "Update Game" : "Add Game"}
-              </h2>
-            </div>
+          <div className="mt-5 space-y-5">
+            <Field label="Game title"><input name="title" value={form.title} onChange={update} placeholder="Leave blank to use Home Team vs Away Team" className={control} /></Field>
+            <div className="grid gap-3 sm:grid-cols-2"><Field label="Home team"><input name="home_team_name" value={form.home_team_name} onChange={update} className={control} required /></Field><Field label="Away team"><input name="away_team_name" value={form.away_team_name} onChange={update} className={control} required /></Field></div>
+            <Field label="Linked event"><select name="event_id" value={form.event_id} onChange={update} className={control}><option value="">Standalone game</option>{events.map((item) => <option key={item.event_id} value={item.event_id}>{item.title}</option>)}</select></Field>
+            <div className="grid gap-3 sm:grid-cols-2"><Field label="Competition"><input name="competition_name" value={form.competition_name} onChange={update} className={control} /></Field><Field label="Format"><select name="game_format" value={form.game_format} onChange={update} className={control}><option>5v5</option><option>3x3</option><option>1v1</option><option>Training game</option><option>Other</option></select></Field></div>
+            <div className="grid gap-3 sm:grid-cols-2"><Field label="Stage / round"><input name="game_stage" value={form.game_stage} onChange={update} placeholder="Group Stage, Game 8, Final" className={control} /></Field><Field label="Status"><select name="status" value={form.status} onChange={update} className={control}><option value="upcoming">Upcoming</option><option value="live">Live</option><option value="completed">Completed</option><option value="postponed">Postponed</option><option value="cancelled">Cancelled</option></select></Field></div>
+            <Field label="Date and time"><input type="datetime-local" name="game_date" value={form.game_date} onChange={update} className={control} /></Field>
+            <div className="grid gap-3 sm:grid-cols-3"><Field label="Venue"><input name="venue" value={form.venue} onChange={update} className={control} /></Field><Field label="Court"><input name="court" value={form.court} onChange={update} className={control} /></Field><Field label="Location"><input name="location" value={form.location} onChange={update} className={control} /></Field></div>
+            <div className="grid gap-3 sm:grid-cols-2"><Field label="Home score"><input type="number" name="home_score" value={form.home_score} onChange={update} className={control} /></Field><Field label="Away score"><input type="number" name="away_score" value={form.away_score} onChange={update} className={control} /></Field></div>
+            <Field label="Period scores"><textarea name="period_scores" value={form.period_scores} onChange={update} placeholder={'Q1: 18-14\nQ2: 16-20\nQ3: 21-17\nQ4: 12-10'} rows={4} className={control} /><Hint>One period per line using “Q1: home-away”.</Hint></Field>
 
-            {editingId ? (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-white transition hover:border-orange-400/60"
-              >
-                Cancel Edit
-              </button>
-            ) : null}
-          </div>
+            <details className="rounded-2xl border border-white/10 bg-black/20"><summary className="cursor-pointer px-4 py-4 text-xs font-black uppercase tracking-[.1em] text-orange-300">Rosters and officials</summary><div className="space-y-4 border-t border-white/10 p-4"><Field label="Home roster"><textarea name="home_roster" value={form.home_roster} onChange={update} rows={5} placeholder="One player per line" className={control} /></Field><Field label="Away roster"><textarea name="away_roster" value={form.away_roster} onChange={update} rows={5} placeholder="One player per line" className={control} /></Field><Field label="Game officials"><textarea name="officials" value={form.officials} onChange={update} rows={3} placeholder="One official per line" className={control} /></Field><Field label="Table officials"><textarea name="table_officials" value={form.table_officials} onChange={update} rows={3} placeholder="One official per line" className={control} /></Field></div></details>
 
-          {message ? (
-            <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">
-              {message}
-            </div>
-          ) : null}
+            <details className="rounded-2xl border border-white/10 bg-black/20"><summary className="cursor-pointer px-4 py-4 text-xs font-black uppercase tracking-[.1em] text-orange-300">Media and poster</summary><div className="space-y-4 border-t border-white/10 p-4"><Field label="Poster upload"><input type="file" accept="image/*" onChange={(event) => setPosterFile(event.target.files?.[0] || null)} className={control} /></Field><Field label="Poster URL"><input name="poster_url" value={form.poster_url} onChange={update} className={control} /></Field>{form.poster_url ? <img src={form.poster_url} alt="Current poster" className="h-44 w-full rounded-xl object-cover" /> : null}<Field label="Full game video"><input name="video_url" value={form.video_url} onChange={update} placeholder="YouTube, Facebook, Instagram, TikTok or direct video" className={control} /></Field><Field label="Highlights"><input name="highlight_url" value={form.highlight_url} onChange={update} className={control} /></Field></div></details>
 
-          {errorMessage ? (
-            <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
-              {errorMessage}
-            </div>
-          ) : null}
+            <details className="rounded-2xl border border-white/10 bg-black/20"><summary className="cursor-pointer px-4 py-4 text-xs font-black uppercase tracking-[.1em] text-orange-300">Evidence and corrections</summary><div className="space-y-4 border-t border-white/10 p-4"><Field label="Verification"><select name="verification_status" value={form.verification_status} onChange={update} className={control}><option value="unverified">Unverified</option><option value="pending">Pending verification</option><option value="verified">Verified</option><option value="disputed">Under review</option></select></Field><Field label="Verified by"><input name="verified_by" value={form.verified_by} onChange={update} className={control} /></Field><Field label="Correction status"><select name="correction_status" value={form.correction_status} onChange={update} className={control}><option value="none">No correction</option><option value="open">Correction requested</option><option value="corrected">Corrected</option></select></Field><Field label="Correction note"><textarea name="correction_note" value={form.correction_note} onChange={update} rows={3} className={control} /></Field></div></details>
 
-          <div className="space-y-4">
-            <Field label="Game Title">
-              <input
-                name="title"
-                value={form.title}
-                onChange={handleChange}
-                placeholder="e.g. FACKTS vs Juja All Stars"
-                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-              />
-            </Field>
-
-            <Field label="Opponent / Team">
-              <input
-                name="opponent"
-                value={form.opponent}
-                onChange={handleChange}
-                placeholder="e.g. JKUAT, Langata Downtown, Juja Basketball League"
-                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-              />
-            </Field>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Game Date & Time">
-                <input
-                  type="datetime-local"
-                  name="game_date"
-                  value={form.game_date}
-                  onChange={handleChange}
-                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-orange-400"
-                />
-              </Field>
-
-              <Field label="Status">
-                <select
-                  name="status"
-                  value={form.status}
-                  onChange={handleChange}
-                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-orange-400"
-                >
-                  <option value="upcoming">Upcoming</option>
-                  <option value="completed">Completed</option>
-                  <option value="postponed">Postponed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </Field>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Venue">
-                <input
-                  name="venue"
-                  value={form.venue}
-                  onChange={handleChange}
-                  placeholder="e.g. JKUAT Court"
-                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-                />
-              </Field>
-
-              <Field label="Location">
-                <input
-                  name="location"
-                  value={form.location}
-                  onChange={handleChange}
-                  placeholder="e.g. Juja"
-                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-                />
-              </Field>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="FACKTS Score">
-                <input
-                  type="number"
-                  name="fackts_score"
-                  value={form.fackts_score}
-                  onChange={handleChange}
-                  placeholder="e.g. 67"
-                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-                />
-              </Field>
-
-              <Field label="Opponent Score">
-                <input
-                  type="number"
-                  name="opponent_score"
-                  value={form.opponent_score}
-                  onChange={handleChange}
-                  placeholder="e.g. 63"
-                  className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-                />
-              </Field>
-            </div>
-
-            <Field label="Game Poster Upload">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handlePosterChange}
-                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-zinc-300 outline-none file:mr-4 file:rounded-full file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-xs file:font-black file:text-black"
-              />
-
-              <p className="mt-2 text-xs text-zinc-500">
-                Uploading a new poster will replace the poster URL for this
-                game. Existing uploaded posters remain safe unless you overwrite
-                them.
-              </p>
-            </Field>
-
-            <Field label="Current Poster URL">
-              <input
-                name="poster_url"
-                value={form.poster_url}
-                onChange={handleChange}
-                placeholder="Poster URL will appear here after upload"
-                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-              />
-
-              {form.poster_url ? (
-                <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black">
-                  <img
-                    src={form.poster_url}
-                    alt="Current game poster"
-                    className="h-48 w-full object-cover"
-                  />
-                </div>
-              ) : null}
-            </Field>
-
-            <Field label="Full Game Video Link">
-              <input
-                name="video_url"
-                value={form.video_url}
-                onChange={handleChange}
-                placeholder="Paste YouTube, TikTok, Instagram, or Google Drive link"
-                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-              />
-            </Field>
-
-            <Field label="Highlight Video Link">
-              <input
-                name="highlight_url"
-                value={form.highlight_url}
-                onChange={handleChange}
-                placeholder="Optional highlight link"
-                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-              />
-            </Field>
-
-            <Field label="Notes">
-              <textarea
-                name="notes"
-                value={form.notes}
-                onChange={handleChange}
-                rows={4}
-                placeholder="Short game notes, story, recap, or admin reminder"
-                className="w-full resize-none rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-400"
-              />
-            </Field>
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving
-                ? "Saving..."
-                : editingId
-                  ? "Save Game Changes"
-                  : "Add Game"}
-            </button>
+            <Field label="Public match note"><textarea name="notes" value={form.notes} onChange={update} rows={4} className={control} /></Field>
+            <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-4"><input type="checkbox" checked={form.is_public} onChange={(event) => setForm((current) => ({ ...current, is_public: event.target.checked }))} className="h-5 w-5 accent-orange-500" /><span><span className="block text-xs font-black uppercase">Publish match centre</span><span className="mt-1 block text-[10px] text-zinc-500">Turn off to keep this game in Admin only.</span></span></label>
+            <button type="submit" disabled={saving} className="w-full rounded-xl bg-orange-500 px-5 py-4 text-xs font-black uppercase tracking-[.12em] text-black disabled:opacity-60">{saving ? "Saving..." : editingId ? "Update match centre" : "Create match centre"}</button>
           </div>
         </form>
 
-        <div className="rounded-3xl border border-white/10 bg-zinc-950 p-5 shadow-2xl shadow-black/40">
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-300">
-                Games Database
-              </p>
-
-              <h2 className="mt-1 text-2xl font-black">Existing Games</h2>
-            </div>
-
-            <button
-              type="button"
-              onClick={loadGames}
-              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-white transition hover:border-orange-400/60"
-            >
-              Refresh
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-black p-5 text-sm font-bold text-zinc-400">
-              Loading games...
-            </div>
-          ) : sortedGames.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-black p-5 text-sm font-bold text-zinc-400">
-              No games found yet.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {sortedGames.map((game) => {
-                const posterUrl = getPosterUrl(game);
-                const videoUrl = getVideoUrl(game);
-                const facktsScore = getFacktsScore(game);
-                const opponentScore = getOpponentScore(game);
-
-                return (
-                  <article
-                    key={game.id}
-                    className="overflow-hidden rounded-2xl border border-white/10 bg-black"
-                  >
-                    {posterUrl ? (
-                      <div className="h-52 w-full overflow-hidden bg-zinc-900">
-                        <img
-                          src={posterUrl}
-                          alt={getTitle(game)}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-
-                    <div className="p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="mb-2 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[11px] font-black uppercase text-orange-300">
-                              {normalizeStatus(game.status, game)}
-                            </span>
-
-                            {videoUrl ? (
-                              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] font-black uppercase text-blue-200">
-                                Video Added
-                              </span>
-                            ) : null}
-
-                            {posterUrl ? (
-                              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-black uppercase text-emerald-200">
-                                Poster Added
-                              </span>
-                            ) : null}
-                          </div>
-
-                          <h3 className="truncate text-xl font-black text-white">
-                            {getTitle(game)}
-                          </h3>
-
-                          <p className="mt-1 text-sm font-bold text-zinc-400">
-                            FACKTS vs {getOpponent(game)}
-                          </p>
-
-                          <p className="mt-1 text-xs text-zinc-500">
-                            {formatDate(getGameDate(game))}
-                          </p>
-
-                          <p className="mt-1 text-xs text-zinc-500">
-                            {[game.venue, game.location]
-                              .filter(Boolean)
-                              .join(" • ") || "No venue/location added"}
-                          </p>
-                        </div>
-
-                        <div className="shrink-0 rounded-2xl border border-white/10 bg-zinc-950 px-5 py-3 text-center">
-                          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">
-                            Score
-                          </p>
-
-                          <p className="mt-1 text-2xl font-black text-white">
-                            {facktsScore !== "" && facktsScore !== null
-                              ? facktsScore
-                              : "-"}{" "}
-                            -{" "}
-                            {opponentScore !== "" && opponentScore !== null
-                              ? opponentScore
-                              : "-"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {videoUrl ? (
-                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
-                          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">
-                            Game Video Link
-                          </p>
-
-                          <a
-                            href={videoUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1 block truncate text-sm font-bold text-blue-300 hover:text-blue-200"
-                          >
-                            {videoUrl}
-                          </a>
-                        </div>
-                      ) : null}
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => startEdit(game)}
-                          className="rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => deleteGame(game.id)}
-                          disabled={deletingId === game.id}
-                          className="rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {deletingId === game.id ? "Deleting..." : "Delete"}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
+        <div>
+          <div className="mb-5 flex items-end justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[.15em] text-orange-300">Game register</p><h2 className="mt-1 text-3xl font-black">{games.length} games</h2></div><div className="flex gap-2"><Link href="/admin/rosters" className="rounded-xl border border-white/10 px-3 py-2 text-[9px] font-black uppercase">Rosters</Link><Link href="/admin/stats" className="rounded-xl border border-white/10 px-3 py-2 text-[9px] font-black uppercase">Stats</Link></div></div>
+          {loading ? <div className="rounded-2xl border border-white/10 p-6 text-zinc-500">Loading games...</div> : sortedGames.length ? <div className="space-y-4">{sortedGames.map((game) => <GameAdminCard key={game.id} game={game} editing={editingId === game.id} deleting={deletingId === game.id} onEdit={() => startEdit(game)} onDelete={() => void remove(game.id)} />)}</div> : <div className="rounded-2xl border border-dashed border-white/15 p-8 text-center text-zinc-500">No games have been created.</div>}
         </div>
       </section>
     </main>
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-zinc-500">
-        {label}
-      </span>
+const control = "w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-orange-400";
 
-      {children}
-    </label>
-  );
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-2 block text-[10px] font-black uppercase tracking-[.1em] text-zinc-400">{label}</span>{children}</label>; }
+function Hint({ children }: { children: React.ReactNode }) { return <span className="mt-2 block text-[9px] leading-4 text-zinc-600">{children}</span>; }
+function Alert({ children, color }: { children: React.ReactNode; color: "green" | "red" }) { return <div className={`mt-4 rounded-xl border px-4 py-3 text-xs font-bold ${color === "green" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200"}`}>{children}</div>; }
+
+function GameAdminCard({ game, editing, deleting, onEdit, onDelete }: { game: GameRecord; editing: boolean; deleting: boolean; onEdit: () => void; onDelete: () => void }) {
+  return <article className={`overflow-hidden rounded-2xl border bg-slate-900/75 ${editing ? "border-orange-400" : "border-white/10"}`}><div className="grid gap-4 p-5 md:grid-cols-[1fr_auto]"><div className="min-w-0"><div className="flex flex-wrap gap-2"><span className="rounded-full bg-orange-500/15 px-3 py-1 text-[8px] font-black uppercase text-orange-300">{getStatusLabel(getGameStatus(game))}</span><span className="rounded-full bg-white/[.05] px-3 py-1 text-[8px] font-black uppercase text-zinc-400">{game.verification_status || "Unverified"}</span>{game.is_public === false ? <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[8px] font-black uppercase text-rose-300">Private</span> : null}</div><h3 className="mt-3 break-words text-xl font-black uppercase">{getHomeTeam(game)} <span className="text-orange-300">{getHomeScore(game) ?? "–"}–{getAwayScore(game) ?? "–"}</span> {getAwayTeam(game)}</h3><p className="mt-2 text-xs text-zinc-500">{formatGameDate(getGameDate(game))} · {game.venue || "Venue TBA"}</p><p className="mt-1 text-[9px] font-bold uppercase tracking-[.1em] text-blue-300">{getCompetition(game)} · {getStage(game)} · {getGameFormat(game)}</p></div><div className="flex flex-wrap items-start gap-2 md:max-w-[220px] md:justify-end"><Link href={`/games/${game.id}`} className="rounded-lg border border-white/10 px-3 py-2 text-[9px] font-black uppercase">View</Link><Link href={`/rosters/${game.id}`} className="rounded-lg border border-white/10 px-3 py-2 text-[9px] font-black uppercase">Roster</Link><button type="button" onClick={onEdit} className="rounded-lg bg-orange-500 px-3 py-2 text-[9px] font-black uppercase text-black">Edit</button><button type="button" onClick={onDelete} disabled={deleting} className="rounded-lg border border-red-500/30 px-3 py-2 text-[9px] font-black uppercase text-red-300 disabled:opacity-50">{deleting ? "Deleting" : "Delete"}</button></div></div></article>;
 }

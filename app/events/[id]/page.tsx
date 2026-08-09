@@ -8,6 +8,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import EventSearch from "./EventSearch";
 import EventMedia from "./EventMedia";
 import ShareEventButton from "./ShareEventButton";
+import { formatGameDate, getAwayScore, getAwayTeam, getGameDate, getGameStatus, getHomeScore, getHomeTeam, getStatusLabel, type GameRecord } from "@/lib/hoops/gamePresentation";
 
 type EventCase = { event_id:string; slug:string; title:string; summary:string|null; start_date:string|null; end_date:string|null; venue:string|null; location:string|null; poster_url:string|null; hero_image_url:string|null; photo_count:number; event_type:string; age_category:string; organizer_name?:string|null; organizer_logo_url?:string|null; organizer_description?:string|null; organizer_url?:string|null };
 type RecordRow = { id:string; record_type:string; title:string; subtitle:string|null; details:string|null; division:string|null; team_name:string|null; opponent_name:string|null; score_for:number|null; score_against:number|null; url:string|null; image_url:string|null; metadata?:Record<string,unknown>|null };
@@ -134,8 +135,13 @@ async function loadEvent(key:string) {
   let recordsQuery=db.from("event_records").select("id,record_type,title,subtitle,details,division,team_name,opponent_name,score_for,score_against,url,image_url,metadata").eq("event_id",event.event_id);
   const isDraftPreview=event.status!=="published"||event.is_public!==true;
   if(!isDraftPreview) recordsQuery=recordsQuery.eq("is_public",true).in("status",["verified","published"]);
-  const {data:records}=await recordsQuery.order("sort_order").order("created_at");
-  return {event:event as EventCase,records:(records||[]) as RecordRow[]};
+  let gamesQuery=db.from("games").select("*").eq("event_id",event.event_id);
+  if(!isDraftPreview) gamesQuery=gamesQuery.eq("is_public",true);
+  const [{data:records},{data:linkedGames}]=await Promise.all([
+    recordsQuery.order("sort_order").order("created_at"),
+    gamesQuery.order("game_date",{ascending:true}),
+  ]);
+  return {event:event as EventCase,records:(records||[]) as RecordRow[],linkedGames:(linkedGames||[]) as GameRecord[]};
 }
 
 const labels:Record<string,string>={team:"Participating teams",award:"Awards & winners",person:"Officials & contributors",partner:"Event partners",media:"Videos & media",gallery:"Photo gallery"};
@@ -241,7 +247,7 @@ export default async function EventDetailPage({params,searchParams}:{params:Prom
   const loaded=await loadEvent(id);
   if(!loaded)notFound();
 
-  const {event,records}=loaded;
+  const {event,records,linkedGames}=loaded;
   const requestedTab=String(query.tab||"overview") as EventTab;
   const activeTab=EVENT_TABS.some(tab=>tab.key===requestedTab)?requestedTab:"overview";
   const scheduleRows=records.filter(row=>row.record_type==="result");
@@ -340,6 +346,7 @@ export default async function EventDetailPage({params,searchParams}:{params:Prom
           </aside>
         </div>
       </section>
+      {linkedGames.length?<section className="mx-auto max-w-7xl px-5 pb-14 sm:px-6 lg:px-8"><SectionTitle kicker="Connected match centres" title="Open the full game evidence" subtitle="These games are linked directly to this event, including box scores, rosters, media and verification status."/><div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{linkedGames.map(game=><MatchCentreCard key={game.id} game={game}/>)}</div></section>:null}
       {championRows.length?<section className="mx-auto max-w-7xl px-5 pb-14 sm:px-6 lg:px-8"><SectionTitle kicker="Event outcome" title="Champions of the court" subtitle="The verified final result and published team image complete the event story."/><div className="mt-7 grid gap-4 md:grid-cols-2">{championRows.map(row=><ChampionCard key={row.id} row={row} imageUrl={teamImages.get(winner(row)||"")||row.image_url}/>)}</div></section>:null}
     </>:null}
 
@@ -434,6 +441,8 @@ function Pagination({current,total,q,tab,preview=false}:{current:number;total:nu
 function EmptySearch(){return <div className="mt-4 rounded-2xl border border-dashed border-white/15 px-5 py-8 text-center"><p className="text-sm font-black uppercase text-zinc-300">No matching games</p><p className="mt-1 text-xs text-zinc-500">Try a team name, person, partner or round.</p></div>}
 
 function GameCard({row,index}:{row:RecordRow;index:number}) { const winning=winner(row); const day=String(row.metadata?.day||""); const round=isWalkover(row)?"Walkover (WO)":String(row.metadata?.round||row.division||"Game"); return <div className="group overflow-hidden rounded-xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950 transition duration-300 hover:border-blue-400/35 sm:rounded-2xl sm:hover:-translate-y-1 sm:hover:shadow-[0_16px_50px_rgba(0,0,0,.35)]"><div className="flex min-w-0 items-center justify-between gap-2 border-b border-white/[.07] px-3 py-2 sm:px-4 sm:py-3"><span className="min-w-0 break-words text-[8px] font-black uppercase tracking-[.1em] text-blue-300 sm:text-[9px] sm:tracking-[.15em]">{day?`Day ${day}`:"Official result"} • Game {String(row.metadata?.game_number||index+1)}</span><span className={`max-w-[45%] shrink-0 break-words rounded-full px-2 py-1 text-right text-[7px] font-black uppercase leading-3 sm:text-[8px] ${isWalkover(row)?"bg-orange-500/20 text-orange-300":"bg-white/[.06] text-zinc-400"}`}>{round}</span></div><div className="px-3 py-2 sm:p-4"><TeamScore name={canonicalTeamName(row.team_name||row.title)} score={row.score_for} won={winning===row.team_name}/><div className="mx-2 border-t border-white/[.07] sm:mx-4"/><TeamScore name={canonicalTeamName(row.opponent_name||"TBC")} score={row.score_against} won={winning===row.opponent_name}/></div></div>}
+
+function MatchCentreCard({game}:{game:GameRecord}) { const status=getGameStatus(game); const homeScore=getHomeScore(game),awayScore=getAwayScore(game); return <Link href={`/games/${game.id}`} className="group overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950 p-5 transition hover:-translate-y-1 hover:border-orange-400/45"><div className="flex items-center justify-between gap-3"><span className={`rounded-full px-3 py-1.5 text-[8px] font-black uppercase tracking-[.12em] ${status==="live"?"bg-red-500 text-white":status==="completed"?"bg-emerald-500/15 text-emerald-300":"bg-blue-500/15 text-blue-200"}`}>{getStatusLabel(status)}</span><span className="text-[8px] font-black uppercase tracking-[.1em] text-zinc-600">Match centre</span></div><div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-2"><p className="break-words text-sm font-black uppercase leading-5">{getHomeTeam(game)}</p><p className="whitespace-nowrap text-xl font-black text-orange-300">{homeScore!=null&&awayScore!=null?`${homeScore}–${awayScore}`:"VS"}</p><p className="break-words text-right text-sm font-black uppercase leading-5">{getAwayTeam(game)}</p></div><p className="mt-4 text-[9px] font-bold uppercase tracking-[.08em] text-zinc-500">{formatGameDate(getGameDate(game))}</p><span className="mt-4 inline-flex text-[9px] font-black uppercase tracking-[.12em] text-orange-300">Open full evidence →</span></Link> }
 
 function rosterLines(value:string|null){
   if(!value)return[];

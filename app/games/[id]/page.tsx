@@ -1,883 +1,529 @@
 export const revalidate = 60;
 
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
-import AnimatedNumber from "@/app/components/AnimatedNumber";
-
-type GameRow = {
-  id: string;
-  title?: string | null;
-  game_title?: string | null;
-  opponent?: string | null;
-  opponent_name?: string | null;
-  team_name?: string | null;
-  game_date?: string | null;
-  date?: string | null;
-  venue?: string | null;
-  location?: string | null;
-  status?: string | null;
-  is_upcoming?: boolean | null;
-  team_score?: number | string | null;
-  fackts_score?: number | string | null;
-  home_score?: number | string | null;
-  opponent_score?: number | string | null;
-  away_score?: number | string | null;
-  poster_url?: string | null;
-  game_poster_url?: string | null;
-  image_url?: string | null;
-  video_url?: string | null;
-  game_video_url?: string | null;
-  highlight_url?: string | null;
-  notes?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
+import GameActions from "./GameActions";
+import GameMedia, { type GameMediaItem } from "./GameMedia";
+import {
+  formatGameDate,
+  getAwayScore,
+  getAwayTeam,
+  getCompetition,
+  getGameDate,
+  getGameFormat,
+  getGameStatus,
+  getGameTitle,
+  getHomeScore,
+  getHomeTeam,
+  getLocation,
+  getPosterUrl,
+  getStage,
+  getStatusLabel,
+  getVerificationLabel,
+  getWinner,
+  isVerified,
+  parseLineList,
+  parsePeriodScores,
+  statNumber,
+  type GameRecord,
+} from "@/lib/hoops/gamePresentation";
 
 type PlayerRow = {
   id: string;
-  is_guest_identity?: boolean;
   full_name?: string | null;
   name?: string | null;
   nickname?: string | null;
-  jersey_number?: number | string | null;
-  role?: string | null;
+  jersey_number?: string | number | null;
   position?: string | null;
-  height?: string | null;
+  role?: string | null;
   photo_url?: string | null;
   photo_position?: string | null;
 };
 
-type PlayerGameStatRow = {
+type GuestRow = {
+  id: string;
+  full_name?: string | null;
+  guest_name?: string | null;
+  name?: string | null;
+  nickname?: string | null;
+  position?: string | null;
+  photo_url?: string | null;
+  photo_position?: string | null;
+};
+
+type StatRow = {
   id: string;
   game_id?: string | null;
   player_id?: string | null;
+  guest_hooper_id?: string | null;
+  team_side?: string | null;
   points?: number | string | null;
+  three_pointers_made?: number | string | null;
   rebounds?: number | string | null;
   assists?: number | string | null;
   steals?: number | string | null;
   blocks?: number | string | null;
-  plus_minus?: number | string | null;
-  minutes?: number | string | null;
   turnovers?: number | string | null;
   fouls?: number | string | null;
+  plus_minus?: number | string | null;
+  minutes?: number | string | null;
+  minutes_played?: number | string | null;
+  player_of_game?: boolean | null;
   is_homepage_pog?: boolean | null;
-  created_at?: string | null;
+  is_player_of_the_game?: boolean | null;
 };
 
-type FullStatRow = PlayerGameStatRow & {
-  player?: PlayerRow | null;
+type RosterRow = {
+  id: string;
+  player_id?: string | null;
+  roster_role?: string | null;
+  roster_status?: string | null;
+  notes?: string | null;
 };
 
-type TeamTotals = {
+type EventRow = {
+  event_id: string;
+  slug: string;
+  title: string;
+};
+
+type MediaRow = {
+  id: string;
+  title: string;
+  media_type?: string | null;
+  url: string;
+  thumbnail_url?: string | null;
+  rights_status?: string | null;
+  is_public?: boolean | null;
+};
+
+type DisplayStat = {
+  id: string;
+  name: string;
+  initials: string;
+  jersey: string;
+  position: string;
+  relationship: "FACKTS player" | "Guest hooper";
+  profileHref: string;
+  photoUrl: string;
+  photoPosition: string;
+  side: "home" | "away";
   points: number;
+  threePointers: number;
   rebounds: number;
   assists: number;
   steals: number;
   blocks: number;
+  turnovers: number;
+  fouls: number;
   plusMinus: number;
+  minutes: number | null;
+  playerOfGame: boolean;
+};
+
+type TeamTotals = {
+  points: number;
+  threePointers: number;
+  rebounds: number;
+  assists: number;
+  steals: number;
+  blocks: number;
   turnovers: number;
   fouls: number;
 };
 
 function getSupabase() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing Supabase environment variables.");
-  }
-
-  return createClient(supabaseUrl, supabaseAnonKey);
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) throw new Error("Missing Supabase environment variables.");
+  return createClient(url, key);
 }
 
-function numberValue(...values: unknown[]): number | null {
-  for (const value of values) {
-    if (typeof value === "number" && !Number.isNaN(value)) return value;
-
-    if (typeof value === "string" && value.trim() !== "") {
-      const parsed = Number(value);
-      if (!Number.isNaN(parsed)) return parsed;
-    }
-  }
-
-  return null;
+function playerName(player?: PlayerRow | null) {
+  return player?.full_name || player?.name || player?.nickname || "Unknown player";
 }
 
-function statNumber(value: unknown) {
-  return numberValue(value) ?? 0;
+function guestName(guest?: GuestRow | null) {
+  return guest?.full_name || guest?.guest_name || guest?.name || guest?.nickname || "Guest hooper";
 }
 
-function getTitle(game: GameRow) {
-  return game.game_title || game.title || "FACKTS Game";
+function initials(name: string) {
+  return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
-function getOpponent(game: GameRow) {
-  return game.opponent || game.opponent_name || game.team_name || "Opponent";
+function side(value?: string | null): "home" | "away" {
+  return (value || "").toLowerCase() === "away" ? "away" : "home";
 }
 
-function getGameDate(game: GameRow) {
-  return game.game_date || game.date || game.created_at || null;
+function displayStat(row: StatRow, player: PlayerRow | null, guest: GuestRow | null): DisplayStat {
+  const isGuest = Boolean(guest);
+  const name = isGuest ? guestName(guest) : playerName(player);
+
+  return {
+    id: row.id,
+    name,
+    initials: initials(name),
+    jersey: String(player?.jersey_number ?? "–"),
+    position: player?.position || guest?.position || player?.role || "Player",
+    relationship: isGuest ? "Guest hooper" : "FACKTS player",
+    profileHref: isGuest && guest ? `/guest-hoopers/${guest.id}` : player ? `/players/${player.id}` : "#",
+    photoUrl: player?.photo_url || guest?.photo_url || "",
+    photoPosition: player?.photo_position || guest?.photo_position || "center center",
+    side: side(row.team_side),
+    points: statNumber(row.points),
+    threePointers: statNumber(row.three_pointers_made),
+    rebounds: statNumber(row.rebounds),
+    assists: statNumber(row.assists),
+    steals: statNumber(row.steals),
+    blocks: statNumber(row.blocks),
+    turnovers: statNumber(row.turnovers),
+    fouls: statNumber(row.fouls),
+    plusMinus: statNumber(row.plus_minus),
+    minutes: row.minutes !== null && row.minutes !== undefined
+      ? statNumber(row.minutes)
+      : row.minutes_played !== null && row.minutes_played !== undefined
+        ? statNumber(row.minutes_played)
+        : null,
+    playerOfGame: Boolean(row.player_of_game || row.is_homepage_pog || row.is_player_of_the_game),
+  };
 }
 
-function getPosterUrl(game: GameRow) {
-  return game.poster_url || game.game_poster_url || game.image_url || "";
-}
-
-function getVideoUrl(game: GameRow) {
-  return game.video_url || game.game_video_url || "";
-}
-
-function getFacktsScore(game: GameRow) {
-  return numberValue(game.team_score, game.fackts_score, game.home_score);
-}
-
-function getOpponentScore(game: GameRow) {
-  return numberValue(game.opponent_score, game.away_score);
-}
-
-function hasScores(game: GameRow) {
-  return getFacktsScore(game) !== null && getOpponentScore(game) !== null;
-}
-
-function getGameStatus(game: GameRow) {
-  const status = (game.status || "").toLowerCase().trim();
-
-  if (status === "postponed") return "Postponed";
-  if (status === "cancelled") return "Cancelled";
-
-  if (hasScores(game)) return "Completed";
-
-  if (status === "completed" || status === "played" || status === "final") {
-    return "Completed";
-  }
-
-  if (game.is_upcoming === false) return "Completed";
-
-  return "Upcoming";
-}
-
-function getWinner(game: GameRow) {
-  const facktsScore = getFacktsScore(game);
-  const opponentScore = getOpponentScore(game);
-
-  if (facktsScore === null || opponentScore === null) return "Not decided";
-  if (facktsScore > opponentScore) return "FACKTS";
-  if (opponentScore > facktsScore) return getOpponent(game);
-
-  return "Draw";
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "Date not added";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "Date not added";
-
-  return date.toLocaleString("en-KE", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function getLocation(game: GameRow) {
-  return (
-    [game.venue, game.location].filter(Boolean).join(" • ") ||
-    "Venue not added"
+function totals(rows: DisplayStat[]): TeamTotals {
+  return rows.reduce(
+    (result, row) => ({
+      points: result.points + row.points,
+      threePointers: result.threePointers + row.threePointers,
+      rebounds: result.rebounds + row.rebounds,
+      assists: result.assists + row.assists,
+      steals: result.steals + row.steals,
+      blocks: result.blocks + row.blocks,
+      turnovers: result.turnovers + row.turnovers,
+      fouls: result.fouls + row.fouls,
+    }),
+    { points: 0, threePointers: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, turnovers: 0, fouls: 0 }
   );
 }
 
-function getStatusClass(game: GameRow) {
-  const status = getGameStatus(game);
-
-  if (status === "Completed") {
-    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-  }
-
-  if (status === "Postponed") {
-    return "border-yellow-500/30 bg-yellow-500/10 text-yellow-200";
-  }
-
-  if (status === "Cancelled") {
-    return "border-red-500/30 bg-red-500/10 text-red-200";
-  }
-
-  return "border-orange-500/30 bg-orange-500/10 text-orange-200";
+function contribution(row: DisplayStat) {
+  return row.points + row.rebounds + row.assists + row.steals + row.blocks + Math.max(row.plusMinus, 0);
 }
 
-function getPlayerName(player?: PlayerRow | null) {
-  if (!player) return "Unknown Player";
-
-  return player.full_name || player.name || player.nickname || "Unknown Player";
-}
-
-function getPlayerInitials(player?: PlayerRow | null) {
-  const name = getPlayerName(player);
-
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
-
-function contribution(row: FullStatRow) {
-  return (
-    statNumber(row.points) +
-    statNumber(row.rebounds) +
-    statNumber(row.assists) +
-    statNumber(row.steals) +
-    statNumber(row.blocks) +
-    Math.max(statNumber(row.plus_minus), 0)
-  );
-}
-
-function buildTotals(stats: FullStatRow[]): TeamTotals {
-  return stats.reduce(
-    (acc, row) => {
-      acc.points += statNumber(row.points);
-      acc.rebounds += statNumber(row.rebounds);
-      acc.assists += statNumber(row.assists);
-      acc.steals += statNumber(row.steals);
-      acc.blocks += statNumber(row.blocks);
-      acc.plusMinus += statNumber(row.plus_minus);
-      acc.turnovers += statNumber(row.turnovers);
-      acc.fouls += statNumber(row.fouls);
-
-      return acc;
-    },
-    {
-      points: 0,
-      rebounds: 0,
-      assists: 0,
-      steals: 0,
-      blocks: 0,
-      plusMinus: 0,
-      turnovers: 0,
-      fouls: 0,
-    }
-  );
-}
-
-function getPlayerOfGame(stats: FullStatRow[]) {
-  const manual = stats.find(
-    (row) => row.is_homepage_pog === true && contribution(row) > 0
-  );
-
-  if (manual) return manual;
-
-  return (
-    [...stats].sort((a, b) => {
-      const contributionDiff = contribution(b) - contribution(a);
-
-      if (contributionDiff !== 0) return contributionDiff;
-
-      return statNumber(b.points) - statNumber(a.points);
-    })[0] || null
-  );
-}
-
-function getYoutubeEmbedUrl(url?: string | null) {
-  if (!url) return null;
-
-  try {
-    const parsed = new URL(url);
-
-    if (parsed.hostname.includes("youtube.com")) {
-      const videoId = parsed.searchParams.get("v");
-
-      if (videoId) {
-        return `https://www.youtube.com/embed/${videoId}`;
-      }
-
-      if (parsed.pathname.includes("/shorts/")) {
-        const id = parsed.pathname.split("/shorts/")[1]?.split("/")[0];
-
-        if (id) {
-          return `https://www.youtube.com/embed/${id}`;
-        }
-      }
-    }
-
-    if (parsed.hostname.includes("youtu.be")) {
-      const id = parsed.pathname.replace("/", "");
-
-      if (id) {
-        return `https://www.youtube.com/embed/${id}`;
-      }
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function getGameData(gameId: string) {
+async function loadGame(gameId: string) {
   const supabase = getSupabase();
+  const gameResult = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
+  if (gameResult.error || !gameResult.data) return null;
 
-  const { data: gameData, error: gameError } = await supabase
-    .from("games")
-    .select("*")
-    .eq("id", gameId)
-    .maybeSingle();
+  const game = gameResult.data as GameRecord;
+  if (game.is_public === false) return null;
 
-  if (gameError || !gameData) {
-    return {
-      game: null,
-      stats: [],
-    };
-  }
+  const [playerStatsResult, guestStatsResult, rosterResult, mediaResult] = await Promise.all([
+    supabase.from("player_game_stats").select("*").eq("game_id", gameId),
+    supabase.from("guest_game_stats").select("*").eq("game_id", gameId),
+    supabase.from("game_rosters").select("*").eq("game_id", gameId),
+    supabase.from("game_media").select("*").eq("game_id", gameId).eq("is_public", true).order("display_order"),
+  ]);
 
-  const game = gameData as GameRow;
+  const playerStats = (playerStatsResult.data || []) as StatRow[];
+  const guestStats = (guestStatsResult.data || []) as StatRow[];
+  const roster = (rosterResult.data || []) as RosterRow[];
+  const playerIds = [...new Set([...playerStats.map((row) => row.player_id), ...roster.map((row) => row.player_id)].filter(Boolean))] as string[];
+  const guestIds = [...new Set(guestStats.map((row) => row.guest_hooper_id).filter(Boolean))] as string[];
 
-  const { data: statsData } = await supabase
-    .from("player_game_stats")
-    .select("*")
-    .eq("game_id", gameId);
+  const [playersResult, guestsResult, eventResult] = await Promise.all([
+    playerIds.length ? supabase.from("players").select("*").in("id", playerIds) : Promise.resolve({ data: [] }),
+    guestIds.length ? supabase.from("guest_hoopers").select("*").in("id", guestIds) : Promise.resolve({ data: [] }),
+    game.event_id
+      ? supabase.from("event_case_studies").select("event_id,slug,title").eq("event_id", game.event_id).eq("is_public", true).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
-  const rawStats = (statsData || []) as PlayerGameStatRow[];
+  const players = (playersResult.data || []) as PlayerRow[];
+  const guests = (guestsResult.data || []) as GuestRow[];
+  const playerMap = new Map(players.map((player) => [player.id, player]));
+  const guestMap = new Map(guests.map((guest) => [guest.id, guest]));
 
-  const playerIds = rawStats
-    .map((row) => row.player_id)
-    .filter(Boolean) as string[];
+  const stats = [
+    ...playerStats.map((row) => displayStat(row, row.player_id ? playerMap.get(row.player_id) || null : null, null)),
+    ...guestStats.map((row) => displayStat(row, null, row.guest_hooper_id ? guestMap.get(row.guest_hooper_id) || null : null)),
+  ].sort((a, b) => contribution(b) - contribution(a));
 
-  let players: PlayerRow[] = [];
-
-  if (playerIds.length > 0) {
-    const [playersResult, linkedGuestsResult] = await Promise.all([
-      supabase.from("players").select("*").in("id", playerIds),
-      supabase
-        .from("guest_hoopers")
-        .select("*")
-        .in("source_player_id", playerIds),
-    ]);
-
-    players = (playersResult.data || []) as PlayerRow[];
-
-    const loadedPlayerIds = new Set(players.map((player) => player.id));
-    (linkedGuestsResult.data || []).forEach((guest: any) => {
-      if (!guest.source_player_id || loadedPlayerIds.has(guest.source_player_id)) {
-        return;
-      }
-
-      players.push({
-        id: guest.source_player_id,
-        is_guest_identity: true,
-        full_name: guest.full_name,
-        name: guest.full_name,
-        nickname: guest.nickname,
-        role:
-          guest.guest_type === "external_player"
-            ? "External Player"
-            : "Guest Hooper",
-        position: guest.position,
-        photo_url: guest.photo_url,
-        photo_position: guest.photo_position,
-      });
-    });
-  }
-
-  const playerMap = new Map<string, PlayerRow>();
-  players.forEach((player) => playerMap.set(player.id, player));
-
-  const stats: FullStatRow[] = rawStats
+  const rosterPlayers = roster
+    .filter((row) => row.roster_status !== "unavailable")
     .map((row) => ({
       ...row,
       player: row.player_id ? playerMap.get(row.player_id) || null : null,
-    }))
-    .sort((a, b) => {
-      const pointsDiff = statNumber(b.points) - statNumber(a.points);
-
-      if (pointsDiff !== 0) return pointsDiff;
-
-      return contribution(b) - contribution(a);
-    });
+    }));
 
   return {
     game,
     stats,
+    roster: rosterPlayers,
+    event: (eventResult.data || null) as EventRow | null,
+    media: (mediaResult.data || []) as MediaRow[],
   };
 }
 
-export default async function GameDetailsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function GameDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { game, stats } = await getGameData(id);
+  const loaded = await loadGame(id);
+  if (!loaded) notFound();
 
-  if (!game) {
-    return (
-      <main className="min-h-screen bg-black px-4 py-10 text-white">
-        <div className="mx-auto max-w-4xl rounded-3xl border border-white/10 bg-zinc-950 p-6">
-          <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-            Game not found
-          </p>
+  const { game, stats, roster, event, media } = loaded;
+  const status = getGameStatus(game);
+  const homeTeam = getHomeTeam(game);
+  const awayTeam = getAwayTeam(game);
+  const homeScore = getHomeScore(game);
+  const awayScore = getAwayScore(game);
+  const scored = homeScore !== null && awayScore !== null;
+  const winner = getWinner(game);
+  const homeStats = stats.filter((row) => row.side === "home");
+  const awayStats = stats.filter((row) => row.side === "away");
+  const homeTotals = totals(homeStats);
+  const awayTotals = totals(awayStats);
+  const playerOfGame = stats.find((row) => row.playerOfGame) || stats[0] || null;
+  const periods = parsePeriodScores(game.period_scores);
+  const savedHomeRoster = parseLineList(game.home_roster);
+  const savedAwayRoster = parseLineList(game.away_roster);
+  const officialRoster = roster.map((row) => ({
+    name: playerName(row.player),
+    detail: [row.roster_role, row.roster_status].filter(Boolean).join(" · ") || "Rostered",
+    href: row.player ? `/players/${row.player.id}` : "#",
+  }));
+  const homeRoster = savedHomeRoster.length
+    ? savedHomeRoster.map((name) => ({ name, detail: "Published lineup", href: "#" }))
+    : homeTeam.toLowerCase().includes("fackts")
+      ? officialRoster
+      : [];
+  const awayRoster = savedAwayRoster.map((name) => ({ name, detail: "Published lineup", href: "#" }));
 
-          <h1 className="mt-3 text-3xl font-black">This game does not exist.</h1>
+  const builtInMedia: GameMediaItem[] = [];
+  const fullVideo = game.video_url || game.game_video_url || "";
+  if (fullVideo) builtInMedia.push({ id: "full-game", title: `${homeTeam} vs ${awayTeam} — full game`, mediaType: "Full game", url: fullVideo, thumbnailUrl: getPosterUrl(game) });
+  if (game.highlight_url && game.highlight_url !== fullVideo) builtInMedia.push({ id: "highlights", title: `${homeTeam} vs ${awayTeam} — highlights`, mediaType: "Highlights", url: game.highlight_url, thumbnailUrl: getPosterUrl(game) });
 
-          <Link
-            href="/games"
-            className="mt-6 inline-flex rounded-full bg-orange-500 px-5 py-3 text-sm font-black text-black"
-          >
-            Back to Games
-          </Link>
-        </div>
-      </main>
-    );
-  }
-
-  const posterUrl = getPosterUrl(game);
-  const videoUrl = getVideoUrl(game);
-  const embedUrl = getYoutubeEmbedUrl(videoUrl);
-  const facktsScore = getFacktsScore(game);
-  const opponentScore = getOpponentScore(game);
-  const totals = buildTotals(stats);
-  const playerOfGame = getPlayerOfGame(stats);
+  const mediaItems: GameMediaItem[] = [
+    ...builtInMedia,
+    ...media
+      .filter((row) => !["photo", "image"].includes((row.media_type || "").toLowerCase()))
+      .map((row) => ({ id: row.id, title: row.title, mediaType: row.media_type || "Game video", url: row.url, thumbnailUrl: row.thumbnail_url || getPosterUrl(game), rightsStatus: row.rights_status || undefined })),
+  ];
+  const photos = media.filter((row) => ["photo", "image"].includes((row.media_type || "").toLowerCase()));
 
   return (
     <main
-      className="min-h-screen bg-black bg-cover bg-scroll bg-[position:left_top] text-white md:bg-fixed md:bg-[position:center_top]"
-      style={{
-        backgroundImage:
-          "linear-gradient(rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0.94)), url('/images/one-on-one-bg.png')",
-      }}
+      className="min-h-screen bg-slate-950 bg-cover bg-scroll bg-[position:left_top] text-white md:bg-fixed md:bg-[position:center_top]"
+      style={{ backgroundImage: "linear-gradient(rgba(2,6,23,.78),rgba(2,6,23,.96)),url('/images/one-on-one-bg.png')" }}
     >
-      <section className="relative overflow-hidden border-b border-white/10 bg-black/35 backdrop-blur-sm">
-        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:42px_42px]" />
-
+      <section className="relative overflow-hidden border-b border-white/10 bg-[#07162b]/80">
+        {getPosterUrl(game) ? (
+          <div className="absolute inset-0">
+            <img src={getPosterUrl(game)} alt="" className="h-full w-full object-cover opacity-20" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#07162b] via-[#07162b]/95 to-[#07162b]/65" />
+          </div>
+        ) : null}
         <div className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <Link
-              href="/games"
-              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
-            >
-              â† Back to Games
-            </Link>
-
-            <Link
-              href="/"
-              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:border-orange-400/60"
-            >
-              Home
-            </Link>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Link href="/games" className="rounded-xl border border-white/15 bg-black/35 px-4 py-2.5 text-[10px] font-black uppercase tracking-[.12em] text-white">← All games</Link>
+              {event ? <Link href={`/events/${event.slug}`} className="rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-2.5 text-[10px] font-black uppercase tracking-[.12em] text-blue-200">Open event hub</Link> : null}
+            </div>
+            <GameActions gameId={game.id} title={getGameTitle(game)} />
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-stretch">
-            <div className="overflow-hidden rounded-[2rem] border border-orange-500/30 bg-zinc-950/90 shadow-2xl shadow-orange-950/20">
-              {posterUrl ? (
-                <img
-                  src={posterUrl}
-                  alt={getTitle(game)}
-                  className="h-full min-h-[360px] w-full object-cover"
-                />
-              ) : (
-                <div className="flex min-h-[360px] items-center justify-center bg-[radial-gradient(circle,_rgba(249,115,22,0.25),_transparent_55%),#050505]">
-                  <div className="text-center">
-                    <p className="text-7xl font-black text-orange-500">FH</p>
-                    <p className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500">
-                      FACKTS Africa
-                    </p>
-                  </div>
-                </div>
-              )}
+          <div className="mt-9 grid gap-8 lg:grid-cols-[1fr_1.2fr_1fr] lg:items-center">
+            <ScoreTeam name={homeTeam} score={homeScore} align="left" winner={winner === homeTeam} />
+            <div className="order-first text-center lg:order-none">
+              <div className="flex flex-wrap justify-center gap-2">
+                <Badge color={status === "live" ? "red" : status === "completed" ? "green" : "blue"}>{getStatusLabel(status)}</Badge>
+                <Badge color={isVerified(game) ? "green" : "neutral"}>{getVerificationLabel(game)}</Badge>
+              </div>
+              <p className="mt-4 text-[10px] font-black uppercase tracking-[.2em] text-orange-300">{event?.title || getCompetition(game)}</p>
+              <h1 className="mx-auto mt-2 max-w-xl text-2xl font-black uppercase leading-tight sm:text-4xl">{getGameTitle(game)}</h1>
+              <p className="mt-3 text-xs font-bold uppercase tracking-[.1em] text-zinc-400">{getStage(game)} · {getGameFormat(game)}</p>
+              <div className="mt-5 rounded-3xl border border-white/10 bg-black/45 px-5 py-5 backdrop-blur">
+                <p className="text-[9px] font-black uppercase tracking-[.18em] text-zinc-600">{scored ? "Final score" : "Tip-off"}</p>
+                <p className="mt-1 text-5xl font-black tracking-[-.05em] sm:text-7xl">{scored ? `${homeScore}–${awayScore}` : "VS"}</p>
+                {winner && winner !== "Draw" ? <p className="mt-2 text-xs font-black uppercase tracking-[.12em] text-orange-300">Winner: {winner}</p> : null}
+              </div>
             </div>
+            <ScoreTeam name={awayTeam} score={awayScore} align="right" winner={winner === awayTeam} />
+          </div>
 
-            <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 shadow-2xl shadow-black/30 backdrop-blur-sm sm:p-7">
-              <div className="mb-4 flex flex-wrap gap-2">
-                <span
-                  className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase ${getStatusClass(
-                    game
-                  )}`}
-                >
-                  {getGameStatus(game)}
-                </span>
-
-                {videoUrl ? (
-                  <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] font-black uppercase text-blue-200">
-                    Full Video Added
-                  </span>
-                ) : null}
-
-                {playerOfGame ? (
-                  <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[11px] font-black uppercase text-orange-200">
-                    Player of Game
-                  </span>
-                ) : null}
-              </div>
-
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                FACKTS Game
-              </p>
-
-              <h1 className="mt-3 text-4xl font-black uppercase tracking-tight sm:text-6xl">
-                {getTitle(game)}
-              </h1>
-
-              <p className="mt-3 text-xl font-black text-orange-300">
-                FACKTS vs {getOpponent(game)}
-              </p>
-
-              <div className="mt-6 rounded-[2rem] border border-white/10 bg-black/70 p-5">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-zinc-500">
-                  Final Score
-                </p>
-
-                <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                  <div>
-                    <p className="text-sm font-black uppercase text-zinc-500">
-                      FACKTS
-                    </p>
-
-                    <p className="text-5xl font-black text-white sm:text-6xl">
-                      <AnimatedNumber value={facktsScore ?? "-"} />
-                    </p>
-                  </div>
-
-                  <p className="text-3xl font-black text-zinc-600">-</p>
-
-                  <div className="text-right">
-                    <p className="text-sm font-black uppercase text-zinc-500">
-                      {getOpponent(game)}
-                    </p>
-
-                    <p className="text-5xl font-black text-white sm:text-6xl">
-                      <AnimatedNumber value={opponentScore ?? "-"} />
-                    </p>
-                  </div>
-                </div>
-
-                {getGameStatus(game) === "Completed" ? (
-                  <p className="mt-4 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm font-black text-orange-200">
-                    Winner: {getWinner(game)}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <MiniInfo label="Date" value={formatDate(getGameDate(game))} />
-                <MiniInfo label="Venue" value={getLocation(game)} />
-                <MiniInfo label="Status" value={getGameStatus(game)} />
-              </div>
-
-              {game.notes ? (
-                <p className="mt-5 rounded-3xl border border-white/10 bg-black/50 p-4 text-sm leading-7 text-zinc-400">
-                  {game.notes}
-                </p>
-              ) : null}
-            </div>
+          <div className="mt-9 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <Info label="Date and time" value={formatGameDate(getGameDate(game), true)} />
+            <Info label="Venue" value={getLocation(game)} />
+            <Info label="Competition" value={event?.title || getCompetition(game)} />
+            <Info label="Record updated" value={formatGameDate(game.updated_at || game.created_at)} />
           </div>
         </div>
       </section>
 
-      {playerOfGame ? (
-        <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <SectionHeader eyebrow="Top Performance" title="Player of the Game" />
+      <nav className="sticky top-[72px] z-30 border-b border-white/10 bg-slate-950/95 backdrop-blur">
+        <div className="no-scrollbar mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-2 sm:px-6 lg:px-8">
+          {[["Overview", "overview"], ["Box score", "box-score"], ["Rosters", "rosters"], ["Media", "media"], ["Officials", "officials"]].map(([label, target]) => (
+            <a key={target} href={`#${target}`} className="shrink-0 rounded-lg px-4 py-2 text-[9px] font-black uppercase tracking-[.12em] text-zinc-400 transition hover:bg-white/[.05] hover:text-orange-300">{label}</a>
+          ))}
+        </div>
+      </nav>
 
-          <div className="grid gap-5 overflow-hidden rounded-[2rem] border border-orange-500/30 bg-zinc-950/90 p-5 shadow-2xl shadow-orange-950/20 backdrop-blur-sm md:grid-cols-[340px_1fr]">
-            <div className="overflow-hidden rounded-3xl border border-white/10 bg-black">
-              {playerOfGame.player?.photo_url ? (
-                <img
-                  src={playerOfGame.player.photo_url}
-                  alt={getPlayerName(playerOfGame.player)}
-                  className="h-96 w-full object-cover"
-                  style={{
-                    objectPosition:
-                      playerOfGame.player.photo_position || "center center",
-                  }}
-                />
-              ) : (
-                <div className="flex h-96 items-center justify-center bg-black">
-                  <div className="text-center">
-                    <p className="text-6xl font-black text-orange-500">
-                      {getPlayerInitials(playerOfGame.player) || "FH"}
-                    </p>
-                    <p className="text-xs font-black uppercase tracking-[0.25em] text-zinc-600">
-                      FACKTS Hooper
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col justify-center">
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                Best Impact
-              </p>
-
-              <h2 className="mt-3 text-4xl font-black sm:text-6xl">
-                {getPlayerName(playerOfGame.player)}
-              </h2>
-
-              <p className="mt-2 text-sm font-bold text-zinc-400">
-                #{playerOfGame.player?.jersey_number ?? "-"} •{" "}
-                {playerOfGame.player?.position || "FACKTS Player"}
-              </p>
-
-              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-                <BigStat label="PTS" value={statNumber(playerOfGame.points)} />
-                <BigStat label="REB" value={statNumber(playerOfGame.rebounds)} />
-                <BigStat label="AST" value={statNumber(playerOfGame.assists)} />
-                <BigStat label="STL" value={statNumber(playerOfGame.steals)} />
-                <BigStat label="BLK" value={statNumber(playerOfGame.blocks)} />
+      <section id="overview" className="mx-auto max-w-7xl scroll-mt-32 px-4 py-10 sm:px-6 lg:px-8">
+        <SectionTitle kicker="Match evidence" title="Game overview" subtitle="The recorded score, period breakdown and context attached to this matchup." />
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
+          <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950/85">
+            <div className="border-b border-white/10 px-5 py-4"><h3 className="text-sm font-black uppercase tracking-[.13em]">Score by period</h3></div>
+            {periods.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-left">
+                  <thead><tr className="text-[9px] font-black uppercase tracking-[.12em] text-zinc-600"><th className="px-5 py-3">Team</th>{periods.map((period) => <th key={period.label} className="px-3 py-3 text-center">{period.label}</th>)}<th className="px-5 py-3 text-center">Total</th></tr></thead>
+                  <tbody>
+                    <PeriodRow name={homeTeam} scores={periods.map((period) => period.home)} total={homeScore} />
+                    <PeriodRow name={awayTeam} scores={periods.map((period) => period.away)} total={awayScore} />
+                  </tbody>
+                </table>
               </div>
-
-              {playerOfGame.player?.id && !playerOfGame.player.is_guest_identity ? (
-                <div className="mt-6">
-                  <Link
-                    href={`/players/${playerOfGame.player.id}`}
-                    className="inline-flex rounded-full bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
-                  >
-                    Open Player Profile
-                  </Link>
-                </div>
-              ) : null}
-            </div>
+            ) : <Empty text="A period-by-period breakdown has not been published for this game." />}
           </div>
-        </section>
-      ) : null}
 
-      <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Team Totals" title="FACKTS Box Score" />
+          <div className="rounded-[1.75rem] border border-white/10 bg-slate-950/85 p-5 sm:p-6">
+            <p className="text-[9px] font-black uppercase tracking-[.16em] text-orange-300">Record status</p>
+            <h3 className="mt-2 text-2xl font-black uppercase">{getVerificationLabel(game)}</h3>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">
+              {isVerified(game) ? "The published result has been marked as verified by FACKTS Hoops." : "This record is published with its current evidence status and will not be presented as verified until confirmation is recorded."}
+            </p>
+            {game.verified_by || game.verified_at ? <p className="mt-4 text-[10px] font-bold uppercase tracking-[.1em] text-emerald-300">{game.verified_by ? `Verified by ${game.verified_by}` : "Verified"}{game.verified_at ? ` · ${formatGameDate(game.verified_at)}` : ""}</p> : null}
+            {game.correction_status && game.correction_status !== "none" ? (
+              <div className="mt-5 rounded-xl border border-amber-400/25 bg-amber-500/10 p-4">
+                <p className="text-[9px] font-black uppercase tracking-[.12em] text-amber-300">Correction status: {game.correction_status}</p>
+                {game.correction_note ? <p className="mt-2 text-xs leading-5 text-amber-50/80">{game.correction_note}</p> : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
 
-        <div className="grid gap-3 sm:grid-cols-4 lg:grid-cols-8">
-          <TotalCard label="PTS" value={totals.points} />
-          <TotalCard label="REB" value={totals.rebounds} />
-          <TotalCard label="AST" value={totals.assists} />
-          <TotalCard label="STL" value={totals.steals} />
-          <TotalCard label="BLK" value={totals.blocks} />
-          <TotalCard label="+/-" value={totals.plusMinus} />
-          <TotalCard label="TO" value={totals.turnovers} />
-          <TotalCard label="FOUL" value={totals.fouls} />
+        {game.notes ? <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/75 p-5"><p className="text-[9px] font-black uppercase tracking-[.14em] text-orange-300">Match note</p><p className="mt-2 whitespace-pre-line text-sm leading-7 text-zinc-300">{game.notes}</p></div> : null}
+      </section>
+
+      <section id="box-score" className="mx-auto max-w-7xl scroll-mt-32 px-4 pb-12 sm:px-6 lg:px-8">
+        <SectionTitle kicker="Verified performance" title="Player box score" subtitle="Official and guest participants use the same statistics view for this game." />
+
+        {stats.length ? (
+          <>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <LeaderCard label="Scoring leader" row={[...stats].sort((a, b) => b.points - a.points)[0]} value="points" />
+              <LeaderCard label="Rebound leader" row={[...stats].sort((a, b) => b.rebounds - a.rebounds)[0]} value="rebounds" />
+              <LeaderCard label="Assist leader" row={[...stats].sort((a, b) => b.assists - a.assists)[0]} value="assists" />
+              <LeaderCard label="Player of game" row={playerOfGame} value="points" special />
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <TeamSummary name={homeTeam} totals={homeTotals} players={homeStats.length} />
+              <TeamSummary name={awayTeam} totals={awayTotals} players={awayStats.length} />
+            </div>
+
+            <div className="mt-5 overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/90">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left">
+                  <thead><tr className="bg-white/[.035] text-[8px] font-black uppercase tracking-[.12em] text-zinc-600"><th className="px-4 py-4">Player</th><th className="px-3 py-4">Team</th><th className="px-3 py-4 text-center">MIN</th><th className="px-3 py-4 text-center">PTS</th><th className="px-3 py-4 text-center">3PM</th><th className="px-3 py-4 text-center">REB</th><th className="px-3 py-4 text-center">AST</th><th className="px-3 py-4 text-center">STL</th><th className="px-3 py-4 text-center">BLK</th><th className="px-3 py-4 text-center">TO</th><th className="px-3 py-4 text-center">PF</th><th className="px-3 py-4 text-center">+/-</th></tr></thead>
+                  <tbody>{stats.map((row) => <BoxScoreRow key={row.id} row={row} team={row.side === "home" ? homeTeam : awayTeam} />)}</tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : <div className="mt-6"><Empty text="Individual statistics were not captured for this game. No player performance has been estimated." /></div>}
+      </section>
+
+      <section id="rosters" className="mx-auto max-w-7xl scroll-mt-32 px-4 pb-12 sm:px-6 lg:px-8">
+        <SectionTitle kicker="Match participants" title="Published rosters" subtitle="Line-ups attached specifically to this game record." />
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <RosterCard name={homeTeam} players={homeRoster} />
+          <RosterCard name={awayTeam} players={awayRoster} />
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Roster Stats" title="Player Scores & Stats" />
-
-        {stats.length > 0 ? (
-          <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950/90 backdrop-blur-sm">
-            <div className="hidden grid-cols-[2fr_repeat(8,0.7fr)] border-b border-white/10 bg-black/60 px-4 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500 md:grid">
-              <div>Player</div>
-              <div className="text-center">PTS</div>
-              <div className="text-center">REB</div>
-              <div className="text-center">AST</div>
-              <div className="text-center">STL</div>
-              <div className="text-center">BLK</div>
-              <div className="text-center">+/-</div>
-              <div className="text-center">TO</div>
-              <div className="text-center">FLS</div>
-            </div>
-
-            <div className="divide-y divide-white/10">
-              {stats.map((row, index) => (
-                <PlayerStatRowCard key={row.id || index} row={row} />
-              ))}
-            </div>
+      <section id="media" className="mx-auto max-w-7xl scroll-mt-32 px-4 pb-12 sm:px-6 lg:px-8">
+        <SectionTitle kicker="Watch the game" title="Match media" subtitle="Playable full games, highlights and approved media attached to this matchup." />
+        <div className="mt-6"><GameMedia items={mediaItems} /></div>
+        {photos.length ? (
+          <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+            {photos.map((photo) => <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-slate-900 sm:rounded-2xl"><img src={photo.thumbnail_url || photo.url} alt={photo.title} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"/><p className="absolute inset-x-3 bottom-3 text-[10px] font-black uppercase leading-4">{photo.title}</p></a>)}
           </div>
-        ) : (
-          <EmptyBox text="No player stats have been added for this game yet." />
-        )}
+        ) : null}
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Media" title="Full Game Video" />
+      <section id="officials" className="mx-auto max-w-7xl scroll-mt-32 px-4 pb-14 sm:px-6 lg:px-8">
+        <SectionTitle kicker="Game administration" title="Officials and venue" />
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <ListCard title="Game officials" items={parseLineList(game.officials)} empty="Officials not published" />
+          <ListCard title="Table officials" items={parseLineList(game.table_officials)} empty="Table officials not published" />
+          <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/85 p-5"><p className="text-[9px] font-black uppercase tracking-[.15em] text-orange-300">Venue</p><h3 className="mt-2 text-xl font-black uppercase">{game.venue || "Venue TBA"}</h3><p className="mt-2 text-sm leading-6 text-zinc-400">{[game.court, game.location].filter(Boolean).join(" · ") || "Court and location details have not been published."}</p></div>
+        </div>
+      </section>
 
-        {videoUrl ? (
-          <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950/90 p-4 backdrop-blur-sm">
-            {embedUrl ? (
-              <div className="aspect-video overflow-hidden rounded-3xl bg-black">
-                <iframe
-                  src={embedUrl}
-                  title={`${getTitle(game)} full game video`}
-                  className="h-full w-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              </div>
-            ) : (
-              <div className="rounded-3xl border border-white/10 bg-black/60 p-5">
-                <p className="text-sm text-zinc-400">
-                  This video source cannot be embedded directly. Open it using
-                  the button below.
-                </p>
-              </div>
-            )}
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <a
-                href={videoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-full bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
-              >
-                Open Full Video
-              </a>
-
-              {game.highlight_url ? (
-                <a
-                  href={game.highlight_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-full border border-blue-500/40 bg-blue-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-blue-200 transition hover:bg-blue-500/20"
-                >
-                  Open Highlights
-                </a>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <EmptyBox text="No full game video has been added yet." />
-        )}
+      <section className="border-t border-white/10 bg-[#07162b]/90">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-10 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
+          <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-300">Document your next game</p><h2 className="mt-2 text-2xl font-black uppercase sm:text-4xl">Scores, stats and media that stay connected.</h2></div>
+          <Link href="/book-coverage" className="shrink-0 rounded-xl bg-orange-500 px-6 py-4 text-center text-[10px] font-black uppercase tracking-[.14em] text-black">Book game coverage</Link>
+        </div>
       </section>
     </main>
   );
 }
 
-function PlayerStatRowCard({ row }: { row: FullStatRow }) {
-  const player = row.player;
-
-  return (
-    <div className="grid gap-3 px-4 py-4 md:grid-cols-[2fr_repeat(8,0.7fr)] md:items-center">
-      <div className="flex items-center gap-3">
-        <div className="h-12 w-12 overflow-hidden rounded-2xl border border-white/10 bg-black">
-          {player?.photo_url ? (
-            <img
-              src={player.photo_url}
-              alt={getPlayerName(player)}
-              className="h-full w-full object-cover"
-              style={{
-                objectPosition: player.photo_position || "center center",
-              }}
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-sm font-black text-orange-300">
-              {getPlayerInitials(player) || "FH"}
-            </div>
-          )}
-        </div>
-
-        <div className="min-w-0">
-          <p className="truncate text-sm font-black text-white">
-            {getPlayerName(player)}
-          </p>
-
-          <p className="text-xs text-zinc-500">
-            #{player?.jersey_number ?? "-"} • {player?.position || "Player"}
-          </p>
-        </div>
-      </div>
-
-      <MobileStatGrid row={row} />
-
-      <DesktopStat value={statNumber(row.points)} />
-      <DesktopStat value={statNumber(row.rebounds)} />
-      <DesktopStat value={statNumber(row.assists)} />
-      <DesktopStat value={statNumber(row.steals)} />
-      <DesktopStat value={statNumber(row.blocks)} />
-      <DesktopStat value={statNumber(row.plus_minus)} />
-      <DesktopStat value={statNumber(row.turnovers)} />
-      <DesktopStat value={statNumber(row.fouls)} />
-    </div>
-  );
+function ScoreTeam({ name, score, align, winner }: { name: string; score: number | null; align: "left" | "right"; winner: boolean }) {
+  return <div className={`min-w-0 text-center ${align === "right" ? "lg:text-right" : "lg:text-left"}`}><div className={`mx-auto grid h-16 w-16 place-items-center rounded-2xl border ${winner ? "border-orange-400 bg-orange-500 text-black" : "border-white/10 bg-[#0B1F3A] text-orange-300"} text-lg font-black lg:mx-0 ${align === "right" ? "lg:ml-auto" : "lg:mr-auto"}`}>{initials(name)}</div><p className="mt-3 break-words text-2xl font-black uppercase leading-tight sm:text-3xl">{name}</p>{score !== null ? <p className={`mt-2 text-sm font-black uppercase tracking-[.12em] ${winner ? "text-orange-300" : "text-zinc-500"}`}>{winner ? "Winner" : "Score"} · {score}</p> : null}</div>;
 }
 
-function MobileStatGrid({ row }: { row: FullStatRow }) {
-  return (
-    <div className="grid grid-cols-4 gap-2 md:hidden">
-      <SmallStat label="PTS" value={statNumber(row.points)} />
-      <SmallStat label="REB" value={statNumber(row.rebounds)} />
-      <SmallStat label="AST" value={statNumber(row.assists)} />
-      <SmallStat label="STL" value={statNumber(row.steals)} />
-      <SmallStat label="BLK" value={statNumber(row.blocks)} />
-      <SmallStat label="+/-" value={statNumber(row.plus_minus)} />
-      <SmallStat label="TO" value={statNumber(row.turnovers)} />
-      <SmallStat label="FLS" value={statNumber(row.fouls)} />
-    </div>
-  );
+function Badge({ children, color }: { children: React.ReactNode; color: "red" | "green" | "blue" | "neutral" }) {
+  const styles = { red: "border-red-300/40 bg-red-500 text-white", green: "border-emerald-300/30 bg-emerald-500/15 text-emerald-200", blue: "border-blue-300/30 bg-blue-500/15 text-blue-200", neutral: "border-white/15 bg-white/[.05] text-zinc-300" };
+  return <span className={`rounded-full border px-3 py-1.5 text-[8px] font-black uppercase tracking-[.13em] ${styles[color]}`}>{children}</span>;
 }
 
-function DesktopStat({ value }: { value: number }) {
-  return (
-    <div className="hidden text-center text-sm font-black text-white md:block">
-      {value}
-    </div>
-  );
+function Info({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0 rounded-xl border border-white/10 bg-black/30 p-4"><p className="text-[8px] font-black uppercase tracking-[.14em] text-zinc-600">{label}</p><p className="mt-1 break-words text-xs font-bold leading-5 text-zinc-200">{value}</p></div>;
 }
 
-function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
-  return (
-    <div className="mb-4">
-      <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-        {eyebrow}
-      </p>
-
-      <h2 className="text-3xl font-black">{title}</h2>
-    </div>
-  );
+function SectionTitle({ kicker, title, subtitle }: { kicker: string; title: string; subtitle?: string }) {
+  return <div><p className="text-[9px] font-black uppercase tracking-[.2em] text-orange-300">{kicker}</p><h2 className="mt-2 text-3xl font-black uppercase leading-none sm:text-5xl">{title}</h2>{subtitle ? <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400">{subtitle}</p> : null}</div>;
 }
 
-function MiniInfo({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/60 p-4">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-        {label}
-      </p>
-
-      <p className="mt-2 text-sm font-black text-white">{value}</p>
-    </div>
-  );
+function Empty({ text }: { text: string }) {
+  return <div className="p-8 text-center"><p className="mx-auto max-w-xl text-sm leading-6 text-zinc-500">{text}</p></div>;
 }
 
-function BigStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-black/60 p-4 text-center">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-        {label}
-      </p>
-
-      <p className="mt-2 text-4xl font-black text-orange-300">
-        <AnimatedNumber value={value} />
-      </p>
-    </div>
-  );
+function PeriodRow({ name, scores, total }: { name: string; scores: (number | null)[]; total: number | null }) {
+  return <tr className="border-t border-white/[.07]"><td className="px-5 py-4 text-sm font-black uppercase">{name}</td>{scores.map((score, index) => <td key={index} className="px-3 py-4 text-center text-sm font-bold text-zinc-300">{score ?? "–"}</td>)}<td className="px-5 py-4 text-center text-xl font-black text-orange-300">{total ?? "–"}</td></tr>;
 }
 
-function TotalCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-zinc-950/90 p-4 text-center backdrop-blur-sm">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-        {label}
-      </p>
-
-      <p className="mt-2 text-3xl font-black text-white">{value}</p>
-    </div>
-  );
+function LeaderCard({ label, row, value, special = false }: { label: string; row: DisplayStat | null; value: "points" | "rebounds" | "assists"; special?: boolean }) {
+  if (!row) return null;
+  return <Link href={row.profileHref} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5 ${special ? "border-orange-400/35 bg-orange-500/10" : "border-white/10 bg-slate-950/85"}`}><PlayerAvatar row={row} /><div className="min-w-0"><p className="text-[8px] font-black uppercase tracking-[.12em] text-orange-300">{label}</p><p className="mt-1 truncate text-sm font-black uppercase">{row.name}</p><p className="mt-1 text-xs font-bold text-zinc-500">{row[value]} {value === "points" ? "PTS" : value === "rebounds" ? "REB" : "AST"}</p></div></Link>;
 }
 
-function SmallStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/60 px-2 py-3 text-center">
-      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-zinc-500">
-        {label}
-      </p>
-
-      <p className="mt-1 text-lg font-black text-white">{value}</p>
-    </div>
-  );
+function PlayerAvatar({ row }: { row: DisplayStat }) {
+  return row.photoUrl ? <img src={row.photoUrl} alt="" className="h-12 w-12 shrink-0 rounded-xl border border-white/10 object-cover" style={{ objectPosition: row.photoPosition }} /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#0B1F3A] text-xs font-black text-orange-300">{row.initials}</span>;
 }
 
-function EmptyBox({ text }: { text: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-950/90 p-5 text-sm text-zinc-400 backdrop-blur-sm">
-      {text}
-    </div>
-  );
+function TeamSummary({ name, totals: teamTotals, players }: { name: string; totals: TeamTotals; players: number }) {
+  return <div className="rounded-2xl border border-white/10 bg-slate-950/85 p-5"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-black uppercase">{name}</h3><span className="text-[9px] font-black uppercase text-zinc-600">{players} stat lines</span></div><div className="mt-4 grid grid-cols-4 gap-2"><MiniStat label="PTS" value={teamTotals.points} /><MiniStat label="REB" value={teamTotals.rebounds} /><MiniStat label="AST" value={teamTotals.assists} /><MiniStat label="3PM" value={teamTotals.threePointers} /></div></div>;
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-xl border border-white/[.07] bg-white/[.03] p-2 text-center"><p className="text-lg font-black text-orange-300">{value}</p><p className="text-[7px] font-black uppercase tracking-[.1em] text-zinc-600">{label}</p></div>;
+}
+
+function BoxScoreRow({ row, team }: { row: DisplayStat; team: string }) {
+  return <tr className="border-t border-white/[.07] text-xs"><td className="px-4 py-3"><Link href={row.profileHref} className="flex items-center gap-3"><PlayerAvatar row={row} /><span><span className="block font-black uppercase text-white">{row.name}</span><span className="mt-1 block text-[8px] font-bold uppercase tracking-[.08em] text-zinc-600">{row.relationship} · {row.position}</span></span></Link></td><td className="px-3 py-3 font-bold text-zinc-400">{team}</td><Cell value={row.minutes ?? "–"} /><Cell value={row.points} strong /><Cell value={row.threePointers} /><Cell value={row.rebounds} /><Cell value={row.assists} /><Cell value={row.steals} /><Cell value={row.blocks} /><Cell value={row.turnovers} /><Cell value={row.fouls} /><Cell value={row.plusMinus > 0 ? `+${row.plusMinus}` : row.plusMinus} /></tr>;
+}
+
+function Cell({ value, strong = false }: { value: string | number; strong?: boolean }) {
+  return <td className={`px-3 py-3 text-center ${strong ? "text-base font-black text-orange-300" : "font-bold text-zinc-400"}`}>{value}</td>;
+}
+
+function RosterCard({ name, players }: { name: string; players: { name: string; detail: string; href: string }[] }) {
+  return <article className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85"><div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4"><h3 className="text-lg font-black uppercase">{name}</h3><span className="rounded-full bg-white/[.05] px-3 py-1 text-[8px] font-black uppercase text-zinc-500">{players.length} players</span></div>{players.length ? <div className="grid gap-px bg-white/[.06] sm:grid-cols-2">{players.map((player, index) => <Link key={`${player.name}-${index}`} href={player.href} className="flex min-w-0 items-center gap-3 bg-slate-950 px-4 py-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-orange-500 text-[10px] font-black text-black">{index + 1}</span><span className="min-w-0"><span className="block truncate text-xs font-black uppercase">{player.name}</span><span className="mt-1 block text-[8px] font-bold uppercase text-zinc-600">{player.detail}</span></span></Link>)}</div> : <Empty text="No lineup has been published for this team." />}</article>;
+}
+
+function ListCard({ title, items, empty }: { title: string; items: string[]; empty: string }) {
+  return <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/85 p-5"><p className="text-[9px] font-black uppercase tracking-[.15em] text-orange-300">{title}</p>{items.length ? <ul className="mt-3 space-y-2">{items.map((item) => <li key={item} className="rounded-lg bg-white/[.035] px-3 py-2 text-sm font-bold text-zinc-300">{item}</li>)}</ul> : <p className="mt-3 text-sm text-zinc-500">{empty}</p>}</div>;
 }
