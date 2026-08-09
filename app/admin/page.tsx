@@ -42,6 +42,14 @@ const coreCards: AdminCard[] = [
     featured: true,
   },
   {
+    title: "Teams",
+    description:
+      "Create permanent team profiles and connect rosters, games, events, training, media, verification and profile claims.",
+    href: "/admin/teams",
+    badge: "Teams",
+    featured: true,
+  },
+  {
     title: "Player Applications",
     description:
       "Review incoming applications and approve hoopers into the correct category.",

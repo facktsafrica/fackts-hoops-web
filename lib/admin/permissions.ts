@@ -1,6 +1,7 @@
 export const ADMIN_CAPABILITIES = [
   { key: "ticker", label: "Ticker / Site Notice" },
   { key: "players", label: "Players" },
+  { key: "teams", label: "Teams" },
   { key: "applications", label: "Player Applications" },
   { key: "player_access", label: "Player Accounts" },
   { key: "games", label: "Games" },
@@ -88,6 +89,7 @@ const ADMIN_ROUTE_CAPABILITIES: Array<{
   { prefix: "/admin/player-applications", capability: "applications" },
   { prefix: "/admin/player-access", capability: "player_access" },
   { prefix: "/admin/player-profiles", capability: "players" },
+  { prefix: "/admin/teams", capability: "teams" },
   { prefix: "/admin/guest-one-on-one-stats", capability: "guest_one_on_one_stats" },
   { prefix: "/admin/guest-game-stats", capability: "guest_game_stats" },
   { prefix: "/admin/roster-announcements", capability: "roster_announcements" },

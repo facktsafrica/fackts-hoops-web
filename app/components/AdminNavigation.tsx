@@ -9,6 +9,7 @@ const adminItems = [
   ["Control Room", "/admin"],
   ["Players", "/admin/players"],
   ["Public Player Profiles", "/admin/player-profiles"],
+  ["Teams", "/admin/teams"],
   ["Player Applications", "/admin/player-applications"],
   ["Player Accounts", "/admin/player-access"],
   ["Games", "/admin/games"],
