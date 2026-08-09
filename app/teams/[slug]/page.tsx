@@ -4,7 +4,7 @@ import TeamActions from "./TeamActions";
 import GameMedia, { type GameMediaItem } from "@/app/games/[id]/GameMedia";
 import {
   loadTeamProfileBundle,
-  type TeamEvent,
+  type TeamCompetitionRecord,
   type TeamGame,
   type TeamMember,
   type TrainingSession,
@@ -57,7 +57,16 @@ export default async function TeamProfilePage({
   const bundle = await loadTeamProfileBundle(slug);
   if (!bundle) notFound();
 
-  const { profile, roster, games, training, media, events, performance, canClaim } = bundle;
+  const {
+    profile,
+    roster,
+    games,
+    training,
+    media,
+    competitionRecords,
+    performance,
+    canClaim,
+  } = bundle;
   const requestedTab = String(query.tab || "overview") as TeamTab;
   const activeTab = tabs.some((tab) => tab.key === requestedTab) ? requestedTab : "overview";
   const verified = profile.verification_status === "verified";
@@ -120,7 +129,7 @@ export default async function TeamProfilePage({
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-2 px-4 py-4 sm:grid-cols-4 sm:px-6 lg:grid-cols-7 lg:px-8">
           <TopMetric value={String(activeRoster.length)} label="Active roster" />
           <TopMetric value={String(games.length)} label="Games" />
-          <TopMetric value={String(events.length)} label="Events" />
+          <TopMetric value={String(competitionRecords.length)} label="Competitions" />
           <TopMetric value={`${Math.round(performance.winPercentage)}%`} label="Win rate" />
           <TopMetric value={String(training.length)} label="Training" />
           <TopMetric value={String(media.length)} label="Media" />
@@ -156,59 +165,6 @@ export default async function TeamProfilePage({
             </article>
           </section>
 
-          {profile.slug === "fackts-africa" ? (
-            <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8 lg:pb-16">
-              <SectionHeading
-                eyebrow="FACKTS competition record"
-                title="The home-grown competition and completed event"
-                text="FACKTS Africa connects its ongoing one-on-one competition and its documented tournament history without mixing event-only participants into the permanent Teams directory."
-              />
-              <div className="mt-7 grid gap-5 md:grid-cols-2">
-                <Link
-                  href="/one-on-one"
-                  className="group overflow-hidden rounded-[1.6rem] border border-orange-400/30 bg-gradient-to-br from-orange-500/20 via-[#07162b] to-slate-950 p-6 transition hover:-translate-y-1 hover:border-orange-300/60 sm:p-8"
-                >
-                  <span className="inline-flex rounded-full bg-orange-500 px-3 py-1.5 text-[8px] font-black uppercase tracking-[.14em] text-black">
-                    Ongoing · 2026 season
-                  </span>
-                  <p className="mt-5 text-[9px] font-black uppercase tracking-[.2em] text-orange-300">
-                    FACKTS competition
-                  </p>
-                  <h3 className="mt-2 text-3xl font-black uppercase tracking-tight sm:text-4xl">
-                    FACKTS Kings
-                  </h3>
-                  <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400">
-                    Open the complete one-on-one record for matchups, results, standings, competitors and media.
-                  </p>
-                  <span className="mt-6 inline-flex text-[10px] font-black uppercase tracking-[.13em] text-orange-200">
-                    Enter FACKTS Kings →
-                  </span>
-                </Link>
-
-                <Link
-                  href="/events/fackts-africa-health-checkup-cup-2025"
-                  className="group overflow-hidden rounded-[1.6rem] border border-blue-400/25 bg-gradient-to-br from-blue-500/20 via-[#07162b] to-slate-950 p-6 transition hover:-translate-y-1 hover:border-blue-300/55 sm:p-8"
-                >
-                  <span className="inline-flex rounded-full border border-emerald-300/30 bg-emerald-500/15 px-3 py-1.5 text-[8px] font-black uppercase tracking-[.14em] text-emerald-200">
-                    Completed · 2025
-                  </span>
-                  <p className="mt-5 text-[9px] font-black uppercase tracking-[.2em] text-blue-300">
-                    FACKTS event archive
-                  </p>
-                  <h3 className="mt-2 text-3xl font-black uppercase tracking-tight sm:text-4xl">
-                    Health Check-Up Cup
-                  </h3>
-                  <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400">
-                    Open the official Event Hub for its overview, results, teams, media, partners and organizer record.
-                  </p>
-                  <span className="mt-6 inline-flex text-[10px] font-black uppercase tracking-[.13em] text-blue-200">
-                    Open completed Event Hub →
-                  </span>
-                </Link>
-              </div>
-            </section>
-          ) : null}
-
           <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8 lg:pb-16">
             <div className="flex items-end justify-between gap-4">
               <SectionHeading eyebrow="Current form" title="Latest team record" />
@@ -224,8 +180,8 @@ export default async function TeamProfilePage({
                 {activeRoster.length ? <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">{activeRoster.slice(0, 6).map((member) => <MiniMember key={member.id} member={member} />)}</div> : <EmptyState title="Roster coming soon" body="Permanent team members will appear after publication." compact />}
               </div>
               <div>
-                <div className="flex items-end justify-between gap-3"><SectionHeading eyebrow="Event history" title="Competition record" /><Link href={tabHref("events")} className="shrink-0 text-[9px] font-black uppercase text-orange-300">All events →</Link></div>
-                {events.length ? <div className="mt-6 grid gap-3">{events.slice(0, 3).map((event) => <EventRow key={event.id} event={event} />)}</div> : <EmptyState title="No event history linked" body="An event appears here only when this permanent team actually participated." compact />}
+                <div className="flex items-end justify-between gap-3"><SectionHeading eyebrow="Competition history" title="Competition record" /><Link href={tabHref("events")} className="shrink-0 text-[9px] font-black uppercase text-orange-300">All records →</Link></div>
+                {competitionRecords.length ? <div className="mt-6 grid gap-3">{competitionRecords.slice(0, 3).map((record) => <CompetitionRow key={record.id} record={record} />)}</div> : <EmptyState title="No competition history linked" body="A competition appears here only when this permanent team actually participated or organized it." compact />}
               </div>
             </div>
           </section>
@@ -271,8 +227,8 @@ export default async function TeamProfilePage({
 
       {activeTab === "events" ? (
         <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-          <SectionHeading eyebrow="Competition history" title="Events" text="Only events connected to this permanent team appear here. Other tournament participants remain inside their own Event Hub record." />
-          {events.length ? <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{events.map((event) => <EventCard key={event.id} event={event} />)}</div> : <EmptyState title="No events linked" body="Teams Admin can connect this profile to a published event without copying every participant into the permanent Teams directory." />}
+          <SectionHeading eyebrow="Competition history" title="Competitions and events" text="Permanent competition routes and verified Event Hubs connected to this team live together here. Other tournament participants remain inside their own Event Hub record." />
+          {competitionRecords.length ? <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{competitionRecords.map((record) => <CompetitionCard key={record.id} record={record} />)}</div> : <EmptyState title="No competitions linked" body="Teams Admin can connect this profile to a published event without copying every participant into the permanent Teams directory." />}
         </section>
       ) : null}
 
@@ -314,6 +270,6 @@ function GameCard({ game }: { game: TeamGame }) { const card = <article classNam
 function ResultPill({ result }: { result: "W" | "L" | "D" }) { return <span className={`grid h-6 min-w-6 place-items-center rounded-full px-1.5 text-[8px] font-black ${result === "W" ? "bg-emerald-500 text-black" : result === "L" ? "bg-red-500 text-white" : "bg-white/10 text-white"}`}>{result}</span>; }
 function PerformanceMetric({ value, label, tone = "default" }: { value: string | number; label: string; tone?: "default" | "green" | "red" | "orange" | "blue" }) { const colors={default:"text-white",green:"text-emerald-300",red:"text-red-300",orange:"text-orange-300",blue:"text-blue-300"}; return <div className="rounded-2xl border border-white/10 bg-slate-950/85 p-5"><p className={`text-3xl font-black ${colors[tone]}`}>{value}</p><p className="mt-2 text-[8px] font-black uppercase tracking-[.13em] text-zinc-600">{label}</p></div>; }
 
-function EventRow({ event }: { event: TeamEvent }) { return <Link href={`/events/${event.slug}`} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-950 p-4 transition hover:border-orange-400/40"><div className="min-w-0"><p className="truncate text-sm font-black uppercase">{event.title}</p><p className="mt-1 truncate text-[8px] font-bold uppercase tracking-[.1em] text-zinc-600">{event.division || event.participation_status || "Participation recorded"}</p></div><span className="shrink-0 text-[9px] font-black text-orange-300">Open →</span></Link>; }
-function EventCard({ event }: { event: TeamEvent }) { return <article className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85"><div className="relative aspect-[16/10] overflow-hidden bg-[#0b1f3a]">{event.hero_image_url || event.poster_url ? <img src={event.hero_image_url || event.poster_url || ""} alt={event.title} loading="lazy" className="h-full w-full object-cover" /> : null}<div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"/><span className="absolute left-3 top-3 rounded-full bg-orange-500 px-3 py-1.5 text-[8px] font-black uppercase text-black">{event.participation_status || "Recorded"}</span></div><div className="p-5"><p className="text-[8px] font-black uppercase tracking-[.14em] text-orange-300">{formatDate(event.start_date)}</p><h3 className="mt-2 text-xl font-black uppercase">{event.title}</h3><p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-500">{event.summary || [event.venue, event.location].filter(Boolean).join(" · ") || "Published event record"}</p>{event.final_position ? <p className="mt-3 text-[9px] font-black uppercase text-emerald-300">Finish: {event.final_position}</p> : null}<Link href={`/events/${event.slug}`} className="mt-5 flex min-h-11 items-center justify-center rounded-xl border border-white/10 text-[9px] font-black uppercase tracking-[.12em] hover:border-orange-400/45">Open Event Hub</Link></div></article>; }
+function CompetitionRow({ record }: { record: TeamCompetitionRecord }) { return <Link href={record.href} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-950 p-4 transition hover:border-orange-400/40"><div className="min-w-0"><p className="truncate text-sm font-black uppercase">{record.title}</p><p className="mt-1 truncate text-[8px] font-bold uppercase tracking-[.1em] text-zinc-600">{record.status || record.division || "Competition record"}</p></div><span className="shrink-0 text-[9px] font-black text-orange-300">Open →</span></Link>; }
+function CompetitionCard({ record }: { record: TeamCompetitionRecord }) { return <article className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85"><div className="relative aspect-[16/10] overflow-hidden bg-[#0b1f3a]">{record.image_url ? <img src={record.image_url} alt={record.title} loading="lazy" className="h-full w-full object-cover transition duration-500 hover:scale-105" /> : <div className="grid h-full place-items-center bg-[radial-gradient(circle,rgba(245,130,32,.22),transparent_60%),#0b1f3a] text-4xl font-black text-orange-300">FH</div>}<div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"/><span className="absolute left-3 top-3 rounded-full bg-orange-500 px-3 py-1.5 text-[8px] font-black uppercase text-black">{record.record_type === "event" ? "Event Hub" : "Competition"}</span></div><div className="p-5"><p className="text-[8px] font-black uppercase tracking-[.14em] text-orange-300">{record.start_date ? formatDate(record.start_date) : record.status || "FACKTS record"}</p><h3 className="mt-2 text-xl font-black uppercase">{record.title}</h3><p className="mt-2 line-clamp-3 text-xs leading-5 text-zinc-500">{record.summary || "Published competition record"}</p>{record.final_position ? <p className="mt-3 text-[9px] font-black uppercase text-emerald-300">Finish: {record.final_position}</p> : null}<Link href={record.href} className="mt-5 flex min-h-11 items-center justify-center rounded-xl border border-white/10 text-[9px] font-black uppercase tracking-[.12em] transition hover:border-orange-400/45">{record.record_type === "event" ? "Open Event Hub" : "Open Competition"}</Link></div></article>; }
 function TrainingCard({ session }: { session: TrainingSession }) { return <article className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85">{session.image_url ? <div className="aspect-video overflow-hidden"><img src={session.image_url} alt={session.title} loading="lazy" className="h-full w-full object-cover" /></div> : null}<div className="p-5"><p className="text-[8px] font-black uppercase tracking-[.14em] text-orange-300">{formatDate(session.session_date)}</p><h3 className="mt-2 text-xl font-black uppercase">{session.title}</h3><p className="mt-2 text-[9px] font-bold uppercase text-blue-300">{session.focus_area || session.venue || "Team development"}</p>{session.summary ? <p className="mt-3 text-xs leading-5 text-zinc-500">{session.summary}</p> : null}</div></article>; }

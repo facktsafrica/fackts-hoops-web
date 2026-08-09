@@ -5,6 +5,7 @@ import {
   type CareerGameStatRow,
 } from "@/lib/hoops/careerStats";
 import {
+  canonicalCompetitionName,
   getCompetition,
   getGameDate,
   getGameTitle,
@@ -613,7 +614,7 @@ export async function loadPublicPlayerProfile(
         id: text(row.id) || `${gameId || "game"}-${index}`,
         gameId,
         title: getGameTitle(game),
-        competition: eventName || getCompetition(game),
+        competition: canonicalCompetitionName(eventName || getCompetition(game)),
         date: getGameDate(game),
         venue: getLocation(game),
         points: numberValue(row.points),
@@ -639,13 +640,21 @@ export async function loadPublicPlayerProfile(
       String(right.date || "").localeCompare(String(left.date || ""))
     );
 
-  const competitionGroups = new Map<string, PublicPlayerGameLog[]>();
+  const competitionGroups = new Map<
+    string,
+    { name: string; rows: PublicPlayerGameLog[] }
+  >();
   gameLog.forEach((game) => {
-    const name = game.competition || "FACKTS Hoops";
-    competitionGroups.set(name, [...(competitionGroups.get(name) || []), game]);
+    const name = canonicalCompetitionName(game.competition);
+    const identity = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const existing = competitionGroups.get(identity);
+    competitionGroups.set(identity, {
+      name: existing?.name || name,
+      rows: [...(existing?.rows || []), game],
+    });
   });
-  const competitions = Array.from(competitionGroups.entries()).map(
-    ([name, rows]): PublicPlayerCompetition => {
+  const competitions = Array.from(competitionGroups.values()).map(
+    ({ name, rows }): PublicPlayerCompetition => {
       const gamesCount = rows.length;
       const points = rows.reduce((sum, row) => sum + row.points, 0);
       const rebounds = rows.reduce((sum, row) => sum + row.rebounds, 0);

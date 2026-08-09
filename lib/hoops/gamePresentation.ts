@@ -141,8 +141,22 @@ export function getWinner(game: GameRecord) {
   return home > away ? getHomeTeam(game) : getAwayTeam(game);
 }
 
+export function canonicalCompetitionName(value?: string | null) {
+  const name = String(value || "FACKTS Hoops").trim().replace(/\s+/g, " ");
+  const identity = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+  if (["courttakeover", "facktscourttakeover"].includes(identity)) {
+    return "Court Takeover";
+  }
+
+  if (identity === "facktskings") return "FACKTS Kings";
+  return name || "FACKTS Hoops";
+}
+
 export function getCompetition(game: GameRecord) {
-  return game.competition_name || game.match_type || "FACKTS Hoops";
+  return canonicalCompetitionName(
+    game.competition_name || game.match_type || "FACKTS Hoops"
+  );
 }
 
 export function getGameFormat(game: GameRecord) {

@@ -119,6 +119,19 @@ export type TeamEvent = {
   final_position?: string | null;
 };
 
+export type TeamCompetitionRecord = {
+  id: string;
+  title: string;
+  href: string;
+  summary?: string | null;
+  record_type: "competition" | "event";
+  status?: string | null;
+  division?: string | null;
+  final_position?: string | null;
+  start_date?: string | null;
+  image_url?: string | null;
+};
+
 export type TeamPerformance = {
   played: number;
   wins: number;
@@ -141,6 +154,7 @@ export type TeamProfileBundle = {
   training: TrainingSession[];
   media: TeamMedia[];
   events: TeamEvent[];
+  competitionRecords: TeamCompetitionRecord[];
   performance: TeamPerformance;
   canClaim: boolean;
 };
@@ -171,6 +185,28 @@ type LinkedGameRecord = GameRecord & {
 };
 
 const FALLBACK_TEAM_ID = "fackts-africa-fallback";
+const HEALTH_CHECKUP_CUP_SLUG = "fackts-africa-health-checkup-cup-2025";
+
+const FACKTS_KINGS_RECORD: TeamCompetitionRecord = {
+  id: "fackts-kings",
+  title: "FACKTS Kings",
+  href: "/one-on-one",
+  summary:
+    "The ongoing FACKTS one-on-one competition, connecting matchups, results, standings and player records.",
+  record_type: "competition",
+  status: "2026 season · Ongoing",
+  image_url: "/images/one-on-one-bg.png",
+};
+
+const HEALTH_CHECKUP_CUP_RECORD: TeamCompetitionRecord = {
+  id: HEALTH_CHECKUP_CUP_SLUG,
+  title: "FACKTS Africa Health Check-Up Cup 2025",
+  href: `/events/${HEALTH_CHECKUP_CUP_SLUG}`,
+  summary:
+    "The completed three-day men’s and women’s tournament hosted at KMTC Upper Hill and documented by FACKTS Hoops.",
+  record_type: "event",
+  status: "Completed · 2025",
+};
 
 export const FACKTS_AFRICA_TEAM: TeamProfile = {
   id: FALLBACK_TEAM_ID,
@@ -421,6 +457,7 @@ async function loadAllPublicGames() {
 }
 
 async function loadEvents(
+  profile: TeamProfile,
   links: TeamEventLinkRow[],
   games: TeamGame[]
 ): Promise<TeamEvent[]> {
@@ -430,18 +467,41 @@ async function loadEvents(
         .filter((value): value is string => Boolean(value))
     ),
   ];
-  if (!eventIds.length) return [];
+  const eventRows = new Map<string, Record<string, unknown>>();
+  const eventFields =
+    "event_id,title,slug,summary,start_date,end_date,venue,location,poster_url,hero_image_url";
 
-  const result = await supabase
-    .from("event_case_studies")
-    .select("event_id,title,slug,summary,start_date,end_date,venue,location,poster_url,hero_image_url")
-    .in("event_id", eventIds)
-    .eq("is_public", true);
+  if (eventIds.length) {
+    const result = await supabase
+      .from("event_case_studies")
+      .select(eventFields)
+      .in("event_id", eventIds)
+      .eq("is_public", true);
 
-  if (result.error) return [];
+    if (!result.error) {
+      ((result.data || []) as Array<Record<string, unknown>>).forEach((event) => {
+        eventRows.set(String(event.event_id), event);
+      });
+    }
+  }
+
+  if (profile.slug === FACKTS_AFRICA_TEAM.slug) {
+    const healthCupResult = await supabase
+      .from("event_case_studies")
+      .select(eventFields)
+      .eq("slug", HEALTH_CHECKUP_CUP_SLUG)
+      .eq("is_public", true)
+      .maybeSingle();
+
+    if (!healthCupResult.error && healthCupResult.data) {
+      const event = healthCupResult.data as Record<string, unknown>;
+      eventRows.set(String(event.event_id), event);
+    }
+  }
+
   const linkMap = new Map(links.map((link) => [link.event_id, link]));
 
-  return ((result.data || []) as Array<Record<string, unknown>>)
+  return Array.from(eventRows.values())
     .map((event) => {
       const eventId = String(event.event_id);
       const link = linkMap.get(eventId);
@@ -465,6 +525,44 @@ async function loadEvents(
     .sort((left, right) => timeValue(right.start_date) - timeValue(left.start_date));
 }
 
+function buildCompetitionRecords(
+  profile: TeamProfile,
+  events: TeamEvent[]
+): TeamCompetitionRecord[] {
+  const eventRecords = events.map(
+    (event): TeamCompetitionRecord => ({
+      id: event.id,
+      title: event.title,
+      href: `/events/${event.slug}`,
+      summary:
+        event.summary ||
+        [event.venue, event.location].filter(Boolean).join(" · ") ||
+        "Published FACKTS event record.",
+      record_type: "event",
+      status: event.participation_status || "Recorded",
+      division: event.division || null,
+      final_position: event.final_position || null,
+      start_date: event.start_date || null,
+      image_url: event.hero_image_url || event.poster_url || null,
+    })
+  );
+
+  if (profile.slug !== FACKTS_AFRICA_TEAM.slug) return eventRecords;
+
+  const healthCup = eventRecords.find(
+    (record) => record.href === `/events/${HEALTH_CHECKUP_CUP_SLUG}`
+  );
+  const otherEvents = eventRecords.filter(
+    (record) => record.href !== `/events/${HEALTH_CHECKUP_CUP_SLUG}`
+  );
+
+  return [
+    FACKTS_KINGS_RECORD,
+    healthCup || HEALTH_CHECKUP_CUP_RECORD,
+    ...otherEvents,
+  ];
+}
+
 export async function loadTeamDirectory(): Promise<TeamDirectoryItem[]> {
   const profiles = await loadPublicTeamProfiles();
   const allGames = await loadAllPublicGames();
@@ -479,7 +577,7 @@ export async function loadTeamDirectory(): Promise<TeamDirectoryItem[]> {
         profile: bundle.profile,
         rosterCount: bundle.roster.length,
         gameCount: bundle.games.length,
-        eventCount: bundle.events.length,
+        eventCount: bundle.competitionRecords.length,
         mediaCount: bundle.media.length,
         latestGame: bundle.games.find((game) => game.result) || bundle.games[0] || null,
         performance: bundle.performance,
@@ -595,7 +693,8 @@ export async function loadTeamProfileBundle(
   const eventLinks = eventLinksResult.error
     ? []
     : ((eventLinksResult.data || []) as TeamEventLinkRow[]);
-  const events = await loadEvents(eventLinks, games);
+  const events = await loadEvents(profile, eventLinks, games);
+  const competitionRecords = buildCompetitionRecords(profile, events);
 
   return {
     profile:
@@ -611,6 +710,7 @@ export async function loadTeamProfileBundle(
       ? []
       : ((mediaResult.data || []) as TeamMedia[]),
     events,
+    competitionRecords,
     performance: calculateTeamPerformance(games),
     canClaim: hasDatabaseProfile,
   };
