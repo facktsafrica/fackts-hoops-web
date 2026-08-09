@@ -29,7 +29,7 @@ export default function GameActions({ gameId, title }: { gameId: string; title: 
         {shareLabel}
       </button>
       <Link href={`/games/${gameId}/report`} className="rounded-xl bg-orange-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.12em] text-black transition hover:bg-orange-400">
-        Print / Save PDF
+        Open game report
       </Link>
     </div>
   );

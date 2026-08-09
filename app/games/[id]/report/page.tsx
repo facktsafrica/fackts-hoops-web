@@ -130,7 +130,28 @@ export default async function GameReportPage({ params }: { params: Promise<{ id:
 
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-950 print:bg-white print:p-0 sm:px-6 sm:py-10">
-      <div className="mx-auto mb-5 flex max-w-[1050px] justify-end print:hidden"><ReportActions gameId={game.id} /></div>
+      <div className="mx-auto mb-5 flex max-w-[1050px] justify-end print:hidden">
+        <ReportActions
+          gameId={game.id}
+          report={{
+            title: getGameTitle(game),
+            competition: getCompetition(game),
+            stage: getStage(game),
+            format: getGameFormat(game),
+            status: getStatusLabel(getGameStatus(game)),
+            verification: getVerificationLabel(game),
+            homeTeam: home,
+            awayTeam: away,
+            homeScore: getHomeScore(game),
+            awayScore: getAwayScore(game),
+            dateTime: formatGameDate(getGameDate(game), true),
+            venue: getLocation(game),
+            updatedAt: formatGameDate(game.updated_at || game.created_at, true),
+            periods,
+            stats,
+          }}
+        />
+      </div>
       <article className="mx-auto max-w-[1050px] overflow-hidden bg-white shadow-xl print:max-w-none print:shadow-none">
         <header className="bg-[#0B1F3A] px-7 py-7 text-white sm:px-10">
           <div className="flex items-start justify-between gap-6">
