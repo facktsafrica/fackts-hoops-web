@@ -460,39 +460,71 @@ textarea:focus {
 /* END FACKTS MOBILE SAFE COMPACT FIX */
 
 /* =========================================================
-   GLOBAL MOTION CONTROLLER
-   Handles server and late-loading Supabase content.
+   HYDRATION-SAFE GLOBAL MOTION
+   CSS owns entrance motion so streamed Server Components are
+   never changed by JavaScript before React hydrates them.
+   `backwards` releases transform after the entrance finishes,
+   preserving every existing card and button hover interaction.
    ========================================================= */
 
-.fackts-motion-item {
-  opacity: 0;
-  transform: translate3d(0, 18px, 0) scale(0.985);
-  transition:
-    opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms ease,
-    border-color 220ms ease,
-    background-color 220ms ease;
-  transition-delay: var(--fackts-delay, 0ms);
-  will-change: opacity, transform;
+@keyframes facktsItemReveal {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
 }
 
-.fackts-motion-item.fackts-motion-visible {
-  opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
+@keyframes facktsRowReveal {
+  from {
+    opacity: 0;
+    transform: translate3d(-14px, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
-main tbody > tr.fackts-motion-item {
-  transform: translate3d(-14px, 0, 0);
+main :where(article, li, .grid > [class*="rounded-2xl"], .grid > [class*="rounded-3xl"]) {
+  animation: facktsItemReveal 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
-main tbody > tr.fackts-motion-visible {
-  transform: translate3d(0, 0, 0);
+main tbody > tr {
+  animation: facktsRowReveal 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
-main article.fackts-motion-visible:hover,
-main a.fackts-motion-visible:hover {
-  transform: translate3d(0, -4px, 0) scale(1.008);
+main :where(.grid, ul, ol, tbody) > :nth-child(2) {
+  animation-delay: 45ms;
+}
+
+main :where(.grid, ul, ol, tbody) > :nth-child(3) {
+  animation-delay: 90ms;
+}
+
+main :where(.grid, ul, ol, tbody) > :nth-child(4) {
+  animation-delay: 135ms;
+}
+
+main :where(.grid, ul, ol, tbody) > :nth-child(5) {
+  animation-delay: 180ms;
+}
+
+main :where(.grid, ul, ol, tbody) > :nth-child(6) {
+  animation-delay: 225ms;
+}
+
+main :where(.grid, ul, ol, tbody) > :nth-child(7) {
+  animation-delay: 270ms;
+}
+
+main :where(.grid, ul, ol, tbody) > :nth-child(8) {
+  animation-delay: 315ms;
 }
 
 header,
@@ -503,21 +535,15 @@ nav,
 }
 
 @media (max-width: 768px) {
-  .fackts-motion-item {
-    transform: translate3d(0, 12px, 0) scale(0.99);
-    transition-duration: 480ms;
-  }
-
-  .fackts-motion-item.fackts-motion-visible {
-    transform: translate3d(0, 0, 0) scale(1);
+  main :where(article, li, .grid > [class*="rounded-2xl"], .grid > [class*="rounded-3xl"]),
+  main tbody > tr {
+    animation-duration: 480ms;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fackts-motion-item,
-  .fackts-motion-item.fackts-motion-visible {
-    opacity: 1 !important;
-    transform: none !important;
-    transition: none !important;
+  main :where(article, li, .grid > [class*="rounded-2xl"], .grid > [class*="rounded-3xl"]),
+  main tbody > tr {
+    animation: none !important;
   }
 }

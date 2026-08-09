@@ -156,6 +156,59 @@ export default async function TeamProfilePage({
             </article>
           </section>
 
+          {profile.slug === "fackts-africa" ? (
+            <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8 lg:pb-16">
+              <SectionHeading
+                eyebrow="FACKTS competition record"
+                title="The home-grown competition and completed event"
+                text="FACKTS Africa connects its ongoing one-on-one competition and its documented tournament history without mixing event-only participants into the permanent Teams directory."
+              />
+              <div className="mt-7 grid gap-5 md:grid-cols-2">
+                <Link
+                  href="/one-on-one"
+                  className="group overflow-hidden rounded-[1.6rem] border border-orange-400/30 bg-gradient-to-br from-orange-500/20 via-[#07162b] to-slate-950 p-6 transition hover:-translate-y-1 hover:border-orange-300/60 sm:p-8"
+                >
+                  <span className="inline-flex rounded-full bg-orange-500 px-3 py-1.5 text-[8px] font-black uppercase tracking-[.14em] text-black">
+                    Ongoing · 2026 season
+                  </span>
+                  <p className="mt-5 text-[9px] font-black uppercase tracking-[.2em] text-orange-300">
+                    FACKTS competition
+                  </p>
+                  <h3 className="mt-2 text-3xl font-black uppercase tracking-tight sm:text-4xl">
+                    FACKTS Kings
+                  </h3>
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400">
+                    Open the complete one-on-one record for matchups, results, standings, competitors and media.
+                  </p>
+                  <span className="mt-6 inline-flex text-[10px] font-black uppercase tracking-[.13em] text-orange-200">
+                    Enter FACKTS Kings →
+                  </span>
+                </Link>
+
+                <Link
+                  href="/events/fackts-africa-health-checkup-cup-2025"
+                  className="group overflow-hidden rounded-[1.6rem] border border-blue-400/25 bg-gradient-to-br from-blue-500/20 via-[#07162b] to-slate-950 p-6 transition hover:-translate-y-1 hover:border-blue-300/55 sm:p-8"
+                >
+                  <span className="inline-flex rounded-full border border-emerald-300/30 bg-emerald-500/15 px-3 py-1.5 text-[8px] font-black uppercase tracking-[.14em] text-emerald-200">
+                    Completed · 2025
+                  </span>
+                  <p className="mt-5 text-[9px] font-black uppercase tracking-[.2em] text-blue-300">
+                    FACKTS event archive
+                  </p>
+                  <h3 className="mt-2 text-3xl font-black uppercase tracking-tight sm:text-4xl">
+                    Health Check-Up Cup
+                  </h3>
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400">
+                    Open the official Event Hub for its overview, results, teams, media, partners and organizer record.
+                  </p>
+                  <span className="mt-6 inline-flex text-[10px] font-black uppercase tracking-[.13em] text-blue-200">
+                    Open completed Event Hub →
+                  </span>
+                </Link>
+              </div>
+            </section>
+          ) : null}
+
           <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8 lg:pb-16">
             <div className="flex items-end justify-between gap-4">
               <SectionHeading eyebrow="Current form" title="Latest team record" />

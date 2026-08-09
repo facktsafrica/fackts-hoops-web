@@ -5,7 +5,6 @@ import PublicHeader from "./components/PublicHeader";
 import PwaInstallButton from "./components/PwaInstallButton";
 import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
 import PlayerPortalReturn from "./components/PlayerPortalReturn";
-import FacktsMotionSystem from "./components/FacktsMotionSystem";
 import PublicPageShell from "./components/PublicPageShell";
 
 export const metadata: Metadata = {
@@ -68,7 +67,6 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body>
-        <FacktsMotionSystem />
         <PwaServiceWorkerClient />
         <PublicHeader />
         <PwaInstallButton />

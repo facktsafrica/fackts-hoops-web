@@ -182,7 +182,7 @@ export const FACKTS_AFRICA_TEAM: TeamProfile = {
   team_type: "FACKTS organization team",
   division: "Open",
   description:
-    "The home team and player-development identity behind FACKTS Hoops, FACKTS Kings and FACKTS basketball documentation.",
+    "The home team and player-development identity behind FACKTS Hoops, the ongoing FACKTS Kings competition and the documented FACKTS Africa Health Check-Up Cup.",
   logo_url: "/fackts-hoops-logo.png",
   cover_image_url: "/images/one-on-one-bg.png",
   primary_color: "#0B1F3A",
