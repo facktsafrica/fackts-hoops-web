@@ -1,45 +1,161 @@
-// Event publication is managed from Admin, so this archive must reflect a
-// newly published/unpublished event immediately instead of serving stale data.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import EventsExplorer, { type EventDirectoryItem } from "./EventsExplorer";
 
-type EventCase = { event_id: string; slug: string; title: string; summary: string | null; start_date: string | null; end_date: string | null; venue: string | null; location: string | null; poster_url: string | null; hero_image_url: string | null; photo_count: number; status: string };
+type EventCase = {
+  event_id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  venue: string | null;
+  location: string | null;
+  poster_url: string | null;
+  hero_image_url: string | null;
+  event_type: string | null;
+  age_category: string | null;
+  organizer_name?: string | null;
+  created_at: string;
+};
 
-async function loadEvents() {
-  const db = createSupabaseAdminClient();
-  const { data, error } = await db.from("event_case_studies").select("event_id,slug,title,summary,start_date,end_date,venue,location,poster_url,hero_image_url,photo_count,status").eq("is_public", true).eq("status", "published").order("created_at", { ascending: false });
-  if (error) throw new Error(`PUBLIC_EVENTS_LOAD_FAILED: ${error.message}`);
-  return (data || []) as EventCase[];
+type CountRecord = {
+  event_id: string;
+  record_type: string;
+  score_for: number | null;
+  score_against: number | null;
+};
+
+function kenyaToday() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
 }
 
-function dateLabel(value: string | null) {
-  if (!value) return "Date archive pending";
-  return new Date(`${value}T12:00:00`).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });
+function lifecycle(event: EventCase, today: string): EventDirectoryItem["lifecycle"] {
+  const inferredYear = Number(event.title.match(/\b(20\d{2})\b/)?.[1] || 0);
+  const currentYear = Number(today.slice(0, 4));
+
+  if (!event.start_date && !event.end_date) {
+    return inferredYear && inferredYear < currentYear ? "completed" : "upcoming";
+  }
+
+  const start = event.start_date || event.end_date || today;
+  const end = event.end_date || event.start_date || today;
+  if (today < start) return "upcoming";
+  if (today > end) return "completed";
+  return "live";
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "Date pending";
+  return new Date(`${value}T12:00:00+03:00`).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function dateRange(start: string | null, end: string | null) {
+  if (!start && !end) return "Archive";
+  if (!end || end === start) return formatDate(start || end);
+  return `${formatDate(start)} – ${formatDate(end)}`;
+}
+
+function organizerName(event: EventCase) {
+  if (event.organizer_name?.trim()) return event.organizer_name.trim();
+  if (/fackts/i.test(event.title)) return "FACKTS Africa";
+  return "Organizer pending";
+}
+
+async function loadEvents(): Promise<EventDirectoryItem[]> {
+  const db = createSupabaseAdminClient();
+  const { data, error } = await db
+    .from("event_case_studies")
+    .select("*")
+    .eq("is_public", true)
+    .eq("status", "published")
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`PUBLIC_EVENTS_LOAD_FAILED: ${error.message}`);
+  const events = (data || []) as EventCase[];
+  if (!events.length) return [];
+
+  const ids = events.map((event) => event.event_id);
+  const { data: recordData } = await db
+    .from("event_records")
+    .select("event_id,record_type,score_for,score_against")
+    .in("event_id", ids)
+    .eq("is_public", true)
+    .in("status", ["verified", "published"]);
+
+  const records = (recordData || []) as CountRecord[];
+  const today = kenyaToday();
+
+  return events
+    .map((event): EventDirectoryItem => ({
+      eventId: event.event_id,
+      slug: event.slug || event.event_id,
+      title: event.title,
+      summary: event.summary || "",
+      startDate: event.start_date,
+      endDate: event.end_date,
+      dateLabel: dateRange(event.start_date, event.end_date),
+      venue: event.venue || "",
+      location: event.location || "",
+      imageUrl: event.poster_url || event.hero_image_url || "",
+      eventType: event.event_type || "Basketball",
+      ageCategory: event.age_category || "Open",
+      organizer: organizerName(event),
+      lifecycle: lifecycle(event, today),
+      teamCount: records.filter((record) => record.event_id === event.event_id && record.record_type === "team").length,
+      gameCount: records.filter((record) => record.event_id === event.event_id && record.record_type === "result" && record.score_for != null && record.score_against != null).length,
+    }))
+    .sort((a, b) => {
+      const rank = { live: 0, upcoming: 1, completed: 2 };
+      return rank[a.lifecycle] - rank[b.lifecycle]
+        || String(a.startDate || "9999-12-31").localeCompare(String(b.startDate || "9999-12-31"));
+    });
 }
 
 export default async function EventsPage() {
   const events = await loadEvents();
-  return <main className="fackts-public-bg min-h-screen text-white">
-    <section className="relative overflow-hidden border-b border-white/10 bg-slate-950/65">
-      <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-orange-500/20 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full bg-blue-600/20 blur-3xl" />
-      <div className="relative z-10 mx-auto max-w-7xl px-5 py-12 sm:px-6 md:py-16 lg:px-8">
-        <span className="inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs font-black uppercase tracking-[.2em] text-orange-300">Events by FACKTS</span>
-        <h1 className="mt-4 max-w-5xl text-4xl font-black uppercase leading-[.94] sm:text-6xl lg:text-7xl">Every tournament. One complete story.</h1>
-        <p className="mt-5 max-w-3xl text-sm leading-7 text-zinc-200 sm:text-base">Statistics, tournament operations, photography, video, interviews and final event reporting in one shareable record.</p>
-        <div className="mt-7 flex flex-col gap-3 sm:flex-row"><Link href="/book-coverage" className="rounded-full bg-orange-500 px-6 py-3 text-center text-xs font-black uppercase text-black hover:bg-orange-400">Book event coverage</Link><a href="#covered-events" className="rounded-full border border-white/20 bg-white/10 px-6 py-3 text-center text-xs font-black uppercase hover:border-orange-400">View covered events</a></div>
-      </div>
-    </section>
-    <section id="covered-events" className="relative z-10 mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:px-8">
-      <p className="text-xs font-black uppercase tracking-[.2em] text-orange-300">Event archive</p><h2 className="mt-2 text-3xl font-black uppercase sm:text-5xl">Covered events</h2>
-      {events.length ? <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{events.map(event => <Link key={event.event_id} href={`/events/${event.slug}`} className="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950/85 hover:border-orange-400/60">
-        <div className="relative aspect-[16/10] overflow-hidden bg-slate-900">{event.poster_url || event.hero_image_url ? <img src={event.poster_url || event.hero_image_url || ""} alt={event.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="h-full bg-[url('/images/one-on-one-bg.png')] bg-cover bg-top opacity-60" />}<div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" /></div>
-        <div className="p-5"><p className="text-xs font-black uppercase tracking-[.16em] text-orange-300">{dateLabel(event.start_date)}</p><h3 className="mt-2 text-2xl font-black uppercase leading-tight">{event.title}</h3><p className="mt-3 line-clamp-3 text-sm leading-6 text-zinc-300">{event.summary || "Open the complete event record."}</p><p className="mt-4 text-sm font-bold text-zinc-400">{[event.venue,event.location].filter(Boolean).join(" • ")}</p><span className="mt-5 inline-flex text-xs font-black uppercase text-orange-300">View event →</span></div>
-      </Link>)}</div> : <div className="mt-6 rounded-3xl border border-white/10 bg-slate-950/80 p-7 text-zinc-300">Published event records will appear here.</div>}
-    </section>
-    <section className="relative z-10 mx-auto max-w-7xl px-5 pb-14 sm:px-6 lg:px-8"><div className="rounded-[2rem] border border-orange-400/30 bg-gradient-to-br from-orange-500/20 via-slate-950 to-blue-700/20 p-6 sm:p-10"><p className="text-xs font-black uppercase tracking-[.18em] text-orange-300">Bring FACKTS courtside</p><h2 className="mt-3 max-w-3xl text-2xl font-black uppercase leading-tight sm:text-5xl">Your next basketball event deserves a complete record.</h2><Link href="/book-coverage" className="mt-6 flex w-full justify-center rounded-full bg-orange-500 px-6 py-3 text-xs font-black uppercase text-black sm:inline-flex sm:w-auto">Request coverage</Link></div></section>
-  </main>;
+
+  return (
+    <main className="fackts-public-bg min-h-screen overflow-x-clip text-white">
+      <section className="relative overflow-hidden border-b border-white/10 bg-slate-950/55">
+        <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-orange-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full bg-blue-600/20 blur-3xl" />
+        <div className="relative z-10 mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-6 md:pb-24 md:pt-16 lg:px-8">
+          <div className="max-w-5xl">
+            <span className="inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[.2em] text-orange-300">FACKTS event intelligence</span>
+            <h1 className="mt-5 text-4xl font-black uppercase leading-[.92] tracking-[-.035em] sm:text-6xl lg:text-8xl">Every tournament.<br /><span className="text-orange-400">One complete hub.</span></h1>
+            <p className="mt-5 max-w-3xl text-sm leading-7 text-zinc-200 sm:text-base">Discover upcoming, live and completed basketball events. Open one competition hub for its schedule, results, standings, teams, leaders, media, sponsors and organizer.</p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <a href="#event-directory" className="rounded-full bg-orange-500 px-6 py-3 text-center text-[10px] font-black uppercase tracking-[.12em] text-black hover:bg-orange-400">Explore events</a>
+              <Link href="/book-coverage" className="rounded-full border border-white/20 bg-white/10 px-6 py-3 text-center text-[10px] font-black uppercase tracking-[.12em] hover:border-orange-400">Book tournament coverage</Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <EventsExplorer events={events} />
+
+      <section className="relative z-10 mx-auto max-w-7xl px-5 pb-16 sm:px-6 lg:px-8">
+        <div className="relative overflow-hidden rounded-[2rem] border border-orange-400/30 bg-gradient-to-br from-orange-500/20 via-slate-950 to-blue-700/20 p-6 sm:p-10">
+          <div className="pointer-events-none absolute -right-14 -top-14 h-48 w-48 rounded-full bg-orange-500/20 blur-3xl" />
+          <div className="relative">
+            <p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-300">For tournament organizers</p>
+            <h2 className="mt-3 max-w-4xl text-3xl font-black uppercase leading-[.98] sm:text-5xl">Give your event the digital home it deserves.</h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-300">FACKTS combines event operations, verified statistics, photography, video and a shareable final competition record.</p>
+            <Link href="/book-coverage" className="mt-6 flex w-full justify-center rounded-full bg-orange-500 px-6 py-3 text-[10px] font-black uppercase tracking-[.12em] text-black sm:inline-flex sm:w-auto">Request event coverage</Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }

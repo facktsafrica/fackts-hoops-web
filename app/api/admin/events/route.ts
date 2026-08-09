@@ -3,7 +3,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const allowedFields = [
   "title", "summary", "venue", "location", "poster_url", "hero_image_url",
-  "start_date", "end_date", "photo_count", "status", "is_public", "event_type", "age_category",
+  "start_date", "end_date", "photo_count", "status", "is_public", "event_type", "age_category", "deletion_protected",
+  "organizer_name", "organizer_logo_url", "organizer_description", "organizer_url",
 ] as const;
 
 async function approvedAdmin() {
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
       summary: typeof body.summary === "string" ? body.summary.trim() : null,
       event_type: typeof body.event_type === "string" && body.event_type.trim() ? body.event_type.trim() : "5v5",
       age_category: typeof body.age_category === "string" && body.age_category.trim() ? body.age_category.trim() : "Open",
+      organizer_name: typeof body.organizer_name === "string" && body.organizer_name.trim() ? body.organizer_name.trim() : null,
       status: "draft",
       is_public: false,
     };
@@ -79,11 +81,14 @@ export async function DELETE(request: NextRequest) {
     if (!eventId) return NextResponse.json({ error: "Missing event ID." }, { status: 400 });
     const { data: existing, error: lookupError } = await approved.supabase
       .from("event_case_studies")
-      .select("event_id,title")
+      .select("event_id,title,deletion_protected")
       .eq("event_id", eventId)
       .maybeSingle();
     if (lookupError) return NextResponse.json({ error: lookupError.message }, { status: 400 });
     if (!existing) return NextResponse.json({ error: "Event not found." }, { status: 404 });
+    if (existing.deletion_protected) {
+      return NextResponse.json({ error: "This event is protected. Turn off deletion protection and save the event before deleting it." }, { status: 409 });
+    }
     if (confirmationTitle !== existing.title) {
       return NextResponse.json({ error: "The confirmation title did not match. The event was not deleted." }, { status: 400 });
     }

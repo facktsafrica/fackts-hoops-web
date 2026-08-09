@@ -7,8 +7,9 @@ import { getAdminAccess } from "@/lib/auth/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import EventSearch from "./EventSearch";
 import EventMedia from "./EventMedia";
+import ShareEventButton from "./ShareEventButton";
 
-type EventCase = { event_id:string; slug:string; title:string; summary:string|null; start_date:string|null; end_date:string|null; venue:string|null; location:string|null; poster_url:string|null; hero_image_url:string|null; photo_count:number; event_type:string; age_category:string };
+type EventCase = { event_id:string; slug:string; title:string; summary:string|null; start_date:string|null; end_date:string|null; venue:string|null; location:string|null; poster_url:string|null; hero_image_url:string|null; photo_count:number; event_type:string; age_category:string; organizer_name?:string|null; organizer_logo_url?:string|null; organizer_description?:string|null; organizer_url?:string|null };
 type RecordRow = { id:string; record_type:string; title:string; subtitle:string|null; details:string|null; division:string|null; team_name:string|null; opponent_name:string|null; score_for:number|null; score_against:number|null; url:string|null; image_url:string|null; metadata?:Record<string,unknown>|null };
 type Standing = { name:string; played:number; wins:number; losses:number; draws:number; pf:number; pa:number; diff:number; pct:number };
 type PoolStanding = Standing & { pool:string; poolRank:number };
@@ -98,7 +99,7 @@ function canonicalTeamName(value:string|null|undefined){
   return TEAM_ALIASES[cleaned.toLowerCase()]||cleaned;
 }
 
-async function findEvent(db:SupabaseClient<any,any,any>,key:string,publishedOnly:boolean) {
+async function findEvent(db:SupabaseClient,key:string,publishedOnly:boolean) {
   const decodedKey=decodeURIComponent(key).trim();
   let query=db.from("event_case_studies").select("*");
   if(publishedOnly) query=query.eq("is_public",true).eq("status","published");
@@ -114,7 +115,7 @@ async function findEvent(db:SupabaseClient<any,any,any>,key:string,publishedOnly
   return byId.data||null;
 }
 
-async function loadEvent(key:string,adminPreview=false) {
+async function loadEvent(key:string) {
   // Public reads use the trusted server client and still apply both publication
   // filters explicitly. This avoids stale/mismatched anonymous RLS policies
   // hiding events that Admin has already published.
@@ -138,7 +139,6 @@ async function loadEvent(key:string,adminPreview=false) {
 }
 
 const labels:Record<string,string>={team:"Participating teams",award:"Awards & winners",person:"Officials & contributors",partner:"Event partners",media:"Videos & media",gallery:"Photo gallery"};
-const contentOrder=["team","award","person","partner"];
 const cleanRound=(row:RecordRow)=>String(row.metadata?.round||row.division||"").toLowerCase();
 const resultDay=(row:RecordRow)=>Number(row.metadata?.day||0);
 const isKnockout=(row:RecordRow)=>resultDay(row)===3||["quarterfinal","semifinal","final"].some(round=>cleanRound(row).includes(round));
@@ -190,63 +190,226 @@ function teamStatsMap(...groups:Standing[][]) {
   return new Map(groups.flat().map(row=>[row.name,row]));
 }
 
-export default async function EventDetailPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{gamesPage?:string;q?:string;preview?:string}>}) {
-  const {id}=await params; const query=await searchParams; const adminPreview=query.preview==="admin"; const loaded=await loadEvent(id,adminPreview); if(!loaded) notFound();
-  const {event,records}=loaded; const results=records.filter(x=>x.record_type==="result");
+type EventTab="overview"|"schedule"|"results"|"standings"|"teams"|"leaders"|"media"|"sponsors"|"organizer";
+
+const EVENT_TABS:{key:EventTab;label:string}[]=[
+  {key:"overview",label:"Overview"},
+  {key:"schedule",label:"Schedule"},
+  {key:"results",label:"Results"},
+  {key:"standings",label:"Standings"},
+  {key:"teams",label:"Teams"},
+  {key:"leaders",label:"Leaders"},
+  {key:"media",label:"Media"},
+  {key:"sponsors",label:"Sponsors"},
+  {key:"organizer",label:"Organizer"},
+];
+
+function kenyaDate(){
+  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Africa/Nairobi",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function eventLifecycle(event:EventCase){
+  const today=kenyaDate();
+  const inferredYear=Number(event.title.match(/\b(20\d{2})\b/)?.[1]||0);
+  if(!event.start_date&&!event.end_date)return inferredYear&&inferredYear<Number(today.slice(0,4))?"Completed":"Upcoming";
+  const start=event.start_date||event.end_date||today;
+  const end=event.end_date||event.start_date||today;
+  return today<start?"Upcoming":today>end?"Completed":"Live now";
+}
+
+function eventDate(value:string|null){
+  return value?new Date(`${value}T12:00:00+03:00`).toLocaleDateString("en-KE",{day:"numeric",month:"short",year:"numeric"}):"Date pending";
+}
+
+function eventDateRange(event:EventCase){
+  if(!event.start_date&&!event.end_date)return "Historical event archive";
+  if(!event.end_date||event.end_date===event.start_date)return eventDate(event.start_date||event.end_date);
+  return `${eventDate(event.start_date)} – ${eventDate(event.end_date)}`;
+}
+
+function defaultOrganizer(event:EventCase){
+  if(event.organizer_name?.trim())return event.organizer_name.trim();
+  return /fackts/i.test(event.title)?"FACKTS Africa":"Organizer profile pending";
+}
+
+export default async function EventDetailPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{tab?:string;gamesPage?:string;q?:string;preview?:string}>}) {
+  const {id}=await params;
+  const query=await searchParams;
+  const adminPreview=query.preview==="admin";
+  const loaded=await loadEvent(id);
+  if(!loaded)notFound();
+
+  const {event,records}=loaded;
+  const requestedTab=String(query.tab||"overview") as EventTab;
+  const activeTab=EVENT_TABS.some(tab=>tab.key===requestedTab)?requestedTab:"overview";
+  const scheduleRows=records.filter(row=>row.record_type==="result");
+  const results=scheduleRows.filter(row=>row.score_for!=null&&row.score_against!=null);
   const searchTerm=String(query.q||"").trim();
   const normalizedSearch=searchTerm.toLowerCase();
   const matchesSearch=(row:RecordRow)=>!normalizedSearch||[row.title,row.subtitle,row.details,row.division,row.team_name,row.opponent_name,String(row.metadata?.round||""),String(row.metadata?.day||"")].some(value=>String(value||"").toLowerCase().includes(normalizedSearch));
+  const filteredSchedule=scheduleRows.filter(matchesSearch);
   const filteredResults=results.filter(matchesSearch);
+  const activeGameRows=activeTab==="schedule"?filteredSchedule:filteredResults;
   const menStandings=calculateStandings(results,"Men","all"), womenStandings=calculateStandings(results,"Women","all");
   const menPoolStandings=calculateStandings(results,"Men","pool"), womenPoolStandings=calculateStandings(results,"Women","pool");
   const menPools=buildPools(menPoolStandings,"Men"), womenPools=buildPools(womenPoolStandings,"Women");
   const statsByTeam=teamStatsMap(menStandings,womenStandings);
   const knockout=results.filter(isKnockout);
   const championRows=knockout.filter(row=>cleanRound(row).includes("final")&&!cleanRound(row).includes("semi")&&!cleanRound(row).includes("quarter"));
-  const teamImages=new Map(records.filter(x=>x.record_type==="team"&&x.image_url).map(x=>[canonicalTeamName(x.title),x.image_url!]));
-  const mediaRows=records.filter(x=>x.record_type==="media").filter(matchesSearch);
-  const galleryRows=records.filter(x=>x.record_type==="gallery").filter(matchesSearch);
-  const totalGamePages=Math.max(1,Math.ceil(filteredResults.length/GAMES_PER_PAGE));
+  const teamImages=new Map(records.filter(row=>row.record_type==="team"&&row.image_url).map(row=>[canonicalTeamName(row.title),row.image_url!]));
+  const teamRows=records.filter(row=>row.record_type==="team").filter(matchesSearch);
+  const peopleRows=records.filter(row=>row.record_type==="person").filter(matchesSearch);
+  const partnerRows=records.filter(row=>row.record_type==="partner").filter(matchesSearch);
+  const awardRows=records.filter(row=>row.record_type==="award").filter(matchesSearch);
+  const mediaRows=records.filter(row=>row.record_type==="media").filter(matchesSearch);
+  const galleryRows=records.filter(row=>row.record_type==="gallery").filter(matchesSearch);
+  const totalGamePages=Math.max(1,Math.ceil(activeGameRows.length/GAMES_PER_PAGE));
   const gamesPage=Math.min(totalGamePages,Math.max(1,Number(query.gamesPage)||1));
-  const visibleGames=filteredResults.slice((gamesPage-1)*GAMES_PER_PAGE,gamesPage*GAMES_PER_PAGE);
+  const visibleGames=activeGameRows.slice((gamesPage-1)*GAMES_PER_PAGE,gamesPage*GAMES_PER_PAGE);
+  const eventKey=event.slug||event.event_id;
+  const organizer=defaultOrganizer(event);
+  const lifecycle=eventLifecycle(event);
+  const tabHref=(tab:EventTab)=>{
+    const values=new URLSearchParams({tab});
+    if(adminPreview)values.set("preview","admin");
+    return `/events/${eventKey}?${values.toString()}`;
+  };
+
   return <main className="fackts-public-bg fackts-event-page relative min-h-screen w-full max-w-[100vw] overflow-x-clip bg-[#02040a] text-white selection:bg-orange-500 selection:text-black">
-    <style>{`html,body{max-width:100%;overflow-x:hidden}.fackts-event-page>section{box-sizing:border-box;width:100%;max-width:100%}.fackts-event-page>section:nth-of-type(n+4){content-visibility:auto;contain-intrinsic-size:auto 720px}.fackts-card-inner{box-sizing:border-box;min-width:0;width:100%}@media(max-width:639px){.fackts-event-page>section:not(:first-of-type){padding-left:24px!important;padding-right:24px!important}.fackts-event-page table,.fackts-event-page article,.fackts-event-page form{max-width:100%}.fackts-card-inner{padding-left:1rem!important;padding-right:1rem!important}.fackts-champion-inner{padding:1.25rem!important}.fackts-champion-copy{left:1.25rem!important;right:1.25rem!important;bottom:1.25rem!important}}`}</style>
-    <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#02040a]/90 backdrop-blur-xl"><div className="mx-auto hidden max-w-7xl items-center gap-2 overflow-x-auto px-6 py-3 sm:flex lg:px-8"><span className="mr-2 shrink-0 text-[10px] font-black uppercase tracking-[.22em] text-orange-300">Tournament hub</span><Jump href="#pools">Pools</Jump><Jump href="#bracket">Bracket</Jump><Jump href="#rankings">Rankings</Jump><Jump href="#games">Games</Jump><Jump href="#champions">Champions</Jump><Jump href="#teams">Teams</Jump><Jump href="#people">People</Jump><Jump href="#partners">Partners</Jump></div><details className="group px-4 py-2 sm:hidden"><summary className="flex cursor-pointer list-none items-center justify-between rounded-xl border border-white/10 bg-white/[.045] px-4 py-2.5 text-[10px] font-black uppercase tracking-[.16em] text-orange-300"><span>Jump to a section</span><span className="text-base transition group-open:rotate-45">+</span></summary><div className="grid grid-cols-2 gap-2 py-2"><Jump href="#pools">Pools</Jump><Jump href="#bracket">Bracket</Jump><Jump href="#rankings">Rankings</Jump><Jump href="#games">Games</Jump><Jump href="#champions">Champions</Jump><Jump href="#teams">Teams</Jump><Jump href="#people">Contributors</Jump><Jump href="#partners">Partners</Jump></div></details></nav>
-    <section className="relative min-h-[48vh] overflow-hidden border-b border-white/10 sm:min-h-[62vh]">
+    <style>{`html,body{max-width:100%;overflow-x:hidden}.fackts-event-page>section{box-sizing:border-box;width:100%;max-width:100%}.fackts-card-inner{box-sizing:border-box;min-width:0;width:100%}@media(max-width:639px){.fackts-event-page table,.fackts-event-page article,.fackts-event-page form{max-width:100%}.fackts-card-inner{padding-left:1rem!important;padding-right:1rem!important}.fackts-champion-inner{padding:1.25rem!important}.fackts-champion-copy{left:1.25rem!important;right:1.25rem!important;bottom:1.25rem!important}}`}</style>
+
+    <section className="relative min-h-[55vh] overflow-hidden border-b border-white/10 sm:min-h-[68vh]">
       {event.hero_image_url||event.poster_url?<img src={event.hero_image_url||event.poster_url||""} alt={event.title} loading="eager" fetchPriority="high" decoding="async" className="absolute inset-0 h-full w-full object-cover"/>:<div className="absolute inset-0 bg-[url('/images/one-on-one-bg.png')] bg-cover bg-top"/>}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/85 to-blue-950/30"/><div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#030712] via-transparent to-black/30"/>
-      <div className="absolute right-[-5rem] top-16 h-72 w-72 rounded-full bg-blue-600/20 blur-[100px]"/><div className="absolute bottom-[-6rem] left-1/3 h-72 w-72 rounded-full bg-orange-500/15 blur-[100px]"/>
-      <div className="relative z-10 mx-auto flex min-h-[48vh] max-w-7xl items-end px-4 py-7 sm:min-h-[62vh] sm:px-6 sm:py-10 lg:px-8"><div className="min-w-0 max-w-5xl"><Link href="/events" className="inline-flex rounded-full border border-white/15 bg-black/35 px-3 py-2 text-[9px] font-black uppercase tracking-[.14em] backdrop-blur sm:px-4 sm:text-[10px]">← All events</Link><div className="mt-3 flex flex-wrap gap-2 sm:mt-5"><Badge>Official event archive</Badge><Badge orange>Completed</Badge></div><h1 className="mt-4 break-words text-[2rem] font-black uppercase leading-[.92] tracking-[-.035em] sm:mt-5 sm:text-6xl lg:text-8xl">{event.title}</h1><p className="mt-3 max-w-3xl text-xs leading-5 text-zinc-200 sm:mt-5 sm:text-base sm:leading-7">{event.summary}</p><p className="mt-3 break-words text-xs font-bold text-orange-200 sm:mt-4 sm:text-sm">{[event.venue,event.location].filter(Boolean).join(" • ")}</p></div></div>
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/88 to-blue-950/25"/>
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#030712] via-transparent to-black/35"/>
+      <div className="absolute right-[-5rem] top-16 h-72 w-72 rounded-full bg-blue-600/20 blur-[100px]"/>
+      <div className="absolute bottom-[-6rem] left-1/3 h-72 w-72 rounded-full bg-orange-500/15 blur-[100px]"/>
+      <div className="relative z-10 mx-auto flex min-h-[55vh] max-w-7xl items-end px-5 py-8 sm:min-h-[68vh] sm:px-6 sm:py-12 lg:px-8">
+        <div className="min-w-0 max-w-5xl">
+          <Link href="/events" className="inline-flex rounded-full border border-white/15 bg-black/35 px-4 py-2 text-[9px] font-black uppercase tracking-[.14em] backdrop-blur sm:text-[10px]">← All events</Link>
+          <div className="mt-4 flex flex-wrap gap-2 sm:mt-5"><Badge>{event.event_type||"Basketball"}</Badge><Badge>{event.age_category||"Open"}</Badge><Badge orange>{lifecycle}</Badge></div>
+          <h1 className="mt-4 break-words text-[2.35rem] font-black uppercase leading-[.9] tracking-[-.04em] sm:mt-5 sm:text-6xl lg:text-8xl">{event.title}</h1>
+          <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-200 sm:mt-5 sm:text-base sm:leading-7">{event.summary||"Open the complete event hub for the competition record."}</p>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[10px] font-black uppercase tracking-[.1em] text-orange-200 sm:text-xs">
+            <span>{eventDateRange(event)}</span><span>{[event.venue,event.location].filter(Boolean).join(" • ")||"Venue pending"}</span><span>By {organizer}</span>
+          </div>
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+            <Link href={`/events/${eventKey}/report`} className="inline-flex w-full items-center justify-center rounded-xl bg-orange-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.12em] text-black shadow-xl sm:w-auto">Download event summary</Link>
+            <ShareEventButton title={event.title}/>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section className="relative z-30 mx-auto -mt-3 flex max-w-7xl justify-center px-4 sm:-mt-4 sm:justify-end sm:px-6 lg:px-8"><Link href={`/events/${event.slug||event.event_id}/report`} className="inline-flex w-full items-center justify-center rounded-xl bg-orange-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.12em] text-black shadow-xl sm:w-auto">Download event summary</Link></section>
-    <section className="relative z-20 mx-auto mt-3 max-w-7xl px-4 sm:px-6 lg:px-8"><div className="grid grid-cols-2 gap-2 rounded-[1.25rem] border border-white/10 bg-slate-950/90 p-2 shadow-2xl backdrop-blur-xl sm:gap-3 sm:rounded-[1.6rem] sm:p-3 md:grid-cols-4"><Stat value={String(records.filter(x=>x.record_type==="team").length)} label="Teams"/><Stat value={String(results.length)} label="Games played"/><Stat value={String(event.photo_count||records.filter(x=>x.record_type==="gallery").length)} label="Photos archived"/><Stat value="3 Days" label="Tournament run"/></div></section>
+    <nav aria-label="Event hub sections" className="sticky top-[72px] z-40 border-b border-white/10 bg-[#02040a]/95 backdrop-blur-xl">
+      <div className="no-scrollbar mx-auto flex max-w-7xl items-center gap-2 overflow-x-auto px-4 py-3 sm:px-6 lg:px-8">
+        <span className="mr-1 hidden shrink-0 text-[9px] font-black uppercase tracking-[.2em] text-orange-300 lg:inline">Event hub</span>
+        {EVENT_TABS.map(tab=><Link key={tab.key} href={tabHref(tab.key)} scroll={true} aria-current={activeTab===tab.key?"page":undefined} className={`shrink-0 rounded-full border px-4 py-2.5 text-[9px] font-black uppercase tracking-[.12em] transition ${activeTab===tab.key?"border-orange-400 bg-orange-500 text-black":"border-white/10 bg-white/[.035] text-zinc-300 hover:border-orange-400/50"}`}>{tab.label}</Link>)}
+      </div>
+    </nav>
 
-    <EventSearch initialValue={searchTerm}/>
+    {activeTab==="overview"?<>
+      <section className="relative z-20 mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-2 gap-2 rounded-[1.5rem] border border-white/10 bg-slate-950/90 p-2 shadow-2xl backdrop-blur-xl sm:gap-3 sm:p-3 md:grid-cols-4">
+          <Stat value={String(records.filter(row=>row.record_type==="team").length)} label="Teams"/>
+          <Stat value={String(results.length)} label="Verified results"/>
+          <Stat value={String(event.photo_count||records.filter(row=>row.record_type==="gallery").length)} label="Photos archived"/>
+          <Stat value={String(records.filter(row=>row.record_type==="media").length)} label="Videos & media"/>
+        </div>
+      </section>
+      <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
+        <div className="grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
+          <article className="rounded-[2rem] border border-white/10 bg-slate-950/85 p-6 sm:p-8">
+            <p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-300">Competition at a glance</p>
+            <h2 className="mt-3 text-3xl font-black uppercase leading-none sm:text-5xl">The whole event in one place.</h2>
+            <p className="mt-5 text-sm leading-7 text-zinc-300">This hub connects the published schedule, verified results, standings, participating teams, leaders, media, sponsors and organizer information. Every section stays tied to this specific event.</p>
+            <dl className="mt-7 grid gap-3 sm:grid-cols-2">
+              <EventFact label="Dates" value={eventDateRange(event)}/><EventFact label="Venue" value={[event.venue,event.location].filter(Boolean).join(" • ")||"To be announced"}/><EventFact label="Format" value={`${event.event_type||"Basketball"} · ${event.age_category||"Open"}`}/><EventFact label="Organizer" value={organizer}/>
+            </dl>
+          </article>
+          <aside className="rounded-[2rem] border border-orange-400/25 bg-gradient-to-br from-orange-500/15 via-slate-950 to-blue-700/15 p-6 sm:p-8">
+            <p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-300">Explore this event</p>
+            <div className="mt-4 grid gap-2">
+              <HubLink href={tabHref("schedule")} label="Schedule" value={`${scheduleRows.length} published games`}/>
+              <HubLink href={tabHref("results")} label="Results" value={`${results.length} verified scores`}/>
+              <HubLink href={tabHref("teams")} label="Teams" value={`${teamRows.length} participating teams`}/>
+              <HubLink href={tabHref("media")} label="Media" value={`${mediaRows.length+galleryRows.length} published items`}/>
+            </div>
+          </aside>
+        </div>
+      </section>
+      {championRows.length?<section className="mx-auto max-w-7xl px-5 pb-14 sm:px-6 lg:px-8"><SectionTitle kicker="Event outcome" title="Champions of the court" subtitle="The verified final result and published team image complete the event story."/><div className="mt-7 grid gap-4 md:grid-cols-2">{championRows.map(row=><ChampionCard key={row.id} row={row} imageUrl={teamImages.get(winner(row)||"")||row.image_url}/>)}</div></section>:null}
+    </>:null}
 
-    <span id="bracket" className="block scroll-mt-20"/>
-    {knockout.length?<TournamentBracket results={knockout}/>:null}
-    <span id="pools" className="block scroll-mt-20"/>
-    {(menPools.length||womenPools.length)?<section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8"><SectionTitle kicker="Road to Day 3" title="Pool rankings" subtitle="Pool tables use the recorded Day 1 and Day 2 pool games only. Day 3 quarterfinals, semifinals and finals remain in the championship bracket and overall rankings."/><div className="mt-7 space-y-8">{menPools.length?<PoolGrid division="Men" pools={menPools}/>:null}{womenPools.length?<PoolGrid division="Women" pools={womenPools}/>:null}</div></section>:null}
-    <span id="rankings" className="block scroll-mt-20"/>
+    {activeTab==="schedule"||activeTab==="results"?<>
+      <EventSearch key={`${activeTab}-${searchTerm}`} initialValue={searchTerm}/>
+      {activeTab==="results"&&knockout.length?<TournamentBracket results={knockout}/>:null}
+      <section id="games" className="mx-auto max-w-7xl scroll-mt-36 px-5 pb-12 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <SectionTitle kicker={activeTab==="schedule"?"Published fixtures":"Verified scores"} title={activeTab==="schedule"?"Full event schedule":"Every result. In order."} subtitle={activeTab==="schedule"?"Matchups appear in the published tournament sequence. Scores display as soon as they are verified.":"Only verified, published event scores appear in this competition record."}/>
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-[.12em] text-zinc-500">Page {gamesPage} of {totalGamePages}</span>
+        </div>
+        {visibleGames.length?<div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{visibleGames.map((row,index)=><GameCard key={row.id} row={row} index={(gamesPage-1)*GAMES_PER_PAGE+index}/>)}</div>:<EmptySearch/>}
+        <Pagination current={gamesPage} total={totalGamePages} q={searchTerm} tab={activeTab} preview={adminPreview}/>
+      </section>
+      {activeTab==="results"&&championRows.length?<section className="mx-auto max-w-7xl px-5 pb-14 sm:px-6 lg:px-8"><SectionTitle kicker="Final outcome" title="Champions of the court"/><div className="mt-7 grid gap-4 md:grid-cols-2">{championRows.map(row=><ChampionCard key={row.id} row={row} imageUrl={teamImages.get(winner(row)||"")||row.image_url}/>)}</div></section>:null}
+    </>:null}
 
-    {(menStandings.length||womenStandings.length)?<section className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8"><SectionTitle kicker="Tournament table" title="Official rankings" subtitle="Calculated automatically from every verified tournament game, including the Day 3 knockout rounds, using win percentage and point differential."/><div className="mt-7 grid gap-6 xl:grid-cols-2">{menStandings.length?<Rankings title="Men's standings" rows={menStandings}/>:null}{womenStandings.length?<Rankings title="Women's standings" rows={womenStandings}/>:null}</div></section>:null}
+    {activeTab==="standings"?<>
+      {(menPools.length||womenPools.length)?<section className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8"><SectionTitle kicker="Pool stage" title="Pool rankings" subtitle="Pool tables use the published pool-stage games. Knockout rounds remain in Results."/><div className="mt-7 space-y-8">{menPools.length?<PoolGrid division="Men" pools={menPools}/>:null}{womenPools.length?<PoolGrid division="Women" pools={womenPools}/>:null}</div></section>:null}
+      {(menStandings.length||womenStandings.length)?<section className="mx-auto max-w-7xl px-5 pb-14 sm:px-6 lg:px-8"><SectionTitle kicker="Tournament table" title="Official standings" subtitle="Calculated automatically from the verified competition results."/><div className="mt-7 grid gap-6 xl:grid-cols-2">{menStandings.length?<Rankings title="Men's standings" rows={menStandings}/>:null}{womenStandings.length?<Rankings title="Women's standings" rows={womenStandings}/>:null}</div></section>:<EmptyHub title="Standings are not available yet" body="Published results will generate the event standings automatically."/>}
+    </>:null}
 
-    <ScoringLeaders men={menStandings} women={womenStandings}/>
+    {activeTab==="teams"?<><EventSearch key={`${activeTab}-${searchTerm}`} initialValue={searchTerm}/><RecordSection type="team" rows={teamRows} statsByTeam={statsByTeam}/></>:null}
 
-    <EventMedia media={mediaRows} gallery={galleryRows} searching={Boolean(searchTerm)} />
+    {activeTab==="leaders"?<>
+      <ScoringLeaders men={menStandings} women={womenStandings}/>
+      <RecordSection type="award" rows={awardRows}/>
+      {!menStandings.length&&!womenStandings.length&&!awardRows.length?<EmptyHub title="Leaders are coming soon" body="Verified team or player performance records will appear here when published."/>:null}
+    </>:null}
 
-    <section id="games" className="mx-auto max-w-7xl scroll-mt-20 px-4 pb-9 sm:px-6 sm:pb-12 lg:px-8"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><SectionTitle kicker="Full schedule" title="Every game. Every score." subtitle="Six compact games at a time on phone, in the verified tournament sequence."/><span className="shrink-0 text-[10px] font-black uppercase tracking-[.12em] text-zinc-500">Page {gamesPage} of {totalGamePages}</span></div>{visibleGames.length?<div className="mt-4 grid gap-2 sm:mt-7 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">{visibleGames.map((row,index)=><GameCard key={row.id} row={row} index={(gamesPage-1)*GAMES_PER_PAGE+index}/>)}</div>:<EmptySearch/>}<Pagination current={gamesPage} total={totalGamePages} q={searchTerm}/></section>
+    {activeTab==="media"?<><EventSearch key={`${activeTab}-${searchTerm}`} initialValue={searchTerm}/><EventMedia media={mediaRows} gallery={galleryRows} searching={Boolean(searchTerm)}/></>:null}
 
-    {contentOrder.map(type=>{const allRows=records.filter(x=>x.record_type===type); const rows=allRows.filter(matchesSearch); if(!allRows.length||(!rows.length&&searchTerm))return null; const sectionId=type==="team"?"teams":type==="person"?"people":type==="partner"?"partners":undefined; const preview=rows.slice(0,MOBILE_SECTION_PREVIEW),more=rows.slice(MOBILE_SECTION_PREVIEW); const gridClass=`grid gap-2 sm:grid-cols-2 sm:gap-4 ${type==="team"?"xl:grid-cols-2":"lg:grid-cols-3"}`; const renderRow=(row:RecordRow)=><RecordCard key={row.id} row={row} stats={type==="team"?statsByTeam.get(canonicalTeamName(row.title)):undefined}/>; return <section id={sectionId} key={type} className="mx-auto max-w-7xl scroll-mt-20 px-4 pb-8 sm:px-6 sm:pb-12 lg:px-8"><div className="flex items-end justify-between gap-3"><SectionTitle kicker={type==="team"?"Tournament roster":type==="person"?"The crew":type==="partner"?"Powered by":"Event record"} title={labels[type]}/><span className="shrink-0 text-[9px] font-black uppercase text-zinc-600">{rows.length} total</span></div><div className={`mt-4 sm:hidden ${gridClass}`}>{preview.map(renderRow)}</div><div className={`mt-7 hidden sm:grid ${gridClass}`}>{rows.map(renderRow)}</div>{more.length?<details className="group mt-3 sm:hidden"><summary className="cursor-pointer list-none rounded-xl border border-white/10 bg-white/[.035] px-4 py-3 text-center text-[10px] font-black uppercase tracking-[.14em] text-orange-300">Show all {rows.length} {labels[type].toLowerCase()} <span className="ml-1 group-open:hidden">+</span><span className="ml-1 hidden group-open:inline">−</span></summary><div className={`mt-2 ${gridClass}`}>{more.map(renderRow)}</div></details>:null}</section>})}
-    <section className="mx-auto max-w-7xl px-5 pb-14 sm:px-6 lg:px-8"><div className="relative overflow-hidden rounded-[2rem] border border-orange-400/30 bg-gradient-to-br from-orange-500/20 via-slate-950 to-blue-700/20"><div className="absolute -right-14 -top-14 h-44 w-44 rounded-full bg-orange-500/20 blur-3xl"/><div className="relative box-border w-full px-6 py-6 sm:px-10 sm:py-10"><p className="text-xs font-black uppercase tracking-[.18em] text-orange-300">Book FACKTS</p><h2 className="mt-3 max-w-4xl break-words text-2xl font-black uppercase leading-tight sm:text-5xl">Your tournament deserves a complete sports record.</h2><Link href="/book-coverage" className="mt-6 flex w-full items-center justify-center rounded-full bg-orange-500 px-6 py-3 text-center text-xs font-black uppercase text-black transition hover:bg-orange-400 sm:inline-flex sm:w-auto">Book event coverage</Link></div></div></section>
-    {championRows.length?<section id="champions" className="mx-auto max-w-7xl scroll-mt-20 px-5 pb-14 sm:px-6 lg:px-8"><SectionTitle kicker="The last word" title="Champions of the court" subtitle="Upload the champion team photograph in Events Admin and it becomes the hero image here automatically."/><div className="mt-7 grid gap-4 md:grid-cols-2">{championRows.map(row=><ChampionCard key={row.id} row={row} imageUrl={teamImages.get(winner(row)||"")||row.image_url}/>)}</div></section>:null}
+    {activeTab==="sponsors"?<RecordSection type="partner" rows={partnerRows}/>:null}
+
+    {activeTab==="organizer"?<>
+      <section className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8">
+        <div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]">
+          <div className="flex min-h-64 items-center justify-center rounded-[2rem] border border-white/10 bg-slate-950/85 p-8">
+            {event.organizer_logo_url?<img src={event.organizer_logo_url} alt={`${organizer} logo`} className="max-h-40 max-w-full object-contain"/>:<div className="grid h-28 w-28 place-items-center rounded-3xl border border-orange-400/30 bg-orange-500/10 text-center text-xs font-black uppercase text-orange-300">Organizer<br/>profile</div>}
+          </div>
+          <article className="rounded-[2rem] border border-white/10 bg-slate-950/85 p-6 sm:p-9">
+            <p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-300">About the organizer</p>
+            <h2 className="mt-3 text-3xl font-black uppercase leading-none sm:text-5xl">{organizer}</h2>
+            <p className="mt-5 max-w-3xl text-sm leading-7 text-zinc-300">{event.organizer_description||(/fackts/i.test(organizer)?"FACKTS Africa documents basketball through verified statistics, event coverage, media and connected player, team and competition profiles.":"The organizer profile will be completed from Events Admin.")}</p>
+            {event.organizer_url?<a href={event.organizer_url} target="_blank" rel="noreferrer" className="mt-6 inline-flex rounded-full bg-orange-500 px-6 py-3 text-[10px] font-black uppercase tracking-[.12em] text-black">Visit organizer</a>:null}
+          </article>
+        </div>
+      </section>
+      <RecordSection type="person" rows={peopleRows}/>
+    </>:null}
+
+    <section className="mx-auto max-w-7xl px-5 pb-14 sm:px-6 lg:px-8"><div className="relative overflow-hidden rounded-[2rem] border border-orange-400/30 bg-gradient-to-br from-orange-500/20 via-slate-950 to-blue-700/20"><div className="absolute -right-14 -top-14 h-44 w-44 rounded-full bg-orange-500/20 blur-3xl"/><div className="relative box-border w-full px-6 py-7 sm:px-10 sm:py-10"><p className="text-xs font-black uppercase tracking-[.18em] text-orange-300">Book FACKTS</p><h2 className="mt-3 max-w-4xl break-words text-2xl font-black uppercase leading-tight sm:text-5xl">Your tournament deserves a complete digital home.</h2><Link href="/book-coverage" className="mt-6 flex w-full items-center justify-center rounded-full bg-orange-500 px-6 py-3 text-center text-xs font-black uppercase text-black transition hover:bg-orange-400 sm:inline-flex sm:w-auto">Book event coverage</Link></div></div></section>
   </main>;
 }
 
-function ChampionCard({row,imageUrl}:{row:RecordRow;imageUrl?:string|null}){const champion=winner(row);const championScore=champion===row.team_name?row.score_for:row.score_against;const otherScore=champion===row.team_name?row.score_against:row.score_for;return <article className="group relative isolate min-h-[28rem] overflow-hidden rounded-[2rem] border border-orange-300/30 bg-[#080d1a] shadow-[0_28px_90px_rgba(0,0,0,.42)]">{imageUrl?<img src={imageUrl} alt={`${champion||"Champion"} championship team`} className="absolute inset-0 -z-30 h-full w-full object-cover object-center transition duration-700 group-hover:scale-105"/>:null}<div className="absolute inset-0 -z-20 bg-gradient-to-t from-black via-black/70 to-blue-950/20"/><div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_78%_18%,rgba(249,115,22,.2),transparent_36%)]"/><div className="fackts-card-inner fackts-champion-inner relative min-h-[28rem] p-6 sm:p-8"><div className="flex min-w-0 items-center justify-between gap-3"><span className="min-w-0 break-words rounded-full border border-orange-300/30 bg-black/50 px-3 py-1 text-[9px] font-black uppercase tracking-[.12em] text-orange-200 backdrop-blur sm:tracking-[.2em]">{row.division||"Championship"}</span><span className="shrink-0 text-[10px] font-black uppercase tracking-[.18em] text-white/60">Final</span></div><div className="fackts-champion-copy absolute inset-x-6 bottom-7 min-w-0 sm:inset-x-8"><p className="break-words text-[9px] font-black uppercase tracking-[.16em] text-blue-300 sm:text-[10px] sm:tracking-[.25em]">Tournament champion</p><h3 className="mt-2 max-w-full break-words text-4xl font-black uppercase leading-[.9] tracking-[-.035em] sm:max-w-[86%] sm:text-6xl">{champion||"Champion"}</h3><div className="mt-5 flex min-w-0 flex-wrap items-end gap-3"><span className="text-6xl font-black leading-none text-orange-300 sm:text-7xl">{championScore??"–"}</span><span className="mb-1 break-words text-sm font-black uppercase text-zinc-300">to {otherScore??"–"}</span></div></div></div><div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-blue-600 via-orange-400 to-blue-600"/></article>}
+function EventFact({label,value}:{label:string;value:string}){return <div className="rounded-2xl border border-white/[.08] bg-white/[.035] p-4"><dt className="text-[8px] font-black uppercase tracking-[.15em] text-zinc-600">{label}</dt><dd className="mt-2 text-sm font-black text-white">{value}</dd></div>}
 
-function Jump({href,children}:{href:string;children:React.ReactNode}){return <a href={href} className="shrink-0 rounded-full border border-white/10 bg-white/[.035] px-4 py-2 text-[9px] font-black uppercase tracking-[.16em] text-zinc-300 transition hover:border-orange-400/50 hover:bg-orange-500 hover:text-black">{children}</a>}
+function HubLink({href,label,value}:{href:string;label:string;value:string}){return <Link href={href} className="group flex items-center justify-between gap-4 rounded-2xl border border-white/[.09] bg-black/20 px-4 py-4 transition hover:border-orange-400/50 hover:bg-orange-500/10"><span><span className="block text-sm font-black uppercase text-white">{label}</span><span className="mt-1 block text-[10px] font-bold text-zinc-500">{value}</span></span><span className="text-lg text-orange-300 transition group-hover:translate-x-1">→</span></Link>}
+
+function EmptyHub({title,body}:{title:string;body:string}){return <section className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8"><div className="rounded-[2rem] border border-dashed border-white/15 bg-slate-950/70 px-6 py-12 text-center"><h2 className="text-xl font-black uppercase text-white">{title}</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-zinc-500">{body}</p></div></section>}
+
+function RecordSection({type,rows,statsByTeam}:{type:string;rows:RecordRow[];statsByTeam?:Map<string,Standing>}){
+  if(!rows.length)return <EmptyHub title={`${labels[type]||"Event records"} coming soon`} body="Published and verified records will appear here from Events Admin."/>;
+  const preview=rows.slice(0,MOBILE_SECTION_PREVIEW),more=rows.slice(MOBILE_SECTION_PREVIEW);
+  const gridClass=`grid gap-2 sm:grid-cols-2 sm:gap-4 ${type==="team"?"xl:grid-cols-2":"lg:grid-cols-3"}`;
+  const renderRow=(row:RecordRow)=><RecordCard key={row.id} row={row} stats={type==="team"?statsByTeam?.get(canonicalTeamName(row.title)):undefined}/>;
+  return <section className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8"><div className="flex items-end justify-between gap-3"><SectionTitle kicker={type==="team"?"Tournament roster":type==="person"?"Event operations":type==="partner"?"Powered by":"Recognised performance"} title={labels[type]||"Event records"}/><span className="shrink-0 text-[9px] font-black uppercase text-zinc-600">{rows.length} total</span></div><div className={`mt-5 sm:hidden ${gridClass}`}>{preview.map(renderRow)}</div><div className={`mt-7 hidden sm:grid ${gridClass}`}>{rows.map(renderRow)}</div>{more.length?<details className="group mt-3 sm:hidden"><summary className="cursor-pointer list-none rounded-xl border border-white/10 bg-white/[.035] px-4 py-3 text-center text-[10px] font-black uppercase tracking-[.14em] text-orange-300">Show all {rows.length} <span className="ml-1 group-open:hidden">+</span><span className="ml-1 hidden group-open:inline">−</span></summary><div className={`mt-2 ${gridClass}`}>{more.map(renderRow)}</div></details>:null}</section>;
+}
+
+function ChampionCard({row,imageUrl}:{row:RecordRow;imageUrl?:string|null}){const champion=winner(row);const championScore=champion===row.team_name?row.score_for:row.score_against;const otherScore=champion===row.team_name?row.score_against:row.score_for;return <article className="group relative isolate min-h-[28rem] overflow-hidden rounded-[2rem] border border-orange-300/30 bg-[#080d1a] shadow-[0_28px_90px_rgba(0,0,0,.42)]">{imageUrl?<img src={imageUrl} alt={`${champion||"Champion"} championship team`} className="absolute inset-0 -z-30 h-full w-full object-cover object-center transition duration-700 group-hover:scale-105"/>:null}<div className="absolute inset-0 -z-20 bg-gradient-to-t from-black via-black/70 to-blue-950/20"/><div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_78%_18%,rgba(249,115,22,.2),transparent_36%)]"/><div className="fackts-card-inner fackts-champion-inner relative min-h-[28rem] p-6 sm:p-8"><div className="flex min-w-0 items-center justify-between gap-3"><span className="min-w-0 break-words rounded-full border border-orange-300/30 bg-black/50 px-3 py-1 text-[9px] font-black uppercase tracking-[.12em] text-orange-200 backdrop-blur sm:tracking-[.2em]">{row.division||"Championship"}</span><span className="shrink-0 text-[10px] font-black uppercase tracking-[.18em] text-white/60">Final</span></div><div className="fackts-champion-copy absolute inset-x-6 bottom-7 min-w-0 sm:inset-x-8"><p className="break-words text-[9px] font-black uppercase tracking-[.16em] text-blue-300 sm:text-[10px] sm:tracking-[.25em]">Tournament champion</p><h3 className="mt-2 max-w-full break-words text-4xl font-black uppercase leading-[.9] tracking-[-.035em] sm:max-w-[86%] sm:text-6xl">{champion||"Champion"}</h3><div className="mt-5 flex min-w-0 flex-wrap items-end gap-3"><span className="text-6xl font-black leading-none text-orange-300 sm:text-7xl">{championScore??"–"}</span><span className="mb-1 break-words text-sm font-black uppercase text-zinc-300">to {otherScore??"–"}</span></div></div></div><div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-blue-600 via-orange-400 to-blue-600"/></article>}
 
 function TournamentBracket({results}:{results:RecordRow[]}) {
   const columns=[
@@ -266,7 +429,7 @@ function PoolGrid({division,pools}:{division:string;pools:{pool:string;teams:Poo
 
 function ScoringLeaders({men,women}:{men:Standing[];women:Standing[]}) {const leaders=[{division:"Men",row:[...men].sort((a,b)=>(b.played?b.pf/b.played:0)-(a.played?a.pf/a.played:0))[0]},{division:"Women",row:[...women].sort((a,b)=>(b.played?b.pf/b.played:0)-(a.played?a.pf/a.played:0))[0]}].filter(item=>item.row);if(!leaders.length)return null;return <section className="mx-auto w-full max-w-7xl min-w-0 overflow-hidden pb-9 sm:pb-12"><div className="box-border w-full min-w-0 px-6 sm:px-6 lg:px-8"><SectionTitle kicker="Scoring leaders" title="Best offensive teams" subtitle="The highest points-per-game teams from the verified results—the clearest performance award available from the tournament score sheets."/><div className="mt-4 grid w-full min-w-0 gap-3 sm:mt-7 sm:gap-4 md:grid-cols-2">{leaders.map(({division,row})=><article key={division} className="relative isolate box-border w-full min-w-0 overflow-hidden rounded-[1.2rem] border border-orange-400/25 bg-gradient-to-br from-orange-500/15 via-slate-950 to-blue-700/20 sm:rounded-[1.8rem]"><div className="absolute -right-3 -top-8 -z-10 text-[6rem] font-black leading-none text-white/[.035] sm:-right-8 sm:-top-16 sm:text-[11rem]">{row.played?(row.pf/row.played).toFixed(1):"0"}</div><div className="box-border w-full min-w-0 px-5 py-5 sm:px-6 sm:py-6" style={{paddingInline:"20px",paddingBlock:"20px"}}><p className="break-words text-[8px] font-black uppercase leading-3 tracking-[.1em] text-orange-300 sm:text-[10px] sm:tracking-[.2em]">{division} • Points per game leader</p><h3 className="mt-2 break-words text-xl font-black uppercase leading-tight sm:mt-3 sm:text-4xl sm:leading-none">{row.name}</h3><div className="mt-4 flex min-w-0 items-end gap-2 sm:mt-7 sm:gap-3"><span className="min-w-0 text-4xl font-black leading-none text-white sm:text-6xl">{row.played?(row.pf/row.played).toFixed(1):"0.0"}</span><span className="mb-0.5 shrink-0 text-[9px] font-black uppercase tracking-[.08em] text-zinc-500 sm:mb-1 sm:text-xs sm:tracking-widest">PPG</span></div><p className="mt-3 break-words text-[9px] font-bold uppercase leading-3.5 tracking-[.03em] text-blue-300 sm:mt-4 sm:text-xs sm:tracking-wide">{row.pf} points across {row.played} games</p></div></article>)}</div></div></section>}
 
-function Pagination({current,total,q}:{current:number;total:number;q?:string}) {if(total<=1)return null;const href=(page:number)=>`?${new URLSearchParams({...(q?{q}:{}),gamesPage:String(page)}).toString()}#games`;return <nav aria-label="Games pagination" className="mt-5 flex flex-wrap items-center justify-center gap-2 sm:mt-7">{current>1?<Link href={href(current-1)} scroll={true} className="rounded-full border border-white/10 bg-white/[.04] px-4 py-2.5 text-[9px] font-black uppercase tracking-[.12em] transition hover:border-orange-400 hover:text-orange-300">← Previous</Link>:null}{Array.from({length:total},(_,index)=>index+1).map(page=><Link key={page} href={href(page)} scroll={true} aria-current={page===current?"page":undefined} className={`grid h-9 w-9 place-items-center rounded-full text-[11px] font-black transition ${page===current?"bg-orange-500 text-black":"border border-white/10 bg-white/[.04] text-zinc-300 hover:border-blue-400"}`}>{page}</Link>)}{current<total?<Link href={href(current+1)} scroll={true} className="rounded-full bg-blue-600 px-4 py-2.5 text-[9px] font-black uppercase tracking-[.12em] transition hover:bg-blue-500">Next →</Link>:null}</nav>}
+function Pagination({current,total,q,tab,preview=false}:{current:number;total:number;q?:string;tab:EventTab;preview?:boolean}) {if(total<=1)return null;const href=(page:number)=>`?${new URLSearchParams({tab,...(q?{q}:{}),...(preview?{preview:"admin"}:{}),gamesPage:String(page)}).toString()}#games`;return <nav aria-label="Games pagination" className="mt-5 flex flex-wrap items-center justify-center gap-2 sm:mt-7">{current>1?<Link href={href(current-1)} scroll={true} className="rounded-full border border-white/10 bg-white/[.04] px-4 py-2.5 text-[9px] font-black uppercase tracking-[.12em] transition hover:border-orange-400 hover:text-orange-300">← Previous</Link>:null}{Array.from({length:total},(_,index)=>index+1).map(page=><Link key={page} href={href(page)} scroll={true} aria-current={page===current?"page":undefined} className={`grid h-9 w-9 place-items-center rounded-full text-[11px] font-black transition ${page===current?"bg-orange-500 text-black":"border border-white/10 bg-white/[.04] text-zinc-300 hover:border-blue-400"}`}>{page}</Link>)}{current<total?<Link href={href(current+1)} scroll={true} className="rounded-full bg-blue-600 px-4 py-2.5 text-[9px] font-black uppercase tracking-[.12em] transition hover:bg-blue-500">Next →</Link>:null}</nav>}
 
 function EmptySearch(){return <div className="mt-4 rounded-2xl border border-dashed border-white/15 px-5 py-8 text-center"><p className="text-sm font-black uppercase text-zinc-300">No matching games</p><p className="mt-1 text-xs text-zinc-500">Try a team name, person, partner or round.</p></div>}
 

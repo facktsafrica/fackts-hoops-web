@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type SearchResult = {
   id: string;
@@ -15,20 +15,15 @@ type SearchResult = {
 export default function EventSearch({ initialValue = "" }: { initialValue?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(initialValue);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => setValue(initialValue), [initialValue]);
-
   useEffect(() => {
     const query = value.trim();
-    if (query.length < 2) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
+    if (query.length < 2) return;
 
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
@@ -56,14 +51,22 @@ export default function EventSearch({ initialValue = "" }: { initialValue?: stri
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const query = value.trim();
-    router.push(query ? `${pathname}?q=${encodeURIComponent(query)}` : pathname);
+    const next = new URLSearchParams(searchParams.toString());
+    if (query) next.set("q", query); else next.delete("q");
+    next.delete("gamesPage");
+    const suffix = next.toString();
+    router.push(suffix ? `${pathname}?${suffix}` : pathname);
   }
 
   function clear() {
     setValue("");
     setResults([]);
     setLoading(false);
-    router.replace(pathname, { scroll: false });
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("q");
+    next.delete("gamesPage");
+    const suffix = next.toString();
+    router.replace(suffix ? `${pathname}?${suffix}` : pathname, { scroll: false });
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
@@ -78,7 +81,14 @@ export default function EventSearch({ initialValue = "" }: { initialValue?: stri
           ref={inputRef}
           id="event-search"
           value={value}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setValue(nextValue);
+            if (nextValue.trim().length < 2) {
+              setResults([]);
+              setLoading(false);
+            }
+          }}
           placeholder="Search Hanss, teams, games, 1v1s, events…"
           autoComplete="off"
           className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm font-bold text-white outline-none placeholder:text-zinc-600"
