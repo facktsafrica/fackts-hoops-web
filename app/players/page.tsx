@@ -1,615 +1,124 @@
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
-import {
-  getCareerGameTotals,
-  mergeCareerGameStats,
-  type CareerGameStatRow,
-} from "@/lib/hoops/careerStats";
-import {
-  isOfficialFacktsPlayer,
-  playerClassificationLabel,
-} from "@/lib/hoops/playerClassification";
+import PlayersExplorer from "./PlayersExplorer";
+import { loadPublicPlayerDirectory } from "@/lib/hoops/publicPlayerProfiles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type PlayerCard = {
-  id: string;
-  full_name?: string | null;
-  name?: string | null;
-  nickname?: string | null;
-  jersey_number?: number | string | null;
-  position?: string | null;
-  role?: string | null;
-  photo_url?: string | null;
-  photo_position?: string | null;
-  is_featured?: boolean | null;
-
-  // Optional classification fields, in case they exist in Supabase.
-  player_type?: string | null;
-  roster_status?: string | null;
-  category?: string | null;
-  is_guest?: boolean | null;
-  profile_href: string;
-  relationship_label: string;
-
-  games_played: number;
-  points_per_game: number;
-  rebounds_per_game: number;
-  assists_per_game: number;
-  total_points: number;
-};
-
-type PlayerRecord = Omit<
-  PlayerCard,
-  | "games_played"
-  | "points_per_game"
-  | "rebounds_per_game"
-  | "assists_per_game"
-  | "total_points"
-  | "profile_href"
-  | "relationship_label"
->;
-
-type GuestRecord = {
-  id: string;
-  source_player_id?: string | null;
-  guest_type?: string | null;
-  full_name?: string | null;
-  name?: string | null;
-  nickname?: string | null;
-  position?: string | null;
-  role?: string | null;
-  photo_url?: string | null;
-  photo_position?: string | null;
-  is_active?: boolean | null;
-};
-
-type PlayerStatRecord = CareerGameStatRow & {
-  player_id: string;
-};
-
-type GuestStatRecord = CareerGameStatRow & {
-  guest_hooper_id: string;
-};
-
-function hasValue(value?: string | number | null) {
-  if (value === null || value === undefined) return false;
-  return String(value).trim() !== "";
-}
-
-function getPlayerName(player: PlayerCard) {
-  return player.full_name || player.name || player.nickname || "Unnamed Player";
-}
-
-function getInitials(player: PlayerCard) {
-  return getPlayerName(player)
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
-
-async function getPlayersWithStats() {
-  const [playersResult, guestsResult, statsResult, guestStatsResult] =
-    await Promise.all([
-    supabase
-      .from("players")
-      .select("*")
-      .eq("is_active", true)
-      .order("jersey_number", { ascending: true }),
-    supabase
-      .from("guest_hoopers")
-      .select("*")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false }),
-    supabase.from("player_game_stats").select("*"),
-    supabase.from("guest_game_stats").select("*"),
-  ]);
-
-  if (playersResult.error || statsResult.error) {
-    return [];
-  }
-
-  const players = ((playersResult.data ?? []) as PlayerRecord[]).filter(
-    isOfficialFacktsPlayer
-  );
-  const guests = guestsResult.error
-    ? []
-    : ((guestsResult.data ?? []) as GuestRecord[]);
-  const stats = (statsResult.data ?? []) as PlayerStatRecord[];
-  const guestStats = guestStatsResult.error
-    ? []
-    : ((guestStatsResult.data ?? []) as GuestStatRecord[]);
-  const officialPlayerIds = new Set(players.map((player) => String(player.id)));
-
-  function withCareerStats(
-    player: Omit<
-      PlayerCard,
-      | "games_played"
-      | "points_per_game"
-      | "rebounds_per_game"
-      | "assists_per_game"
-      | "total_points"
-    >,
-    careerRows: CareerGameStatRow[]
-  ): PlayerCard {
-    const totals = getCareerGameTotals(careerRows);
-    const average = (value: number) =>
-      totals.gamesPlayed > 0
-        ? Number((value / totals.gamesPlayed).toFixed(1))
-        : 0;
-
-    return {
-      ...player,
-      games_played: totals.gamesPlayed,
-      points_per_game: average(totals.points),
-      rebounds_per_game: average(totals.rebounds),
-      assists_per_game: average(totals.assists),
-      total_points: totals.points,
-    };
-  }
-
-  const rows: PlayerCard[] = players.map((player) => {
-    const playerStats = stats.filter(
-      (row) => String(row.player_id) === String(player.id)
-    );
-
-    return withCareerStats(
-      {
-        id: player.id,
-        full_name: player.full_name || player.name,
-        name: player.name,
-        nickname: player.nickname,
-        jersey_number: player.jersey_number,
-        position: player.position,
-        role: player.role,
-        photo_url: player.photo_url,
-        photo_position: player.photo_position,
-        is_featured: player.is_featured,
-        player_type: player.player_type,
-        roster_status: player.roster_status,
-        category: player.category,
-        is_guest: player.is_guest,
-        profile_href: `/players/${player.id}`,
-        relationship_label: "Official FACKTS Player",
-      },
-      playerStats
-    );
-  });
-
-  for (const guest of guests) {
-    if (
-      guest.source_player_id &&
-      officialPlayerIds.has(String(guest.source_player_id))
-    ) {
-      continue;
-    }
-
-    const currentGuestStats = guestStats.filter(
-      (row) => String(row.guest_hooper_id) === String(guest.id)
-    );
-    const formerPlayerStats = guest.source_player_id
-      ? stats.filter(
-          (row) => String(row.player_id) === String(guest.source_player_id)
-        )
-      : [];
-    const careerStats = mergeCareerGameStats(
-      currentGuestStats,
-      formerPlayerStats
-    );
-
-    rows.push(
-      withCareerStats(
-        {
-          id: `guest-${guest.id}`,
-          full_name: guest.full_name || guest.name,
-          name: guest.name,
-          nickname: guest.nickname,
-          jersey_number: null,
-          position: guest.position,
-          role: guest.role || "Guest Hooper",
-          photo_url: guest.photo_url,
-          photo_position: guest.photo_position,
-          is_featured: false,
-          player_type: guest.guest_type || "guest_hooper",
-          roster_status: null,
-          category: null,
-          is_guest: true,
-          profile_href: `/guest-hoopers/guest-${guest.id}`,
-          relationship_label: playerClassificationLabel(
-            guest.guest_type || "guest_hooper"
-          ),
-        },
-        careerStats
-      )
-    );
-  }
-
-  return rows.sort((left, right) =>
-    getPlayerName(left).localeCompare(getPlayerName(right))
-  );
-}
-
-export default async function PlayersPage() {
-  const players = await getPlayersWithStats();
-
-  const totalPlayers = players.length;
-  const officialPlayerCount = players.filter(
-    (player) => !player.is_guest
+export default async function PlayersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string | string[] }>;
+}) {
+  const players = await loadPublicPlayerDirectory();
+  const resolvedSearchParams = await searchParams;
+  const requestedStatus = Array.isArray(resolvedSearchParams.status)
+    ? resolvedSearchParams.status[0]
+    : resolvedSearchParams.status;
+  const initialClassification = ["official", "guest", "competition"].includes(
+    requestedStatus || ""
+  )
+    ? requestedStatus || "all"
+    : "all";
+  const officialCount = players.filter(
+    (player) => player.classification === "official"
   ).length;
-  const guestHooperCount = totalPlayers - officialPlayerCount;
-  const totalRecordedPoints = players.reduce(
-    (acc, player) => acc + player.total_points,
+  const guestCount = players.filter(
+    (player) => player.classification === "guest"
+  ).length;
+  const competitionCount = players.filter(
+    (player) => player.classification === "competition"
+  ).length;
+  const documentedGames = players.reduce(
+    (total, player) => total + player.gamesPlayed,
     0
   );
 
-  const topScorer = [...players].sort(
-    (a, b) => b.points_per_game - a.points_per_game
-  )[0];
-
-  const mostExperienced = [...players].sort(
-    (a, b) => b.games_played - a.games_played
-  )[0];
-
-  const featuredPlayers = players.filter((player) => player.is_featured);
-  const regularPlayers = players.filter((player) => !player.is_featured);
-
   return (
     <main
-      className="min-h-screen bg-black bg-cover bg-scroll bg-[position:left_top] px-0 text-white md:bg-fixed md:bg-[position:center_top]"
+      className="min-h-screen bg-slate-950 bg-cover bg-scroll bg-[position:left_top] text-white md:bg-fixed md:bg-[position:center_top]"
       style={{
         backgroundImage:
-          "linear-gradient(rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0.94)), url('/images/one-on-one-bg.png')",
+          "linear-gradient(rgba(2,6,23,.76),rgba(2,6,23,.97)),url('/images/one-on-one-bg.png')",
       }}
     >
-      <section className="relative overflow-hidden border-b border-white/10 bg-black/35 backdrop-blur-sm">
-        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:42px_42px]" />
+      <section className="relative overflow-hidden border-b border-white/10 bg-[#07162b]/80">
+        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px)] [background-size:42px_42px]" />
+        <div className="absolute -left-24 top-0 h-72 w-72 rounded-full bg-orange-500/15 blur-3xl" />
 
-        <div className="relative mx-auto max-w-7xl px-5 py-9 sm:px-6 md:py-12 lg:px-8">
-          <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+        <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="grid gap-8 lg:grid-cols-[1.12fr_.88fr] lg:items-end">
             <div>
-              <div className="mb-3 inline-flex rounded-full border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                FACKTS Player Directory
-              </div>
-
-              <h1 className="text-4xl font-black uppercase tracking-tight sm:text-6xl">
-                Players
+              <p className="text-[11px] font-black uppercase tracking-[.24em] text-orange-300">
+                FACKTS basketball records
+              </p>
+              <h1 className="mt-3 max-w-4xl text-4xl font-black uppercase leading-[.92] tracking-[-.045em] sm:text-6xl lg:text-7xl">
+                Every player. One verified journey.
               </h1>
-
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 sm:text-base">
-                One public directory for official FACKTS players, guest hoopers
-                and external competitors. Every profile keeps a visible
-                relationship badge and the correct career record.
+              <p className="mt-5 max-w-3xl text-sm leading-7 text-zinc-300 sm:text-base">
+                Official FACKTS players, guest hoopers and competition players
+                now share one searchable directory. Each profile connects the
+                person to recorded games, competition statistics, teams,
+                achievements and playable media.
               </p>
 
-              <div className="mt-5 flex flex-wrap gap-3">
+              <div className="mt-6 flex flex-wrap gap-2">
                 <Link
-                  href="/court-takeover"
-                  className="rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:bg-orange-400"
+                  href="/games"
+                  className="rounded-xl bg-orange-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.13em] text-black transition hover:bg-orange-400"
                 >
-                  Court Takeover Portal
+                  Explore verified games
+                </Link>
+                <Link
+                  href="/player-application"
+                  className="rounded-xl border border-white/15 bg-black/35 px-5 py-3 text-[10px] font-black uppercase tracking-[.13em] text-white transition hover:border-orange-400/60"
+                >
+                  Join the directory
                 </Link>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <HeroMiniStat label="All Players" value={String(totalPlayers)} />
-              <HeroMiniStat label="FACKTS" value={String(officialPlayerCount)} />
-              <HeroMiniStat label="Guests" value={String(guestHooperCount)} />
-              <HeroMiniStat
-                label="Points Recorded"
-                value={String(totalRecordedPoints)}
-              />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2">
+              <HeroStat label="Official players" value={officialCount} />
+              <HeroStat label="Guest hoopers" value={guestCount} />
+              <HeroStat label="Competition players" value={competitionCount} />
+              <HeroStat label="Player-game records" value={documentedGames} />
             </div>
           </div>
         </div>
       </section>
 
-      {featuredPlayers.length > 0 ? (
-        <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
-          <SectionHeader eyebrow="Spotlight" title="Featured Players" />
+      <section className="mx-auto max-w-7xl px-4 py-9 sm:px-6 lg:px-8 lg:py-12">
+        <div className="mb-6 max-w-3xl">
+          <p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-300">
+            Player discovery
+          </p>
+          <h2 className="mt-2 text-3xl font-black uppercase tracking-[-.025em] sm:text-4xl">
+            Find a hooper
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-zinc-400">
+            Filter by FACKTS relationship, verification state, position or
+            performance. The labels describe the player&apos;s current relationship;
+            their earlier game history remains attached.
+          </p>
+        </div>
 
-          <div className="grid gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3">
-            {featuredPlayers.map((player) => (
-              <PlayerCard key={player.id} player={player} featured />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
-        <SectionHeader eyebrow="Directory" title="All Active Players" />
-
-        {players.length === 0 ? (
-          <EmptyBox text="No active player profiles found yet." />
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
-            {[...featuredPlayers, ...regularPlayers].map((player) => (
-              <PlayerCard key={player.id} player={player} />
-            ))}
-          </div>
-        )}
+        <PlayersExplorer
+          players={players}
+          initialClassification={initialClassification}
+        />
       </section>
     </main>
   );
 }
 
-function PlayerCard({
-  player,
-  featured = false,
-}: {
-  player: PlayerCard;
-  featured?: boolean;
-}) {
+function HeroStat({ label, value }: { label: string; value: number }) {
   return (
-    <>
-      <MobilePlayerRow player={player} featured={featured} />
-      <DesktopPlayerCard player={player} featured={featured} />
-    </>
-  );
-}
-
-function MobilePlayerRow({
-  player,
-  featured = false,
-}: {
-  player: PlayerCard;
-  featured?: boolean;
-}) {
-  return (
-    <Link
-      href={player.profile_href}
-      className="fackts-mobile-player-row group relative grid h-[100px] grid-cols-[5.5rem_minmax(0,1fr)] overflow-hidden rounded-[1.05rem] bg-[linear-gradient(112deg,#161616_0%,#090909_64%,#180a02_100%)] shadow-lg shadow-black/30 transition duration-300 active:scale-[0.985] md:hidden"
-    >
-      <div className="relative h-[100px] overflow-hidden bg-zinc-950">
-        {player.photo_url ? (
-          <img
-            src={player.photo_url}
-            alt={getPlayerName(player)}
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 h-full w-full object-cover transition duration-500 group-active:scale-105"
-            style={{
-              objectPosition: player.photo_position || "center center",
-            }}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle,_rgba(249,115,22,0.28),_transparent_58%),#050505]">
-            <div className="text-center">
-              <div className="text-3xl font-black text-orange-500">
-                {getInitials(player) || "FH"}
-              </div>
-              <div className="mt-1 whitespace-nowrap text-[7px] font-black uppercase tracking-[0.08em] text-zinc-600">
-                {player.relationship_label}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="absolute inset-y-0 left-0 w-1 bg-orange-500" />
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black/45" />
-
-        {hasValue(player.jersey_number) ? (
-          <span className="absolute bottom-1.5 left-2 z-10 rounded-full bg-orange-500 px-2 py-0.5 text-[9px] font-black leading-none text-black shadow-lg shadow-black/30">
-            #{player.jersey_number}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="relative flex min-w-0 flex-col justify-between px-2.5 py-2">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-start gap-1.5">
-            <div className="min-w-0 flex-1 text-[15px] font-black leading-[1.05] text-white transition group-active:text-orange-200">
-              {getPlayerName(player)}
-            </div>
-
-            <span className="shrink-0 rounded bg-orange-500/15 px-1.5 py-0.5 text-[6px] font-black uppercase leading-none tracking-[0.04em] text-orange-300">
-              {player.relationship_label}
-            </span>
-          </div>
-
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0 text-[8px] font-bold leading-none">
-            {hasValue(player.nickname) ? (
-              <span className="text-orange-300">&quot;{player.nickname}&quot;</span>
-            ) : null}
-
-            {hasValue(player.nickname) &&
-            (hasValue(player.position) || hasValue(player.role)) ? (
-              <span className="text-zinc-600">&bull;</span>
-            ) : null}
-
-            {hasValue(player.position) ? (
-              <span className="text-zinc-400">{player.position}</span>
-            ) : hasValue(player.role) ? (
-              <span className="text-zinc-400">{player.role}</span>
-            ) : (
-              <span className="text-zinc-500">FACKTS Hoops</span>
-            )}
-          </div>
-        </div>
-
-        <div className="grid min-w-0 grid-cols-4 items-end gap-0">
-          <MobileStat label="GP" value={player.games_played} />
-          <MobileStat label="PPG" value={player.points_per_game} />
-          <MobileStat label="RPG" value={player.rebounds_per_game} />
-          <MobileStat label="APG" value={player.assists_per_game} />
-        </div>
-      </div>
-    </Link>
-  );
-}
-function DesktopPlayerCard({
-  player,
-  featured = false,
-}: {
-  player: PlayerCard;
-  featured?: boolean;
-}) {
-  return (
-    <Link
-      href={player.profile_href}
-      className="group hidden overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/90 shadow-xl shadow-black/20 backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-orange-400/60 hover:shadow-orange-950/30 md:block"
-    >
-      <div className="relative overflow-hidden bg-black">
-        <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2">
-          {hasValue(player.jersey_number) ? (
-            <span className="rounded-full bg-orange-500 px-3 py-1 text-[11px] font-black text-black">
-              #{player.jersey_number}
-            </span>
-          ) : null}
-
-          <span className="rounded-full border border-white/10 bg-black/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white backdrop-blur">
-            {player.relationship_label}
-          </span>
-
-          {featured ? (
-            <span className="rounded-full border border-orange-400/40 bg-black/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-orange-200 backdrop-blur">
-              Featured
-            </span>
-          ) : null}
-        </div>
-
-        {player.photo_url ? (
-          <img
-            src={player.photo_url}
-            alt={getPlayerName(player)}
-            loading="lazy"
-            decoding="async"
-            className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-60"
-            style={{
-              objectPosition: player.photo_position || "center center",
-            }}
-          />
-        ) : (
-          <div className="flex h-56 w-full items-center justify-center bg-[radial-gradient(circle,_rgba(249,115,22,0.25),_transparent_55%),#050505] sm:h-60">
-            <div className="text-center">
-              <p className="text-5xl font-black text-orange-500">
-                {getInitials(player) || "FH"}
-              </p>
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-600">
-                {player.relationship_label}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="line-clamp-1 text-xl font-black text-white group-hover:text-orange-200">
-              {getPlayerName(player)}
-            </h2>
-
-            {hasValue(player.nickname) ? (
-              <p className="mt-1 line-clamp-1 text-sm font-bold text-orange-300">
-                “{player.nickname}”
-              </p>
-            ) : null}
-          </div>
-
-          {hasValue(player.position) ? (
-            <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase text-zinc-300">
-              {player.position}
-            </span>
-          ) : null}
-        </div>
-
-        {hasValue(player.role) ? (
-          <div className="mt-3">
-            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-orange-200">
-              {player.role}
-            </span>
-          </div>
-        ) : null}
-
-        <div className="mt-4 grid grid-cols-4 gap-2">
-          <StatPill label="GP" value={player.games_played} />
-          <StatPill label="PPG" value={player.points_per_game} />
-          <StatPill label="RPG" value={player.rebounds_per_game} />
-          <StatPill label="APG" value={player.assists_per_game} />
-        </div>
-
-        <div className="mt-4">
-          <span className="inline-flex w-full justify-center rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-black transition group-hover:bg-orange-400">
-            Open Profile
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function MobileStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="min-w-0 text-center">
-      <div className="whitespace-nowrap text-[8px] font-black uppercase leading-none tracking-normal text-zinc-500">
-        {label}
-      </div>
-      <div className="mt-1 whitespace-nowrap text-[13px] font-black leading-none tabular-nums text-zinc-100">
-        {value}
-      </div>
-    </div>
-  );
-}
-function HeroMiniStat({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/50 p-4 backdrop-blur-sm">
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+    <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur">
+      <p className="text-[9px] font-black uppercase tracking-[.15em] text-zinc-500">
         {label}
       </p>
-
-      <p className="mt-2 text-3xl font-black text-white">{value}</p>
-
-      {sub ? <p className="mt-1 truncate text-xs text-zinc-500">{sub}</p> : null}
-    </div>
-  );
-}
-
-function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
-  return (
-    <div className="mb-5">
-      <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-        {eyebrow}
-      </p>
-
-      <h2 className="mt-1 text-3xl font-black">{title}</h2>
-    </div>
-  );
-}
-
-function StatPill({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/60 px-2 py-3 text-center">
-      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-zinc-500">
-        {label}
-      </p>
-
-      <p className="mt-1 text-base font-black text-white">{value}</p>
-    </div>
-  );
-}
-
-function EmptyBox({ text }: { text: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-950/90 p-5 text-sm text-zinc-400 backdrop-blur-sm">
-      {text}
+      <p className="mt-2 text-3xl font-black tabular-nums text-white">{value}</p>
     </div>
   );
 }

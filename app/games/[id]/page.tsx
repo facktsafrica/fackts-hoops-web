@@ -167,7 +167,7 @@ function displayStat(row: StatRow, player: PlayerRow | null, guest: GuestRow | n
     jersey: String(player?.jersey_number ?? "–"),
     position: player?.position || guest?.position || player?.role || "Player",
     relationship: isGuest ? "Guest hooper" : "FACKTS player",
-    profileHref: isGuest && guest ? `/guest-hoopers/${guest.id}` : player ? `/players/${player.id}` : "#",
+    profileHref: isGuest && guest ? `/players/guest-${guest.id}` : player ? `/players/${player.id}` : "#",
     photoUrl: player?.photo_url || guest?.photo_url || "",
     photoPosition: player?.photo_position || guest?.photo_position || "center center",
     side: side(row.team_side),

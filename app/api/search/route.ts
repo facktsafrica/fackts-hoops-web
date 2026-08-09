@@ -9,6 +9,8 @@ type SearchResult = {
   href: string;
 };
 
+type SearchRow = Record<string, unknown> & { id: string };
+
 const text = (...values: unknown[]) =>
   values
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
@@ -38,7 +40,12 @@ export async function GET(request: NextRequest) {
   const needle = query.toLocaleLowerCase();
   const matches = (...values: unknown[]) => text(values).toLocaleLowerCase().includes(needle);
   const results: SearchResult[] = [];
-  const eventById = new Map((events.data ?? []).map((event: any) => [String(event.event_id), event]));
+  const eventById = new Map(
+    ((events.data ?? []) as SearchRow[]).map((event) => [
+      String(event.event_id),
+      event,
+    ])
+  );
 
   for (const player of players.data ?? []) {
     if (!matches(player.full_name, player.name, player.nickname, player.position, player.role, player.jersey_number)) continue;
@@ -49,7 +56,7 @@ export async function GET(request: NextRequest) {
   for (const guest of guests.data ?? []) {
     if (!matches(guest.full_name, guest.name, guest.nickname, guest.position, guest.role, guest.bio)) continue;
     const name = guest.full_name || guest.name || guest.nickname || "Guest hooper";
-    results.push({ id: `guest-${guest.id}`, type: "Guest hooper", title: name, subtitle: text(guest.nickname, guest.position) || "Guest player", href: `/guest-hoopers/${guest.id}` });
+    results.push({ id: `guest-${guest.id}`, type: "Guest hooper", title: name, subtitle: text(guest.nickname, guest.position) || "Guest player", href: `/players/guest-${guest.id}` });
   }
 
   for (const battle of battles.data ?? []) {
@@ -70,7 +77,7 @@ export async function GET(request: NextRequest) {
 
   for (const record of records.data ?? []) {
     if (!matches(record.title, record.subtitle, record.details, record.division, record.team_name, record.opponent_name, record.metadata)) continue;
-    const event: any = eventById.get(String(record.event_id));
+    const event = eventById.get(String(record.event_id));
     if (!event) continue;
     results.push({ id: `record-${record.id}`, type: record.record_type === "result" ? "Event game" : "Event appearance", title: record.title || record.team_name || record.opponent_name || event.title, subtitle: `${event.title}${record.subtitle ? ` · ${record.subtitle}` : ""}`, href: `/events/${event.slug || event.event_id}?q=${encodeURIComponent(query)}` });
   }

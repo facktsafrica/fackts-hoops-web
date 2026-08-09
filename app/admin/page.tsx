@@ -34,6 +34,14 @@ const coreCards: AdminCard[] = [
     featured: true,
   },
   {
+    title: "Public Player Profiles",
+    description:
+      "Manage profile verification, publication clearance, achievements, and player media in one workflow.",
+    href: "/admin/player-profiles",
+    badge: "Profiles",
+    featured: true,
+  },
+  {
     title: "Player Applications",
     description:
       "Review incoming applications and approve hoopers into the correct category.",

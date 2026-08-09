@@ -255,7 +255,7 @@ export async function loadTeamProfileBundle(
         profile_href: member.player_id
           ? `/players/${member.player_id}`
           : member.guest_hooper_id
-            ? `/guest-hoopers/guest-${member.guest_hooper_id}`
+            ? `/players/guest-${member.guest_hooper_id}`
             : null,
       }));
   let games: TeamGame[] = gamesResult.error

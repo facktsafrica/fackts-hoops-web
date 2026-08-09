@@ -72,12 +72,20 @@ function playerFor(value: string): Player {
   return { kind: "unavailable" };
 }
 
-export default function GameMedia({ items }: { items: GameMediaItem[] }) {
+export default function GameMedia({
+  items,
+  emptyTitle = "Match media coming soon",
+  emptyText = "Full games, highlights and approved photos will appear here after publication.",
+}: {
+  items: GameMediaItem[];
+  emptyTitle?: string;
+  emptyText?: string;
+}) {
   if (!items.length) {
     return (
       <div className="rounded-[1.5rem] border border-dashed border-white/15 bg-slate-950/70 px-6 py-10 text-center">
-        <p className="text-sm font-black uppercase text-zinc-200">Match media coming soon</p>
-        <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-zinc-500">Full games, highlights and approved photos will appear here after publication.</p>
+        <p className="text-sm font-black uppercase text-zinc-200">{emptyTitle}</p>
+        <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-zinc-500">{emptyText}</p>
       </div>
     );
   }

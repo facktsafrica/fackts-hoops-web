@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import AdminLogoutButton from "./AdminLogoutButton";
 
 const adminItems = [
   ["Control Room", "/admin"],
   ["Players", "/admin/players"],
+  ["Public Player Profiles", "/admin/player-profiles"],
   ["Player Applications", "/admin/player-applications"],
   ["Player Accounts", "/admin/player-access"],
   ["Games", "/admin/games"],
@@ -26,8 +27,6 @@ const adminItems = [
 export default function AdminNavigation() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-
-  useEffect(() => setOpen(false), [pathname]);
 
   return (
     <>
@@ -95,6 +94,7 @@ export default function AdminNavigation() {
                     <Link
                       key={href}
                       href={href}
+                      onClick={() => setOpen(false)}
                       className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${
                         active
                           ? "border-orange-500/50 bg-orange-500/15 text-orange-200"
