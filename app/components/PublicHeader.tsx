@@ -16,9 +16,11 @@ type NavItem = {
 type ContentResult = {
   id: string;
   type: string;
+  group?: string;
   title: string;
   subtitle: string;
   href: string;
+  imageUrl?: string;
 };
 
 const primaryItems: NavItem[] = [
@@ -202,9 +204,10 @@ export default function PublicHeader() {
       setSearching(true);
 
       try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `/api/search?q=${encodeURIComponent(query)}&limit=12`,
+          { signal: controller.signal }
+        );
         const payload = response.ok ? await response.json() : { results: [] };
         setContentResults(Array.isArray(payload.results) ? payload.results : []);
       } catch (error) {
@@ -635,8 +638,6 @@ export default function PublicHeader() {
                     { label: "Players", href: "/players" },
                     { label: "Competitions", href: "/competitions" },
                     { label: "FACKTS Kings", href: "/competitions/fackts-kings" },
-                    { label: "Court Takeovers", href: "/competitions/court-takeovers" },
-                    { label: "Court Takeovers Leaderboard", href: "/competitions/court-takeovers#leaderboards" },
                     { label: "Merchandise", href: "/merch" },
                   ].map((item) => (
                     <Link
@@ -650,6 +651,14 @@ export default function PublicHeader() {
                     </Link>
                   ))}
                 </div>
+                <Link
+                  href="/search"
+                  onClick={() => selectResult("Search FACKTS")}
+                  className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-[#0B1F3A] px-4 py-3 text-[10px] font-black uppercase tracking-[.12em] text-white transition hover:bg-[#102A4C]"
+                >
+                  Open full FACKTS search
+                  <ArrowIcon />
+                </Link>
               </div>
             ) : (
               <div>
@@ -691,7 +700,12 @@ export default function PublicHeader() {
                       onClick={() => selectResult(item.title)}
                       className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3 transition hover:border-[#F58220] hover:bg-orange-50"
                     >
-                      <span className="min-w-0">
+                      {item.imageUrl ? (
+                        <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                          <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                        </span>
+                      ) : null}
+                      <span className="min-w-0 flex-1">
                         <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-[#F58220]">
                           {item.type}
                         </span>
@@ -708,6 +722,15 @@ export default function PublicHeader() {
                     </Link>
                   ))}
                 </div>
+
+                <Link
+                  href={`/search?q=${encodeURIComponent(search.trim())}`}
+                  onClick={() => selectResult(search.trim())}
+                  className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-[#0B1F3A] px-4 py-3 text-[10px] font-black uppercase tracking-[.12em] text-white transition hover:bg-[#102A4C]"
+                >
+                  View all search results
+                  <ArrowIcon />
+                </Link>
 
                 {!searching && !hasSearchResults ? (
                   <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-[#F3F6F9] px-5 py-8 text-center">
