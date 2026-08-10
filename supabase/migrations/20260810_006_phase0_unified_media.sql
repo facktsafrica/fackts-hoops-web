@@ -113,7 +113,7 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  asset_id uuid;
+  captured_asset_id uuid;
   safe_media_type text;
   safe_owner_type text;
   safe_rights_status text;
@@ -146,13 +146,13 @@ begin
   on conflict (dedupe_key) do update
   set metadata = public.media_assets.metadata || excluded.metadata,
       updated_at = now()
-  returning id into asset_id;
+  returning id into captured_asset_id;
 
   insert into public.media_links (
     asset_id, owner_type, owner_id, link_role,
     legacy_source_table, legacy_source_id, metadata
   ) values (
-    asset_id, safe_owner_type, trim(p_owner_id), coalesce(nullif(trim(p_link_role), ''), 'attachment'),
+    captured_asset_id, safe_owner_type, trim(p_owner_id), coalesce(nullif(trim(p_link_role), ''), 'attachment'),
     trim(p_source_table), trim(p_source_id), coalesce(p_metadata, '{}'::jsonb)
   )
   on conflict (asset_id, owner_type, owner_id, link_role) do update
@@ -161,7 +161,7 @@ begin
       metadata = public.media_links.metadata || excluded.metadata,
       updated_at = now();
 
-  return asset_id;
+  return captured_asset_id;
 end;
 $$;
 

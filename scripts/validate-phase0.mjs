@@ -94,6 +94,15 @@ if (/p\.id\s*=\s*legacy\.(?:fackts_player_id|opponent_player_id)/i.test(oneOnOne
   failures.push("M05 compares live text references directly with UUID columns");
 }
 
+const unifiedMedia = sources.get(migrations[5]) ?? "";
+if (/declare\s+[\s\S]{0,160}\basset_id\s+uuid\s*;/i.test(unifiedMedia)) {
+  failures.push("M06 declares asset_id as a PL/pgSQL variable, which conflicts with media_links.asset_id");
+}
+if (!/returning\s+id\s+into\s+captured_asset_id\s*;/i.test(unifiedMedia)
+    || !/values\s*\(\s*captured_asset_id\s*,\s*safe_owner_type/i.test(unifiedMedia)) {
+  failures.push("M06 is missing the unambiguous captured_asset_id media-link handoff");
+}
+
 const protectedRoutes = [
   ["app/api/games/route.ts", "getAdminCapabilityAccess(\"games\")"],
   ["app/api/players/route.ts", "getAdminCapabilityAccess(\"players\")"],
