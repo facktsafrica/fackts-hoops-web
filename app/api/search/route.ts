@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   if (!url || !key) return NextResponse.json({ results: [] });
 
   const db = createClient(url, key);
-  const [players, guests, games, battles, competitions, events, records, partners] = await Promise.all([
+  const [players, guests, games, battles, competitions, events, records, partners, media] = await Promise.all([
     db.from("players").select("*").limit(300),
     db.from("guest_hoopers").select("*").limit(300),
     db.from("games").select("*").limit(300),
@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
     db.from("event_case_studies").select("*").eq("is_public", true).limit(100),
     db.from("event_records").select("*").eq("is_public", true).limit(600),
     db.from("partners").select("*").limit(200),
+    db.from("media_stories").select("*").eq("is_active", true).limit(300),
   ]);
 
   const needle = query.toLocaleLowerCase();
@@ -91,6 +92,11 @@ export async function GET(request: NextRequest) {
   for (const partner of partners.data ?? []) {
     if (!matches(partner.name, partner.category, partner.role, partner.description, partner.about)) continue;
     results.push({ id: `partner-${partner.id}`, type: "Partner", title: partner.name || "Partner", subtitle: text(partner.category, partner.role), href: `/partners/${partner.id}` });
+  }
+
+  for (const item of media.data ?? []) {
+    if (!matches(item.title, item.label, item.subtitle, item.description, item.category, item.story_type)) continue;
+    results.push({ id: `media-${item.id}`, type: "Media", title: item.title || item.label || "FACKTS media", subtitle: text(item.category, item.story_type), href: `/media?q=${encodeURIComponent(query)}` });
   }
 
   const unique = Array.from(new Map(results.map((item) => [`${item.type}-${item.href}-${item.title}`, item])).values());

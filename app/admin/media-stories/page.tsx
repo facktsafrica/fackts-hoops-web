@@ -54,7 +54,10 @@ const emptyForm: FormState = {
 const categoryOptions = [
   "Player Interviews",
   "Game Highlights",
-  "Court Takeover",
+  "Full Games",
+  "FACKTS Kings",
+  "Court Takeovers",
+  "Event Coverage",
   "Documentaries",
   "Behind the Scenes",
   "Health & Awareness",
@@ -67,6 +70,9 @@ const storyTypeOptions = [
   "Player Feature",
   "Interview",
   "Highlight",
+  "Full Game",
+  "Press Conference",
+  "Player Breakdown",
   "Documentary",
   "Short Clip",
   "Episode",
@@ -142,7 +148,8 @@ export default function AdminMediaStoriesPage() {
   }
 
   useEffect(() => {
-    loadStories();
+    const timer = window.setTimeout(() => void loadStories(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function updateField<K extends keyof FormState>(field: K, value: FormState[K]) {
@@ -214,7 +221,7 @@ export default function AdminMediaStoriesPage() {
     }
 
     if (!form.youtube_url.trim()) {
-      setMessage("YouTube URL is required.");
+      setMessage("A video or social media URL is required.");
       setLoading(false);
       return;
     }
@@ -298,8 +305,9 @@ export default function AdminMediaStoriesPage() {
           </h1>
 
           <p className="mt-3 text-slate-400">
-            Manage interviews, highlights, documentaries, Court Takeover videos,
-            awareness stories, and featured media content.
+            Publish editorial media from YouTube, Instagram, TikTok, Facebook,
+            Vimeo, Google Drive or a direct video link. Game, player, team and
+            event media already flow into the public library automatically.
           </p>
         </div>
 
@@ -360,22 +368,22 @@ export default function AdminMediaStoriesPage() {
               />
 
               <FormInput
-                label="YouTube URL"
+                label="Video or social media URL"
                 value={form.youtube_url}
                 onChange={(value) => updateField("youtube_url", value)}
-                placeholder="https://www.youtube.com/watch?v=..."
+                placeholder="YouTube, Instagram, TikTok, Facebook, Vimeo or direct video"
               />
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormInput
-                  label="Video ID"
+                  label="YouTube Video ID"
                   value={form.video_id}
                   onChange={(value) => updateField("video_id", value)}
                   placeholder="Optional. Auto-detected if blank."
                 />
 
                 <FormInput
-                  label="Playlist ID"
+                  label="YouTube Playlist ID"
                   value={form.playlist_id}
                   onChange={(value) => updateField("playlist_id", value)}
                   placeholder="Optional"

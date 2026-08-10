@@ -51,10 +51,6 @@ const competitionItems: NavItem[] = [
     href: "/competitions/court-takeovers",
     activePaths: ["/competitions/court-takeovers", "/court-takeover"],
   },
-  {
-    label: "Court Takeovers Leaderboard",
-    href: "/competitions/court-takeovers#leaderboards",
-  },
 ];
 
 const mobileItems: NavItem[] = [
