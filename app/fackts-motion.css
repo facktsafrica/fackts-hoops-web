@@ -347,20 +347,19 @@ textarea:focus {
     border-radius: 1.25rem !important;
   }
 
-  main article.rounded-3xl,
-  main a.rounded-3xl,
-  main section.rounded-3xl,
-  main article.rounded-\[2rem\],
-  main section.rounded-\[2rem\] {
+  main article.rounded-3xl:not(.overflow-hidden),
+  main a.rounded-3xl:not(.overflow-hidden),
+  main section.rounded-3xl:not(.overflow-hidden),
+  main article.rounded-\[2rem\]:not(.overflow-hidden),
+  main section.rounded-\[2rem\]:not(.overflow-hidden) {
     padding: 0.9rem !important;
   }
 
-  /* Do not add padding to image-card outer wrappers */
-  main article.overflow-hidden,
-  main a.overflow-hidden,
-  main div.overflow-hidden {
-    padding: 0 !important;
-  }
+  /*
+   * Overflow clips media and decorative layers; it does not define spacing.
+   * Flush image shells remain flush by omitting a padding utility, while text
+   * cards keep the padding declared by their shared component.
+   */
 
   /* Make large images shorter on phone */
   main .h-96 {

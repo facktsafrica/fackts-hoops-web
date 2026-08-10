@@ -231,18 +231,22 @@ function ValueCard({
   description: string;
 }) {
   return (
-    <article className="group relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900/70 p-5 transition duration-300 hover:-translate-y-1 hover:border-orange-400/35 hover:shadow-[0_22px_60px_rgba(0,0,0,0.28)] sm:p-6">
+    <article className="group relative box-border w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900/70 transition duration-300 hover:-translate-y-1 hover:border-orange-400/35 hover:shadow-[0_22px_60px_rgba(0,0,0,0.28)]">
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-orange-400/70 to-transparent opacity-0 transition group-hover:opacity-100" />
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
-          {number}
-        </span>
-        <span className="h-2 w-2 rounded-full bg-orange-400 shadow-[0_0_20px_rgba(251,146,60,0.8)]" />
+      <div className="relative box-border min-w-0 p-5 sm:p-6">
+        <div className="flex min-w-0 items-center justify-between gap-4">
+          <span className="min-w-0 break-words text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
+            {number}
+          </span>
+          <span className="h-2 w-2 shrink-0 rounded-full bg-orange-400 shadow-[0_0_20px_rgba(251,146,60,0.8)]" />
+        </div>
+        <h2 className="mt-8 min-w-0 break-words text-xl font-black tracking-tight text-white">
+          {title}
+        </h2>
+        <p className="mt-3 min-w-0 break-words text-sm leading-6 text-slate-400">
+          {description}
+        </p>
       </div>
-      <h2 className="mt-8 text-xl font-black tracking-tight text-white">
-        {title}
-      </h2>
-      <p className="mt-3 text-sm leading-6 text-slate-400">{description}</p>
     </article>
   );
 }
