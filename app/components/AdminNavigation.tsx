@@ -10,6 +10,7 @@ const adminItems = [
   ["Players", "/admin/players"],
   ["Public Player Profiles", "/admin/player-profiles"],
   ["Teams", "/admin/teams"],
+  ["FACKTS Team", "/admin/team"],
   ["Player Applications", "/admin/player-applications"],
   ["Player Accounts", "/admin/player-access"],
   ["Games", "/admin/games"],

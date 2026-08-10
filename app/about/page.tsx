@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import TeamSection from "./TeamSection";
 
 export const metadata: Metadata = {
   title: "About FACKTS Hoops",
@@ -42,59 +43,6 @@ const reasons = [
   {
     title: "Continuity",
     text: "Every result, profile and video should add to a connected history instead of disappearing into a social feed.",
-  },
-];
-
-const teamMembers = [
-  {
-    name: "John Martin Ambetsa",
-    initials: "JM",
-    role: "Founder & Director",
-    responsibility:
-      "Sets the vision, directs partnerships and makes the final decisions that move FACKTS forward.",
-    leadership: true,
-  },
-  {
-    name: "Hanss",
-    initials: "H",
-    role: "Ideas & Basketball Lead",
-    responsibility:
-      "Develops basketball concepts, talent stories and the creative direction around the game.",
-  },
-  {
-    name: "Liam",
-    initials: "L",
-    role: "Operations Lead",
-    responsibility:
-      "Coordinates game-day delivery, schedules and the people needed to execute each activation.",
-  },
-  {
-    name: "Gerito",
-    initials: "G",
-    role: "Operations Support",
-    responsibility:
-      "Supports event preparation, on-court logistics and follow-through across FACKTS activities.",
-  },
-  {
-    name: "Felix Matheka",
-    initials: "FM",
-    role: "Finance Lead",
-    responsibility:
-      "Keeps financial records, supports budgets and strengthens accountability across projects.",
-  },
-  {
-    name: "Mark",
-    initials: "M",
-    role: "Strategy & Partnerships",
-    responsibility:
-      "Shapes growth plans and develops relationships with teams, organizers, brands and institutions.",
-  },
-  {
-    name: "Damaris",
-    initials: "D",
-    role: "Administration & Executive Support",
-    responsibility:
-      "Keeps documentation, coordination and executive follow-up organized behind the scenes.",
   },
 ];
 
@@ -241,91 +189,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="relative isolate overflow-hidden bg-[#07182E] text-white">
-        <div className="absolute -left-32 top-24 -z-10 h-80 w-80 rounded-full bg-[#F58220]/10 blur-3xl" />
-        <div className="absolute -right-40 bottom-0 -z-10 h-96 w-96 rounded-full bg-[#1D4E89]/25 blur-3xl" />
-
-        <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8 lg:py-20">
-          <div className="grid gap-7 border-b border-white/10 pb-9 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#F8A65D]">
-                The people behind the platform
-              </p>
-              <h2 className="mt-3 text-3xl font-black uppercase leading-none tracking-[-0.04em] sm:text-5xl">
-                The Team Behind FACKTS
-              </h2>
-            </div>
-            <p className="max-w-2xl text-sm leading-7 text-slate-300 sm:text-base lg:justify-self-end">
-              FACKTS is run by a hands-on team covering leadership, basketball,
-              operations, finance, partnerships and administration. Together,
-              we turn ideas on the court into organized work people can see,
-              follow and trust.
-            </p>
-          </div>
-
-          <div className="mt-8 grid gap-4 lg:grid-cols-3">
-            {teamMembers.map((member) => (
-              <article
-                key={member.name}
-                className={`group relative overflow-hidden rounded-[1.5rem] border p-6 transition duration-300 hover:-translate-y-1 sm:p-7 ${
-                  member.leadership
-                    ? "border-[#F58220]/70 bg-[#F58220] text-[#07182E] lg:col-span-3"
-                    : "border-white/10 bg-white/[0.06] hover:border-[#F58220]/60 hover:bg-white/[0.09]"
-                }`}
-              >
-                <div
-                  className={`flex gap-5 ${
-                    member.leadership
-                      ? "flex-col sm:flex-row sm:items-center sm:justify-between"
-                      : "flex-col"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <span
-                      aria-hidden="true"
-                      className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-sm font-black ${
-                        member.leadership
-                          ? "bg-[#07182E] text-white"
-                          : "border border-white/15 bg-[#F58220] text-[#07182E]"
-                      }`}
-                    >
-                      {member.initials}
-                    </span>
-                    <div>
-                      <p
-                        className={`text-[10px] font-black uppercase tracking-[0.18em] ${
-                          member.leadership ? "text-[#17385F]" : "text-[#F8A65D]"
-                        }`}
-                      >
-                        {member.role}
-                      </p>
-                      <h3 className="mt-1 text-xl font-black uppercase tracking-[-0.025em]">
-                        {member.name}
-                      </h3>
-                    </div>
-                  </div>
-
-                  <p
-                    className={`text-sm leading-6 ${
-                      member.leadership
-                        ? "max-w-2xl text-[#17385F] sm:text-right"
-                        : "text-slate-300"
-                    }`}
-                  >
-                    {member.responsibility}
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <p className="mt-7 max-w-3xl text-xs leading-6 text-slate-400">
-            FACKTS is built through shared responsibility: creative ideas become
-            real activations, every activation is documented, and every result
-            strengthens the basketball community around it.
-          </p>
-        </div>
-      </section>
+      <TeamSection />
 
       <section className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8 lg:py-16">
         <div className="flex flex-col gap-6 rounded-[1.75rem] bg-[#0B1F3A] p-7 text-white sm:p-9 lg:flex-row lg:items-center lg:justify-between">

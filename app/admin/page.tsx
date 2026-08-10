@@ -198,6 +198,14 @@ const businessCards: AdminCard[] = [
     featured: true,
   },
   {
+    title: "FACKTS Team",
+    description:
+      "Manage the leadership and operating team shown on the public About page.",
+    href: "/admin/team",
+    badge: "About",
+    featured: true,
+  },
+  {
     title: "Email Notifications",
     description:
       "Check the approved Resend sender and send a live notification test.",
