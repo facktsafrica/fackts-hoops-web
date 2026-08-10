@@ -37,6 +37,11 @@ const primaryItems: NavItem[] = [
   { label: "Partners", href: "/partners" },
 ];
 
+const trustItems: NavItem[] = [
+  { label: "About", href: "/about" },
+  { label: "Contact Us", href: "/contact" },
+];
+
 const competitionItems: NavItem[] = [
   {
     label: "All Competitions",
@@ -58,6 +63,7 @@ const competitionItems: NavItem[] = [
 const mobileItems: NavItem[] = [
   { label: "Home", href: "/" },
   ...primaryItems,
+  ...trustItems,
 ];
 
 const searchablePages: NavItem[] = [
@@ -66,7 +72,6 @@ const searchablePages: NavItem[] = [
   { label: "Book Tournament Coverage", href: "/book-coverage" },
   { label: "Player Sign In", href: "/player" },
   { label: "Player Application", href: "/player-application" },
-  { label: "Contact FACKTS", href: "/contact" },
 ];
 
 function SearchIcon({ className = "h-5 w-5" }: { className?: string }) {
@@ -277,7 +282,7 @@ export default function PublicHeader() {
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 shadow-[0_8px_30px_rgba(15,23,42,0.04)] backdrop-blur-xl">
-        <div className="mx-auto flex h-[72px] max-w-[1320px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-[72px] max-w-[1536px] items-center gap-2 px-3 sm:px-5 2xl:px-8">
           <Link
             href="/"
             className="mr-auto flex min-w-0 shrink-0 items-center gap-3"
@@ -290,7 +295,7 @@ export default function PublicHeader() {
                 className="h-full w-full object-cover"
               />
             </span>
-            <span className="hidden min-w-0 sm:block">
+            <span className="hidden min-w-0 sm:block xl:hidden 2xl:block">
               <span className="block truncate text-[15px] font-black uppercase leading-none tracking-[-0.02em] text-[#0B1F3A]">
                 FACKTS Hoops
               </span>
@@ -305,7 +310,7 @@ export default function PublicHeader() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-lg px-3 py-2 text-[13px] font-bold transition ${
+                className={`rounded-lg px-2 py-2 text-[12px] font-bold transition 2xl:px-3 2xl:text-[13px] ${
                   isActive(item)
                     ? "bg-[#0B1F3A] text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-[#0B1F3A]"
@@ -319,7 +324,7 @@ export default function PublicHeader() {
               <button
                 type="button"
                 aria-haspopup="menu"
-                className={`flex items-center gap-1 rounded-lg px-3 py-2 text-[13px] font-bold transition ${
+                className={`flex items-center gap-1 rounded-lg px-2 py-2 text-[12px] font-bold transition 2xl:px-3 2xl:text-[13px] ${
                   competitionsActive
                     ? "bg-[#0B1F3A] text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-[#0B1F3A]"
@@ -352,6 +357,20 @@ export default function PublicHeader() {
                 ))}
               </div>
             </div>
+
+            {trustItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`whitespace-nowrap rounded-lg px-2 py-2 text-[12px] font-bold transition 2xl:px-3 2xl:text-[13px] ${
+                  isActive(item)
+                    ? "bg-[#0B1F3A] text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-[#0B1F3A]"
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
 
           <div className="ml-1 flex shrink-0 items-center gap-2">
@@ -368,7 +387,8 @@ export default function PublicHeader() {
               href="/book-coverage"
               className="hidden rounded-lg bg-[#F58220] px-4 py-3 text-center text-xs font-black text-white shadow-sm transition hover:bg-[#dc6d10] md:inline-flex"
             >
-              Book Tournament Coverage
+              <span className="2xl:hidden">Book Coverage</span>
+              <span className="hidden 2xl:inline">Book Tournament Coverage</span>
             </Link>
 
             <Link

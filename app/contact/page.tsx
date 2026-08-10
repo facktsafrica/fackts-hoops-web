@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "About & Contact | FACKTS Hoops",
+  title: "Contact Us | FACKTS Hoops",
   description:
-    "Learn how FACKTS Hoops documents basketball through competition, statistics, player records and media, then contact the team or book tournament coverage.",
+    "Contact FACKTS Hoops about tournament coverage, player and team profiles, media, statistics, or basketball partnerships.",
 };
 
 const FACKTS_PHONE_DISPLAY = "+254 711 468 303";
@@ -13,29 +13,6 @@ const FACKTS_WHATSAPP = "254711468303";
 const FACKTS_EMAIL = "facktsafrica@gmail.com";
 const FACKTS_LOCATION =
   "Krishna Center, 12 Woodvale Grove, 3rd Floor, Suite E05, Nairobi";
-
-const platformPillars = [
-  {
-    number: "01",
-    title: "Competition",
-    text: "Tournament homes, schedules, results, standings and match centres that keep every competition easy to follow.",
-  },
-  {
-    number: "02",
-    title: "Statistics",
-    text: "Player and team performance records that turn a game into useful basketball intelligence.",
-  },
-  {
-    number: "03",
-    title: "Profiles",
-    text: "Permanent player and team pages that build identity, history and a credible body of work over time.",
-  },
-  {
-    number: "04",
-    title: "Media",
-    text: "Full games, highlights, interviews and event stories connected to the people and competitions they belong to.",
-  },
-];
 
 const enquiryRoutes = [
   {
@@ -49,7 +26,7 @@ const enquiryRoutes = [
   {
     eyebrow: "For players & teams",
     title: "Build a record people can actually find and follow.",
-    text: "Apply for a player profile, connect your team, or ask about stats, features and media coverage.",
+    text: "Apply for a player profile, connect your team, or ask about statistics, features and media coverage.",
     href: "/player-application",
     action: "Start Player Application",
     featured: false,
@@ -148,24 +125,22 @@ export default function ContactPage() {
           className="absolute inset-0 -z-20 bg-cover bg-center opacity-20"
           style={{ backgroundImage: "url('/images/HOME%20PAGE%20BACKGROUND.png')" }}
         />
-        <div className="absolute inset-0 -z-10 bg-[linear-gradient(100deg,rgba(7,24,46,0.98)_0%,rgba(7,24,46,0.92)_50%,rgba(7,24,46,0.58)_100%)]" />
-        <div className="absolute -right-24 top-4 -z-10 h-80 w-80 rounded-full bg-[#F58220]/20 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 -z-10 h-48 w-96 rounded-full bg-blue-500/10 blur-3xl" />
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(105deg,rgba(7,24,46,0.99)_0%,rgba(7,24,46,0.91)_55%,rgba(7,24,46,0.62)_100%)]" />
+        <div className="absolute -right-20 top-0 -z-10 h-80 w-80 rounded-full bg-[#F58220]/20 blur-3xl" />
 
-        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.15fr_0.85fr] lg:items-end lg:px-8 lg:py-24">
+        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:px-8 lg:py-24">
           <div>
             <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#F8A65D]">
-              About FACKTS Hoops
+              Contact FACKTS Hoops
             </p>
             <h1 className="mt-5 max-w-4xl text-4xl font-black uppercase leading-[0.94] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
-              Basketball,
-              <span className="block text-[#F58220]">documented properly.</span>
+              Let&apos;s put the next game
+              <span className="block text-[#F58220]">on the record.</span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
-              FACKTS Hoops is a basketball competition, data and media platform.
-              We help organizers run visible events, give players and teams
-              permanent records, and keep the game connected long after the
-              final whistle.
+              Talk to us about tournament coverage, player and team profiles,
+              statistics, media or a partnership. Choose the route that fits
+              your enquiry and we will take it from there.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -177,90 +152,48 @@ export default function ContactPage() {
                 <ArrowIcon />
               </Link>
               <a
-                href={whatsAppUrl(
-                  "Hello FACKTS Hoops, I would like to discuss basketball coverage or a collaboration."
-                )}
+                href={whatsAppUrl("Hello FACKTS Hoops, I would like to connect with the team.")}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex min-h-12 items-center justify-center gap-3 rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-center text-xs font-black uppercase tracking-[0.1em] text-white hover:border-[#F58220] hover:bg-white/15"
               >
-                Talk To The Team
+                WhatsApp FACKTS
                 <ArrowIcon />
               </a>
             </div>
           </div>
 
           <aside className="rounded-[1.75rem] border border-white/15 bg-white/[0.07] p-5 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-7">
-            <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-5">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#F8A65D]">
-                  The platform
-                </p>
-                <h2 className="mt-2 text-2xl font-black tracking-[-0.03em]">
-                  One connected basketball record
-                </h2>
-              </div>
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#F58220] text-sm font-black text-[#07182E]">
-                FH
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-3 pt-5">
-              {platformPillars.map((pillar) => (
-                <div key={pillar.title} className="rounded-xl border border-white/10 bg-black/15 p-4">
-                  <p className="text-[10px] font-black text-[#F8A65D]">{pillar.number}</p>
-                  <p className="mt-2 text-sm font-black uppercase tracking-[0.05em] text-white">
-                    {pillar.title}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </aside>
-        </div>
-      </section>
-
-      <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8 lg:py-16">
-          <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-start">
-            <div className="lg:sticky lg:top-24">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#E56F0E]">
-                What FACKTS does
-              </p>
-              <h2 className="mt-3 text-3xl font-black uppercase leading-none tracking-[-0.04em] text-[#0B1F3A] sm:text-5xl">
-                From one game to a lasting record.
-              </h2>
-              <p className="mt-5 max-w-xl text-sm leading-7 text-slate-600 sm:text-base">
-                The platform connects every part of the basketball story. A
-                result can lead to a match centre, player performance, team
-                record, competition standing and watchable media without
-                sending the audience to five different places.
-              </p>
-              <Link
-                href="/competitions"
-                className="mt-6 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.1em] text-[#0B1F3A] hover:text-[#E56F0E]"
-              >
-                Explore competitions
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#F8A65D]">
+              Quick contact
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em]">
+              Reach the right FACKTS channel
+            </h2>
+            <div className="mt-6 grid gap-3">
+              <a href={`tel:${FACKTS_PHONE_TEL}`} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3 hover:border-[#F58220]">
+                <span>
+                  <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#F8A65D]">Call</span>
+                  <span className="mt-1 block text-sm font-bold text-white">{FACKTS_PHONE_DISPLAY}</span>
+                </span>
+                <ArrowIcon />
+              </a>
+              <a href={`mailto:${FACKTS_EMAIL}`} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3 hover:border-[#F58220]">
+                <span>
+                  <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#F8A65D]">Email</span>
+                  <span className="mt-1 block text-sm font-bold text-white">{FACKTS_EMAIL}</span>
+                </span>
+                <ArrowIcon />
+              </a>
+              <Link href="/about" className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3 hover:border-[#F58220]">
+                <span>
+                  <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#F8A65D]">New here?</span>
+                  <span className="mt-1 block text-sm font-bold text-white">Learn about FACKTS Hoops</span>
+                </span>
                 <ArrowIcon />
               </Link>
             </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              {platformPillars.map((pillar) => (
-                <article
-                  key={pillar.title}
-                  className="rounded-[1.5rem] border border-slate-200 bg-[#F8FAFC] p-6 shadow-[0_12px_35px_rgba(15,23,42,0.05)]"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <p className="text-[11px] font-black text-[#E56F0E]">{pillar.number}</p>
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#F58220]" />
-                  </div>
-                  <h3 className="mt-8 text-xl font-black uppercase tracking-[-0.02em] text-[#0B1F3A]">
-                    {pillar.title}
-                  </h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{pillar.text}</p>
-                </article>
-              ))}
-            </div>
-          </div>
+          </aside>
         </div>
       </section>
 
@@ -284,11 +217,7 @@ export default function ContactPage() {
                   : "border-slate-200 bg-white text-[#172033] shadow-[0_12px_35px_rgba(15,23,42,0.05)]"
               }`}
             >
-              <p
-                className={`text-[10px] font-black uppercase tracking-[0.2em] ${
-                  route.featured ? "text-[#F8A65D]" : "text-[#E56F0E]"
-                }`}
-              >
+              <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${route.featured ? "text-[#F8A65D]" : "text-[#E56F0E]"}`}>
                 {route.eyebrow}
               </p>
               <h3 className="mt-5 text-2xl font-black uppercase leading-tight tracking-[-0.03em]">
@@ -331,44 +260,18 @@ export default function ContactPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <ContactChannel
-                icon="phone"
-                label="Call"
-                value={FACKTS_PHONE_DISPLAY}
-                href={`tel:${FACKTS_PHONE_TEL}`}
-              />
-              <ContactChannel
-                icon="message"
-                label="WhatsApp"
-                value={FACKTS_PHONE_DISPLAY}
-                href={whatsAppUrl("Hello FACKTS Hoops, I would like to connect with the team.")}
-                external
-              />
-              <ContactChannel
-                icon="email"
-                label="Email"
-                value={FACKTS_EMAIL}
-                href={`mailto:${FACKTS_EMAIL}`}
-              />
-              <ContactChannel
-                icon="map"
-                label="Nairobi office"
-                value={FACKTS_LOCATION}
-                href="https://www.google.com/maps/search/?api=1&query=Krishna%20Center%2012%20Woodvale%20Grove%20Nairobi"
-                external
-              />
+              <ContactChannel icon="phone" label="Call" value={FACKTS_PHONE_DISPLAY} href={`tel:${FACKTS_PHONE_TEL}`} />
+              <ContactChannel icon="message" label="WhatsApp" value={FACKTS_PHONE_DISPLAY} href={whatsAppUrl("Hello FACKTS Hoops, I would like to connect with the team.")} external />
+              <ContactChannel icon="email" label="Email" value={FACKTS_EMAIL} href={`mailto:${FACKTS_EMAIL}`} />
+              <ContactChannel icon="map" label="Nairobi office" value={FACKTS_LOCATION} href="https://www.google.com/maps/search/?api=1&query=Krishna%20Center%2012%20Woodvale%20Grove%20Nairobi" external />
             </div>
           </div>
 
           <div className="mt-10 border-t border-white/10 pt-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                  Follow FACKTS Hoops
-                </p>
-                <p className="mt-2 text-sm text-slate-300">
-                  Games, player stories, highlights and basketball culture.
-                </p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Follow FACKTS Hoops</p>
+                <p className="mt-2 text-sm text-slate-300">Games, player stories, highlights and basketball culture.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {socialLinks.map((social) => (
@@ -418,9 +321,7 @@ function ContactChannel({
         </span>
         <ArrowIcon className="h-5 w-5 text-slate-500 transition group-hover:translate-x-1 group-hover:text-[#F8A65D]" />
       </div>
-      <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-[#F8A65D]">
-        {label}
-      </p>
+      <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-[#F8A65D]">{label}</p>
       <p className="mt-2 break-words text-sm font-bold leading-5 text-white">{value}</p>
     </a>
   );
