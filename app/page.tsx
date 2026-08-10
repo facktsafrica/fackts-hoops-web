@@ -68,8 +68,16 @@ type KingsMatchRow = {
   id: string;
   match_number?: string | null;
   match_title?: string | null;
+  participant_type?: string | null;
+  fackts_player_id?: string | null;
+  guest_hooper_id?: string | null;
   participant_name?: string | null;
+  participant_display_name?: string | null;
+  opponent_type?: string | null;
+  opponent_player_id?: string | null;
+  opponent_guest_hooper_id?: string | null;
   opponent_name?: string | null;
+  opponent_display_name?: string | null;
   match_date?: string | null;
   venue?: string | null;
   points_scored?: number | string | null;
@@ -213,11 +221,19 @@ function kingsMatchLabel(match?: KingsMatchRow | null) {
 }
 
 function kingsParticipant(match?: KingsMatchRow | null) {
-  return canonicalName(match?.participant_name) || "Player 1";
+  return (
+    meaningfulKingsName(match?.participant_display_name) ||
+    meaningfulKingsName(match?.participant_name) ||
+    "Player 1"
+  );
 }
 
 function kingsOpponent(match?: KingsMatchRow | null) {
-  return canonicalName(match?.opponent_name) || "Player 2";
+  return (
+    meaningfulKingsName(match?.opponent_display_name) ||
+    meaningfulKingsName(match?.opponent_name) ||
+    "Player 2"
+  );
 }
 
 function nairobiToday() {
@@ -255,6 +271,21 @@ function statusClass(status: EventState) {
 
 function canonicalName(value?: string | null) {
   return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function meaningfulKingsName(value?: string | null) {
+  const cleanName = canonicalName(value);
+  const normalized = cleanName.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  if (
+    ["player1", "playerone", "player2", "playertwo", "unknown", "tbd"].includes(
+      normalized
+    )
+  ) {
+    return "";
+  }
+
+  return cleanName;
 }
 
 function sameName(left?: string | null, right?: string | null) {
@@ -308,11 +339,64 @@ async function loadHomepageData() {
       .order("created_at", { ascending: false }),
   ]);
 
+  const kingsMatches = (kingsResult.data || []) as KingsMatchRow[];
+  const playerIds = Array.from(
+    new Set(
+      kingsMatches
+        .flatMap((match) => [match.fackts_player_id, match.opponent_player_id])
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const guestIds = Array.from(
+    new Set(
+      kingsMatches
+        .flatMap((match) => [match.guest_hooper_id, match.opponent_guest_hooper_id])
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  const [playersResult, guestsResult] = await Promise.all([
+    playerIds.length
+      ? supabase.from("players").select("id,full_name,name,nickname").in("id", playerIds)
+      : Promise.resolve({ data: [] }),
+    guestIds.length
+      ? supabase.from("guest_hoopers").select("id,full_name,name,nickname").in("id", guestIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const playerNames = new Map(
+    ((playersResult.data || []) as PlayerRow[]).map((player) => [
+      player.id,
+      canonicalName(player.full_name || player.name || player.nickname),
+    ])
+  );
+  const guestNames = new Map(
+    ((guestsResult.data || []) as PlayerRow[]).map((player) => [
+      player.id,
+      canonicalName(player.full_name || player.name || player.nickname),
+    ])
+  );
+
+  const resolvedKingsMatches = kingsMatches.map((match) => ({
+    ...match,
+    participant_display_name:
+      meaningfulKingsName(match.participant_name) ||
+      (match.fackts_player_id ? playerNames.get(match.fackts_player_id) : "") ||
+      (match.guest_hooper_id ? guestNames.get(match.guest_hooper_id) : "") ||
+      null,
+    opponent_display_name:
+      meaningfulKingsName(match.opponent_name) ||
+      (match.opponent_player_id ? playerNames.get(match.opponent_player_id) : "") ||
+      (match.opponent_guest_hooper_id
+        ? guestNames.get(match.opponent_guest_hooper_id)
+        : "") ||
+      null,
+  }));
+
   return {
     events: (eventsResult.data || []) as EventRow[],
     records: (recordsResult.data || []) as EventRecordRow[],
     games: (gamesResult.data || []) as GameRow[],
-    kingsMatches: (kingsResult.data || []) as KingsMatchRow[],
+    kingsMatches: resolvedKingsMatches,
   };
 }
 
@@ -405,8 +489,12 @@ export default async function HomePage() {
   const featuredKingsMatch = nextKingsMatch || latestKingsResult;
   const kingsCompetitors = new Set(
     kingsMatches.flatMap((match) => [
-      canonicalName(match.participant_name).toLowerCase(),
-      canonicalName(match.opponent_name).toLowerCase(),
+      meaningfulKingsName(
+        match.participant_display_name || match.participant_name
+      ).toLowerCase(),
+      meaningfulKingsName(
+        match.opponent_display_name || match.opponent_name
+      ).toLowerCase(),
     ]).filter(Boolean)
   );
 
@@ -417,7 +505,10 @@ export default async function HomePage() {
   const performers = await loadTopPerformers(latestCompletedGame);
 
   const kingsHeroImage =
-    featuredKingsMatch?.poster_url || "/images/one-on-one-bg.png";
+    latestKingsResult?.poster_url ||
+    featuredKingsMatch?.poster_url ||
+    nextKingsMatch?.poster_url ||
+    "/images/one-on-one-bg.png";
 
   const partnerRecords = records
     .filter((record) => record.record_type === "partner")
@@ -939,6 +1030,7 @@ export default async function HomePage() {
               ["Player Application", "/player-application"],
               ["Contact", "/contact"],
               ["Sign in", "/player"],
+              ["Admin Login", "/admin/login"],
             ]}
           />
         </div>

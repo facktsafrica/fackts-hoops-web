@@ -71,6 +71,7 @@ const searchablePages: NavItem[] = [
   ...competitionItems,
   { label: "Book Tournament Coverage", href: "/book-coverage" },
   { label: "Player Sign In", href: "/player" },
+  { label: "Admin Sign In", href: "/admin/login" },
   { label: "Player Application", href: "/player-application" },
 ];
 
@@ -391,14 +392,33 @@ export default function PublicHeader() {
               <span className="hidden 2xl:inline">Book Tournament Coverage</span>
             </Link>
 
-            <Link
-              href="/player"
-              aria-label="Player account"
-              className="hidden h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-black text-[#0B1F3A] transition hover:border-[#0B1F3A] lg:inline-flex"
-            >
-              <AccountIcon />
-              <span className="hidden 2xl:inline">Account</span>
-            </Link>
+            <div className="group relative hidden lg:block">
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-label="Open sign-in options"
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-black text-[#0B1F3A] transition hover:border-[#0B1F3A]"
+              >
+                <AccountIcon />
+                <span className="hidden 2xl:inline">Sign in</span>
+              </button>
+              <div className="invisible absolute right-0 top-full z-20 mt-2 w-56 translate-y-1 rounded-xl border border-slate-200 bg-white p-2 opacity-0 shadow-xl shadow-slate-950/10 transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
+                <Link
+                  href="/player"
+                  className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-bold text-[#0B1F3A] transition hover:bg-slate-100"
+                >
+                  Player Sign In
+                  <ArrowIcon />
+                </Link>
+                <Link
+                  href="/admin/login"
+                  className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-bold text-[#0B1F3A] transition hover:bg-slate-100"
+                >
+                  Admin Login
+                  <ArrowIcon />
+                </Link>
+              </div>
+            </div>
 
             <button
               type="button"
@@ -538,7 +558,14 @@ export default function PublicHeader() {
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[#0B1F3A] px-5 py-3 text-sm font-black text-[#0B1F3A]"
             >
               <AccountIcon />
-              Sign in
+              Player Sign In
+            </Link>
+            <Link
+              href="/admin/login"
+              onClick={() => setMenuOpen(false)}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-5 py-3 text-sm font-black text-slate-700 transition hover:border-[#F58220] hover:text-[#0B1F3A]"
+            >
+              Admin Login
             </Link>
           </div>
         </aside>

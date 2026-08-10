@@ -574,6 +574,19 @@ export default function AdminOneOnOnePage() {
     const score2 =
       form.player2Score.trim() === "" ? null : Number(form.player2Score);
 
+    const player1Name =
+      form.player1Type === "fackts_player"
+        ? getPersonName(playerMap.get(form.player1FacktsId))
+        : form.player1Type === "guest_hooper"
+          ? getPersonName(guestMap.get(form.player1GuestId))
+          : form.player1ExternalName.trim();
+    const player2Name =
+      form.player2Type === "fackts_player"
+        ? getPersonName(playerMap.get(form.player2FacktsId))
+        : form.player2Type === "guest_hooper"
+          ? getPersonName(guestMap.get(form.player2GuestId))
+          : form.player2ExternalName.trim();
+
     const payload = {
       competition_slug: "fackts-kings",
       season_label: form.seasonLabel.trim() || "2026",
@@ -589,16 +602,14 @@ export default function AdminOneOnOnePage() {
         form.player1Type === "fackts_player" ? form.player1FacktsId : null,
       guest_hooper_id:
         form.player1Type === "guest_hooper" ? form.player1GuestId : null,
-      participant_name:
-        form.player1Type === "external" ? form.player1ExternalName.trim() : null,
+      participant_name: player1Name,
 
       opponent_type: form.player2Type,
       opponent_player_id:
         form.player2Type === "fackts_player" ? form.player2FacktsId : null,
       opponent_guest_hooper_id:
         form.player2Type === "guest_hooper" ? form.player2GuestId : null,
-      opponent_name:
-        form.player2Type === "external" ? form.player2ExternalName.trim() : null,
+      opponent_name: player2Name,
 
       match_date: form.matchDate ? new Date(form.matchDate).toISOString() : null,
       venue: form.venue.trim() || null,

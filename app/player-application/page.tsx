@@ -167,10 +167,18 @@ export default function PlayerApplicationPage() {
       return false;
     }
 
+    if (currentStep === 3 && !form.marketingConsent) {
+      setNotice({
+        tone: "error",
+        text: "Please give application and data consent before submitting.",
+      });
+      return false;
+    }
+
     if (currentStep === 3 && isUnder18 && !form.guardianAwareness) {
       setNotice({
         tone: "error",
-        text: "Please confirm that a parent or guardian knows about this application.",
+        text: "Please confirm that a parent or guardian has given permission for this application.",
       });
       return false;
     }
@@ -568,7 +576,7 @@ export default function PlayerApplicationPage() {
                       lines={[
                         displayValue(form.phone, "No phone provided"),
                         displayValue(form.email, "No email provided"),
-                        isUnder18 ? "Guardian confirmation required" : "Standard review workflow",
+                        isUnder18 ? "Guardian permission required" : "Standard review workflow",
                       ]}
                     />
                   </div>
@@ -577,9 +585,12 @@ export default function PlayerApplicationPage() {
                     <ConsentCard
                       checked={form.marketingConsent}
                       onChange={(checked) => updateField("marketingConsent", checked)}
+                      required
                     >
-                      FACKTS may contact me about relevant basketball opportunities,
-                      player features, events and media coverage.
+                      I consent to FACKTS securely collecting and reviewing the
+                      details in this application and contacting me about the
+                      application. I understand that nothing will be published
+                      until it is separately reviewed and approved.
                     </ConsentCard>
 
                     <ConsentCard
@@ -587,8 +598,8 @@ export default function PlayerApplicationPage() {
                       onChange={(checked) => updateField("guardianAwareness", checked)}
                       required={isUnder18}
                     >
-                      If I am under 18, I confirm that a parent or guardian knows
-                      I am submitting this application.
+                      If I am under 18, I confirm that a parent or guardian has
+                      given me permission to submit this application.
                     </ConsentCard>
                   </div>
 

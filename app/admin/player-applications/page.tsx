@@ -503,13 +503,13 @@ export default function AdminPlayerApplicationsPage() {
 
                   <DetailCard title="Consent">
                     <Detail
-                      label="Marketing Consent"
+                      label="Application & Data Consent"
                       value={
                         selectedApplication.marketing_consent ? "Yes" : "No"
                       }
                     />
                     <Detail
-                      label="Guardian Awareness"
+                      label="Parent / Guardian Permission"
                       value={
                         selectedApplication.guardian_awareness ? "Yes" : "No"
                       }
