@@ -44,7 +44,16 @@ const competitionItems: NavItem[] = [
   {
     label: "FACKTS Kings",
     href: "/competitions/fackts-kings",
-    activePaths: ["/competitions/fackts-kings", "/one-on-one", "/court-takeover", "/leaderboards", "/guest-leaderboards"],
+    activePaths: ["/competitions/fackts-kings", "/one-on-one", "/leaderboards", "/guest-leaderboards"],
+  },
+  {
+    label: "Court Takeovers",
+    href: "/competitions/court-takeovers",
+    activePaths: ["/competitions/court-takeovers", "/court-takeover"],
+  },
+  {
+    label: "Court Takeovers Leaderboard",
+    href: "/competitions/court-takeovers#leaderboards",
   },
 ];
 
@@ -630,6 +639,8 @@ export default function PublicHeader() {
                     { label: "Players", href: "/players" },
                     { label: "Competitions", href: "/competitions" },
                     { label: "FACKTS Kings", href: "/competitions/fackts-kings" },
+                    { label: "Court Takeovers", href: "/competitions/court-takeovers" },
+                    { label: "Court Takeovers Leaderboard", href: "/competitions/court-takeovers#leaderboards" },
                     { label: "Merchandise", href: "/merch" },
                   ].map((item) => (
                     <Link
