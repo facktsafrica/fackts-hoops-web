@@ -33,9 +33,30 @@ function isPublished(row: Row) {
   return row.is_public !== false && row.is_active !== false && !["draft", "hidden", "private"].includes(state);
 }
 
+function fullGameFilter(...labels: unknown[]): MediaFilter {
+  const label = labels.map((item) => value(item)).join(" ").toLowerCase();
+  const identity = label.replace(/[^a-z0-9]+/g, "");
+
+  if (label.includes("court takeover") || identity.includes("courttakeover")) {
+    return "Court Takeovers";
+  }
+
+  if (
+    label.includes("1v1") ||
+    label.includes("1 v 1") ||
+    label.includes("one-on-one") ||
+    label.includes("one on one") ||
+    identity.includes("facktskings")
+  ) {
+    return "1v1s";
+  }
+
+  return "Friendlies";
+}
+
 function mediaFilter(...labels: unknown[]): MediaFilter {
   const label = labels.map((item) => value(item)).join(" ").toLowerCase();
-  if (label.includes("full game") || label.includes("full match")) return "Full games";
+  if (label.includes("full game") || label.includes("full match")) return fullGameFilter(...labels);
   if (label.includes("highlight") || label.includes("recap") || label.includes("short clip")) return "Highlights";
   if (label.includes("interview") || label.includes("press conference")) return "Interviews";
   if (label.includes("training") || label.includes("workout") || label.includes("breakdown")) return "Training";
@@ -96,7 +117,7 @@ function storyItems(rows: Row[]): MediaLibraryItem[] {
       url,
       thumbnailUrl: value(row.thumbnail_url) || youtubeThumbnail(url),
       mediaType: type,
-      filter: mediaFilter(type, row.category),
+      filter: mediaFilter(type, row.category, row.title, row.subtitle, row.description),
       platform: platform(url),
       sourceKind: "Editorial" as const,
       sourceLabel: value(row.category, "FACKTS Media"),
@@ -126,7 +147,7 @@ function builtInGameItems(rows: Row[]): MediaLibraryItem[] {
       rightsStatus: "Published match record",
     };
     const items: MediaLibraryItem[] = [];
-    if (fullUrl) items.push({ ...common, id: `game-${game.id}-full`, title: `${getHomeTeam(game)} vs ${getAwayTeam(game)} · Full game`, description: `${getCompetition(game)} match coverage`, url: fullUrl, mediaType: "Full game", filter: "Full games", platform: platform(fullUrl) });
+    if (fullUrl) items.push({ ...common, id: `game-${game.id}-full`, title: `${getHomeTeam(game)} vs ${getAwayTeam(game)} · Full game`, description: `${getCompetition(game)} match coverage`, url: fullUrl, mediaType: "Full game", filter: fullGameFilter(getCompetition(game), game.game_format, game.match_type, game.game_stage, title), platform: platform(fullUrl) });
     if (highlightUrl && normalizeUrl(highlightUrl) !== normalizeUrl(fullUrl)) items.push({ ...common, id: `game-${game.id}-highlights`, title: `${getHomeTeam(game)} vs ${getAwayTeam(game)} · Highlights`, description: `${getCompetition(game)} match highlights`, url: highlightUrl, mediaType: "Highlights", filter: "Highlights", platform: platform(highlightUrl) });
     return items;
   });
@@ -145,7 +166,7 @@ function attachedGameItems(rows: Row[], games: Map<string, GameRecord>): MediaLi
       url,
       thumbnailUrl: value(row.thumbnail_url) || (game ? getPosterUrl(game) : "") || youtubeThumbnail(url),
       mediaType: type,
-      filter: mediaFilter(type),
+      filter: mediaFilter(type, row.competition_name, row.category, row.title, game ? getCompetition(game) : "", game ? getGameTitle(game) : ""),
       platform: value(row.platform) || platform(url),
       sourceKind: "Game" as const,
       sourceLabel: game ? getGameTitle(game) : "Match Centre",
@@ -179,7 +200,7 @@ function battleItems(rows: Row[]): MediaLibraryItem[] {
     const fullUrl = value(row.video_url);
     const highlightUrl = value(row.highlight_url);
     const items: MediaLibraryItem[] = [];
-    if (fullUrl) items.push({ ...common, id: `competition-${value(row.id)}-full`, title: `${title} · Full game`, url: fullUrl, mediaType: "Full game", filter: "Full games", platform: platform(fullUrl) });
+    if (fullUrl) items.push({ ...common, id: `competition-${value(row.id)}-full`, title: `${title} · Full game`, url: fullUrl, mediaType: "Full game", filter: isTakeover ? "Court Takeovers" : "1v1s", platform: platform(fullUrl) });
     if (highlightUrl && normalizeUrl(highlightUrl) !== normalizeUrl(fullUrl)) items.push({ ...common, id: `competition-${value(row.id)}-highlights`, title: `${title} · Highlights`, url: highlightUrl, mediaType: "Highlights", filter: "Highlights", platform: platform(highlightUrl) });
     return items;
   });
@@ -200,7 +221,7 @@ function playerItems(rows: Row[], players: Map<string, Row>, guests: Map<string,
       url,
       thumbnailUrl: value(row.thumbnail_url, person?.photo_url, person?.image_url) || youtubeThumbnail(url),
       mediaType: type,
-      filter: mediaFilter(type),
+      filter: mediaFilter(type, row.competition_name, row.title, row.description),
       platform: value(row.platform) || platform(url),
       sourceKind: "Player" as const,
       sourceLabel: name,
@@ -227,7 +248,7 @@ function teamItems(rows: Row[], teams: Map<string, Row>): MediaLibraryItem[] {
       url,
       thumbnailUrl: value(row.thumbnail_url, team?.hero_image_url, team?.logo_url) || youtubeThumbnail(url),
       mediaType: type,
-      filter: mediaFilter(type),
+      filter: mediaFilter(type, row.competition_name, row.title, row.description),
       platform: value(row.platform) || platform(url),
       sourceKind: "Team" as const,
       sourceLabel: name,
@@ -254,7 +275,7 @@ function eventItems(rows: Row[], events: Map<string, Row>): MediaLibraryItem[] {
       url,
       thumbnailUrl: value(row.image_url, event?.poster_url, event?.hero_image_url) || youtubeThumbnail(url),
       mediaType: type,
-      filter: mediaFilter(type, row.title),
+      filter: mediaFilter(type, row.title, row.subtitle, row.division, row.details, eventName),
       platform: platform(url),
       sourceKind: "Event" as const,
       sourceLabel: eventName,

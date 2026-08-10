@@ -1,6 +1,8 @@
 export type MediaFilter =
   | "All"
-  | "Full games"
+  | "Court Takeovers"
+  | "Friendlies"
+  | "1v1s"
   | "Highlights"
   | "Interviews"
   | "Stories"

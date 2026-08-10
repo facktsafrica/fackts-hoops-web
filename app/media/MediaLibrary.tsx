@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { MediaFilter, MediaLibraryItem } from "./mediaTypes";
 
-const FILTERS: MediaFilter[] = ["All", "Full games", "Highlights", "Interviews", "Stories", "Training", "Other"];
+const FULL_GAME_FILTERS: MediaFilter[] = ["Court Takeovers", "Friendlies", "1v1s"];
+const FILTERS: MediaFilter[] = ["All", ...FULL_GAME_FILTERS, "Highlights", "Interviews", "Stories", "Training", "Other"];
 
 type Player =
   | { kind: "iframe"; src: string; generic?: boolean }
@@ -94,7 +95,7 @@ export default function MediaLibrary({ items, initialQuery = "" }: { items: Medi
   }, [competition, filter, items, query]);
 
   const featured = items.find((item) => item.featured) || items[0] || null;
-  const fullGames = items.filter((item) => item.filter === "Full games").length;
+  const fullGames = items.filter((item) => FULL_GAME_FILTERS.includes(item.filter)).length;
   const connectedRecords = new Set(items.map((item) => `${item.sourceKind}-${item.sourceHref}`)).size;
 
   useEffect(() => {
