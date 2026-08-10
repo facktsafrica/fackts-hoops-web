@@ -34,6 +34,12 @@ export type PlayerAccount = {
   is_active?: boolean | null;
 };
 
+export type AdminResourceScope = {
+  resourceType: "event" | "game" | "team" | "player" | "media" | "report" | "partner";
+  resourceId: string;
+  write?: boolean;
+};
+
 export async function getAuthenticatedUser(): Promise<User | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.auth.getUser();
@@ -87,15 +93,31 @@ export async function getAdminAccess() {
 }
 
 export async function getAdminCapabilityAccess(
-  capability: AdminCapability
+  capability: AdminCapability,
+  scope?: AdminResourceScope
 ) {
   const access = await getAdminAccess();
 
+  if (!access.user || !access.profile) {
+    return { ...access, allowed: false };
+  }
+
+  const databaseDecision = await access.supabase.rpc("has_admin_permission", {
+    p_capability: capability,
+    p_resource_type: scope?.resourceType ?? null,
+    p_resource_id: scope?.resourceId ?? null,
+    p_write: scope?.write ?? true,
+  });
+
+  if (!databaseDecision.error && typeof databaseDecision.data === "boolean") {
+    return { ...access, allowed: databaseDecision.data };
+  }
+
   return {
     ...access,
-    allowed: Boolean(
-      access.user && access.profile && canAdmin(access.profile, capability)
-    ),
+    // Deployment-order compatibility: before M01 exists, keep enforcing the
+    // established TypeScript permission model at this server boundary.
+    allowed: canAdmin(access.profile, capability),
   };
 }
 

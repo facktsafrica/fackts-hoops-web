@@ -8,10 +8,12 @@ export const ADMIN_CAPABILITIES = [
   { key: "games", label: "Games" },
   { key: "stats", label: "Player Stats" },
   { key: "calendar", label: "Scheduling & Events" },
+  { key: "events", label: "Event Operations" },
   { key: "one_on_one", label: "Competitions & FACKTS Kings" },
   { key: "match_previews", label: "Match Previews" },
   { key: "highlights", label: "Highlights" },
   { key: "media_stories", label: "Media Stories" },
+  { key: "media", label: "Media Library" },
   { key: "guest_hoopers", label: "Guest Hoopers" },
   { key: "game_guests", label: "Game Guests" },
   { key: "guest_game_stats", label: "Guest Game Stats" },
@@ -22,6 +24,11 @@ export const ADMIN_CAPABILITIES = [
   { key: "partners", label: "Partners" },
   { key: "email", label: "Email Notifications" },
   { key: "activity", label: "Player Activity" },
+  { key: "audit", label: "Audit Log" },
+  { key: "consents", label: "Consent Records" },
+  { key: "corrections", label: "Correction Requests" },
+  { key: "reports", label: "Reports" },
+  { key: "admin_users", label: "Admin Users" },
 ] as const;
 
 export type AdminCapability = (typeof ADMIN_CAPABILITIES)[number]["key"];
@@ -31,6 +38,18 @@ export type AdminPermissionProfile = {
   is_super_admin?: boolean | null;
   permissions?: string[] | null;
 };
+
+export const ADMIN_ROLE_PRESETS = [
+  "director",
+  "event_manager",
+  "statistician",
+  "media_editor",
+  "team_manager",
+  "organizer_viewer",
+  "read_only_partner",
+] as const;
+
+export type AdminRolePreset = (typeof ADMIN_ROLE_PRESETS)[number];
 
 const CAPABILITY_KEYS = new Set<string>(
   ADMIN_CAPABILITIES.map((capability) => capability.key)

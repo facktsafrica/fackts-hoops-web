@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { validateGameMutation } from "@/lib/admin/validation";
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -30,22 +32,18 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const access = await getAdminCapabilityAccess("games");
+    if (!access.user) return NextResponse.json({ error: "Sign in to create games." }, { status: 401 });
+    if (!access.allowed) return NextResponse.json({ error: "You do not have permission to create games." }, { status: 403 });
 
-    const { data, error } = await supabase
+    const validation = validateGameMutation(await request.json());
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.errors[0], errors: validation.errors }, { status: 400 });
+    }
+
+    const { data, error } = await access.supabase
       .from("games")
-      .insert([
-        {
-          team_name: body.team_name || "FACKTS",
-          opponent: body.opponent,
-          game_date: body.game_date,
-          venue: body.venue || null,
-          match_type: body.match_type || null,
-          notes: body.notes || null,
-          team_score: Number(body.team_score || 0),
-          opponent_score: Number(body.opponent_score || 0),
-        },
-      ])
+      .insert([validation.value])
       .select()
       .single();
 
@@ -66,25 +64,21 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const body = await request.json();
+    const access = await getAdminCapabilityAccess("games");
+    if (!access.user) return NextResponse.json({ error: "Sign in to update games." }, { status: 401 });
+    if (!access.allowed) return NextResponse.json({ error: "You do not have permission to update games." }, { status: 403 });
 
-    if (!body.id) {
-      return NextResponse.json({ error: "Game id is required." }, { status: 400 });
+    const validation = validateGameMutation(await request.json(), true);
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.errors[0], errors: validation.errors }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { id, ...payload } = validation.value;
+
+    const { data, error } = await access.supabase
       .from("games")
-      .update({
-        team_name: body.team_name || "FACKTS",
-        opponent: body.opponent,
-        game_date: body.game_date,
-        venue: body.venue || null,
-        match_type: body.match_type || null,
-        notes: body.notes || null,
-        team_score: Number(body.team_score || 0),
-        opponent_score: Number(body.opponent_score || 0),
-      })
-      .eq("id", body.id)
+      .update(payload)
+      .eq("id", id)
       .select()
       .single();
 

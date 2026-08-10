@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { validateStatsMutation } from "@/lib/admin/validation";
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -43,45 +45,18 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const access = await getAdminCapabilityAccess("stats");
+    if (!access.user) return NextResponse.json({ error: "Sign in to save statistics." }, { status: 401 });
+    if (!access.allowed) return NextResponse.json({ error: "You do not have permission to save statistics." }, { status: 403 });
 
-    if (!body.game_id || !body.player_id) {
-      return NextResponse.json(
-        { error: "game_id and player_id are required." },
-        { status: 400 }
-      );
+    const validation = validateStatsMutation(await request.json());
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.errors[0], errors: validation.errors }, { status: 400 });
     }
 
-    const payload = {
-      game_id: body.game_id,
-      player_id: body.player_id,
-      points: Number(body.points || 0),
-      rebounds: Number(body.rebounds || 0),
-      offensive_rebounds: Number(body.offensive_rebounds || 0),
-      defensive_rebounds: Number(body.defensive_rebounds || 0),
-      assists: Number(body.assists || 0),
-      steals: Number(body.steals || 0),
-      blocks: Number(body.blocks || 0),
-      turnovers: Number(body.turnovers || 0),
-      fouls: Number(body.fouls || 0),
-      minutes: Number(body.minutes || 0),
-      plus_minus: Number(body.plus_minus || 0),
-      q1: Number(body.q1 || 0),
-      q2: Number(body.q2 || 0),
-      q3: Number(body.q3 || 0),
-      q4: Number(body.q4 || 0),
-      player_of_game: Boolean(body.player_of_game),
-      two_made: Number(body.two_made || 0),
-      two_attempted: Number(body.two_attempted || 0),
-      three_made: Number(body.three_made || 0),
-      three_attempted: Number(body.three_attempted || 0),
-      ft_made: Number(body.ft_made || 0),
-      ft_attempted: Number(body.ft_attempted || 0),
-    };
-
-    const { data, error } = await supabase
+    const { data, error } = await access.supabase
       .from("player_game_stats")
-      .upsert([payload], {
+      .upsert([validation.value], {
         onConflict: "game_id,player_id",
         ignoreDuplicates: false,
       })

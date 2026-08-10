@@ -4,18 +4,15 @@ import {
   isSuperAdmin,
   normalizeAdminPermissions,
 } from "@/lib/admin/permissions";
-import { getAdminAccess } from "@/lib/auth/server";
+import { recordAdminAuditEvent } from "@/lib/admin/audit";
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function superAdminAccess() {
-  const access = await getAdminAccess();
-  return {
-    ...access,
-    allowed: Boolean(access.user && access.profile && isSuperAdmin(access.profile)),
-  };
+  return getAdminCapabilityAccess("admin_users");
 }
 
 function cleanText(value: unknown, max = 120) {
@@ -174,16 +171,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { error: profileError } = await admin.from("admin_profiles").insert({
-      user_id: created.user.id,
-      display_name: displayName,
-      email,
-      role: "mini_admin",
-      is_active: true,
-      is_super_admin: false,
-      permissions,
-      updated_at: new Date().toISOString(),
-    });
+    const { data: createdProfile, error: profileError } = await admin
+      .from("admin_profiles")
+      .insert({
+        user_id: created.user.id,
+        display_name: displayName,
+        email,
+        role: "mini_admin",
+        is_active: true,
+        is_super_admin: false,
+        permissions,
+        updated_at: new Date().toISOString(),
+      })
+      .select("id,user_id,display_name,role,is_active,is_super_admin,permissions")
+      .single();
 
     if (profileError) {
       await admin.auth.admin.deleteUser(created.user.id);
@@ -192,6 +193,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    await recordAdminAuditEvent(access.supabase, {
+      action: "create",
+      entityType: "admin_profile",
+      entityId: createdProfile.id,
+      capability: "admin_users",
+      after: createdProfile,
+      metadata: { source: "admin_mini_admins_api" },
+    }).catch((auditError) => console.error("Mini-admin create audit failed:", auditError));
 
     return NextResponse.json({
       ok: true,
@@ -245,7 +255,7 @@ export async function PATCH(request: NextRequest) {
     const admin = createSupabaseAdminClient();
     const { data: target, error: targetError } = await admin
       .from("admin_profiles")
-      .select("id, user_id, is_super_admin, role")
+      .select("id, user_id, display_name, is_active, is_super_admin, role, permissions")
       .eq("id", profileId)
       .maybeSingle();
 
@@ -282,6 +292,21 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    await recordAdminAuditEvent(access.supabase, {
+      action: "update_permissions",
+      entityType: "admin_profile",
+      entityId: target.id,
+      capability: "admin_users",
+      before: target,
+      after: {
+        ...target,
+        display_name: displayName,
+        permissions,
+        is_active: isActive,
+      },
+      metadata: { source: "admin_mini_admins_api" },
+    }).catch((auditError) => console.error("Mini-admin update audit failed:", auditError));
 
     return NextResponse.json({
       ok: true,

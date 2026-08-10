@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 
 const allowedFields = [
   "title", "summary", "venue", "location", "poster_url", "hero_image_url",
@@ -8,12 +8,10 @@ const allowedFields = [
 ] as const;
 
 async function approvedAdmin() {
-  const supabase = await createServerSupabaseClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return { error: NextResponse.json({ error: "Your admin session expired. Sign in again." }, { status: 401 }) };
-  const { data: profile } = await supabase.from("admin_profiles").select("id").eq("user_id", auth.user.id).eq("is_active", true).maybeSingle();
-  if (!profile) return { error: NextResponse.json({ error: "This account is not approved for Admin Events." }, { status: 403 }) };
-  return { supabase };
+  const access = await getAdminCapabilityAccess("calendar");
+  if (!access.user) return { error: NextResponse.json({ error: "Your admin session expired. Sign in again." }, { status: 401 }) };
+  if (!access.allowed) return { error: NextResponse.json({ error: "This account is not approved for Admin Events." }, { status: 403 }) };
+  return { supabase: access.supabase };
 }
 
 function slugify(value: string) {

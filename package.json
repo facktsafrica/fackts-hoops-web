@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "phase0:validate": "node scripts/validate-phase0.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

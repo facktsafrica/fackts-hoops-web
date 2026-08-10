@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordAdminAuditEvent } from "@/lib/admin/audit";
 import { getAdminCapabilityAccess } from "@/lib/auth/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -6,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile, allowed } =
+    const { user, profile, allowed, supabase } =
       await getAdminCapabilityAccess("guest_hoopers");
 
     if (!user || !profile || !allowed) {
@@ -40,6 +41,15 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    await recordAdminAuditEvent(supabase, {
+      action: "promote_to_canonical_player",
+      entityType: "guest_hooper",
+      entityId: guestId,
+      capability: "guest_hoopers",
+      after: { player_id: promoted.player_id, player_name: promoted.player_name },
+      metadata: { source: "guest_promotion_api" },
+    }).catch((auditError) => console.error("Guest promotion audit failed:", auditError));
 
     return NextResponse.json({
       ok: true,

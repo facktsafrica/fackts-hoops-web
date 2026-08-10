@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const access = await getAdminCapabilityAccess("games", { resourceType: "game", resourceId: "list", write: false });
+    if (!access.user) return NextResponse.json({ error: "Sign in to view the admin game list." }, { status: 401 });
+    if (!access.allowed) return NextResponse.json({ error: "You do not have permission to view the admin game list." }, { status: 403 });
+
+    const { data, error } = await access.supabase
       .from("games")
       .select("id, opponent, game_date")
       .order("game_date", { ascending: false });

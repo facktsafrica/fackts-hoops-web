@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const access = await getAdminCapabilityAccess("players", { resourceType: "player", resourceId: "list", write: false });
+    if (!access.user) return NextResponse.json({ error: "Sign in to view the admin player list." }, { status: 401 });
+    if (!access.allowed) return NextResponse.json({ error: "You do not have permission to view the admin player list." }, { status: 403 });
+
+    const { data, error } = await access.supabase
       .from("players")
       .select("id, full_name, jersey_number")
       .eq("is_active", true)

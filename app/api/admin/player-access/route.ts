@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { recordAdminAuditEvent } from "@/lib/admin/audit";
 import { getAdminCapabilityAccess } from "@/lib/auth/server";
 import { escapeHtml, getEmailConfiguration, sendResendEmail } from "@/lib/email/resend";
 import { FACKTS_PLAYER_TYPE, isOfficialFacktsPlayer } from "@/lib/hoops/playerClassification";
@@ -57,7 +58,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile, allowed } =
+    const { user, profile, allowed, supabase } =
       await getAdminCapabilityAccess("player_access");
 
     if (!user || !profile || !allowed) {
@@ -100,6 +101,16 @@ export async function POST(request: NextRequest) {
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
+
+      await recordAdminAuditEvent(supabase, {
+        action: "revoke_player_access",
+        entityType: "player",
+        entityId: playerId,
+        capability: "player_access",
+        before: { user_id: player.user_id },
+        after: { user_id: null },
+        metadata: { source: "player_access_api" },
+      }).catch((auditError) => console.error("Player access revoke audit failed:", auditError));
 
       return NextResponse.json({ ok: true, message: "Player access revoked." });
     }
@@ -229,6 +240,16 @@ export async function POST(request: NextRequest) {
       linkUrl: "/player/settings",
       tag: `player-account-${player.id}`,
     }).catch(() => undefined);
+
+    await recordAdminAuditEvent(supabase, {
+      action: accountCreated ? "create_player_access" : "reset_player_access",
+      entityType: "player",
+      entityId: playerId,
+      capability: "player_access",
+      before: { user_id: player.user_id },
+      after: { user_id: authUserId },
+      metadata: { source: "player_access_api", email_sent: emailSent },
+    }).catch((auditError) => console.error("Player access audit failed:", auditError));
 
     return NextResponse.json({
       ok: true,

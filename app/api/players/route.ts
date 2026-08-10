@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
+import { validatePlayerMutation } from "@/lib/admin/validation";
+import { getAdminCapabilityAccess } from "@/lib/auth/server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -32,33 +34,21 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const access = await getAdminCapabilityAccess("players");
+    if (!access.user) return NextResponse.json({ error: "Sign in to create players." }, { status: 401 });
+    if (!access.allowed) return NextResponse.json({ error: "You do not have permission to create players." }, { status: 403 });
 
-    const { data, error } = await supabase
+    const validation = validatePlayerMutation(await request.json());
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.errors[0], errors: validation.errors }, { status: 400 });
+    }
+
+    const { data, error } = await access.supabase
       .from("players")
       .insert([
         {
-          full_name: body.full_name,
-          jersey_number: body.jersey_number || null,
-          position: body.position || null,
-          nickname: body.nickname || null,
-          role: body.role || "Bench",
+          ...validation.value,
           player_type: FACKTS_PLAYER_TYPE,
-          age: body.age || null,
-          height: body.height || null,
-          dominant_hand: body.dominant_hand || null,
-          current_team: body.current_team || null,
-          previous_teams: body.previous_teams || null,
-          highest_level: body.highest_level || null,
-          years_played: body.years_played || null,
-          style_of_play: body.style_of_play || null,
-          strengths: body.strengths || null,
-          improvements: body.improvements || null,
-          instagram: body.instagram || null,
-          tiktok: body.tiktok || null,
-          x_handle: body.x_handle || null,
-          followers_range: body.followers_range || null,
-          photo_url: body.photo_url || null,
           is_active: true,
         },
       ])
@@ -82,37 +72,21 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const body = await request.json();
+    const access = await getAdminCapabilityAccess("players");
+    if (!access.user) return NextResponse.json({ error: "Sign in to update players." }, { status: 401 });
+    if (!access.allowed) return NextResponse.json({ error: "You do not have permission to update players." }, { status: 403 });
 
-    if (!body.id) {
-      return NextResponse.json({ error: "Player id is required." }, { status: 400 });
+    const validation = validatePlayerMutation(await request.json(), true);
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.errors[0], errors: validation.errors }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { id, ...payload } = validation.value;
+
+    const { data, error } = await access.supabase
       .from("players")
-      .update({
-        full_name: body.full_name,
-        jersey_number: body.jersey_number || null,
-        position: body.position || null,
-        nickname: body.nickname || null,
-        role: body.role || "Bench",
-        age: body.age || null,
-        height: body.height || null,
-        dominant_hand: body.dominant_hand || null,
-        current_team: body.current_team || null,
-        previous_teams: body.previous_teams || null,
-        highest_level: body.highest_level || null,
-        years_played: body.years_played || null,
-        style_of_play: body.style_of_play || null,
-        strengths: body.strengths || null,
-        improvements: body.improvements || null,
-        instagram: body.instagram || null,
-        tiktok: body.tiktok || null,
-        x_handle: body.x_handle || null,
-        followers_range: body.followers_range || null,
-        photo_url: body.photo_url || null,
-      })
-      .eq("id", body.id)
+      .update(payload)
+      .eq("id", id)
       .select()
       .maybeSingle();
 
