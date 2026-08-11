@@ -104,14 +104,14 @@ if (!/returning\s+id\s+into\s+captured_asset_id\s*;/i.test(unifiedMedia)
 }
 
 const protectedRoutes = [
-  ["app/api/games/route.ts", "getAdminCapabilityAccess(\"games\")"],
-  ["app/api/players/route.ts", "getAdminCapabilityAccess(\"players\")"],
-  ["app/api/stats/route.ts", "getAdminCapabilityAccess(\"stats\")"],
-  ["app/api/admin/events/route.ts", "getAdminCapabilityAccess(\"calendar\")"],
+  ["app/api/games/route.ts", ["getAdminCapabilityAccess(\"games\")"]],
+  ["app/api/players/route.ts", ["getAdminCapabilityAccess(\"players\")"]],
+  ["app/api/stats/route.ts", ["getAdminCapabilityAccess(\"stats\")"]],
+  ["app/api/admin/events/route.ts", ["getAdminCapabilityAccess(\"calendar\")", "canAdmin(access.profile, \"events\")"]],
 ];
-for (const [relativePath, marker] of protectedRoutes) {
+for (const [relativePath, markers] of protectedRoutes) {
   const source = await readFile(path.join(root, relativePath), "utf8");
-  if (!source.includes(marker)) failures.push(`${relativePath} is missing its server capability check`);
+  if (!markers.some((marker) => source.includes(marker))) failures.push(`${relativePath} is missing its server capability check`);
 }
 
 if (failures.length) {

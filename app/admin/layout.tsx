@@ -6,12 +6,12 @@ import Link from "next/link";
 import {
   canAdmin,
   capabilityForAdminPath,
-  isSuperAdmin,
   isSuperAdminRole,
   type AdminPermissionProfile,
 } from "@/lib/admin/permissions";
 import { supabase } from "@/lib/supabase";
 import AdminNavigation from "@/app/components/AdminNavigation";
+import { AdminPermissionProvider } from "@/app/components/AdminPermissionContext";
 
 type AccessState = "checking" | "allowed" | "denied";
 
@@ -20,6 +20,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const [access, setAccess] = useState<AccessState>("checking");
   const [message, setMessage] = useState("Checking admin access...");
+  const [profile, setProfile] = useState<AdminPermissionProfile | null>(null);
 
   const isLoginPage = pathname === "/admin/login";
 
@@ -29,6 +30,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     async function checkAccess() {
       if (isLoginPage) {
         if (active) {
+          setProfile(null);
           setAccess("allowed");
         }
         return;
@@ -42,6 +44,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
       if (!user) {
         if (active) {
+          setProfile(null);
           setAccess("denied");
           setMessage("You must log in before opening the admin dashboard.");
         }
@@ -88,6 +91,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         await supabase.auth.signOut();
 
         if (active) {
+          setProfile(null);
           setAccess("denied");
           setMessage("This account is not approved for FACKTS admin access.");
         }
@@ -95,13 +99,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       }
 
       const requiredCapability = capabilityForAdminPath(pathname);
-      const needsSuperAdmin = pathname === "/admin/mini-admins";
-      const permitted = needsSuperAdmin
-        ? isSuperAdmin(profile)
-        : !requiredCapability || canAdmin(profile, requiredCapability);
+      const permitted =
+        !requiredCapability || canAdmin(profile, requiredCapability);
 
       if (!permitted) {
         if (active) {
+          setProfile(profile);
           setAccess("denied");
           setMessage(
             "Your mini-admin account does not have permission to open this tool."
@@ -111,6 +114,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       }
 
       if (active) {
+        setProfile(profile);
         setAccess("allowed");
       }
     }
@@ -180,9 +184,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   if (isLoginPage) return <>{children}</>;
 
   return (
-    <>
+    <AdminPermissionProvider profile={profile}>
       <AdminNavigation />
       {children}
-    </>
+    </AdminPermissionProvider>
   );
 }

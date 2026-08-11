@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "phase0:validate": "node scripts/validate-phase0.mjs"
+    "phase0:validate": "node scripts/validate-phase0.mjs",
+    "phase1:validate": "node scripts/validate-phase1.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

@@ -1,677 +1,328 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
-import { supabase } from "@/lib/supabase";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAdminPermission } from "@/app/components/AdminPermissionContext";
+
+type GameRow = {
+  id: string;
+  home_team_name?: string | null;
+  away_team_name?: string | null;
+  game_date?: string | null;
+  status?: string | null;
+  game_format?: string | null;
+  verification_status?: string | null;
+  home_score?: number | null;
+  team_score?: number | null;
+  away_score?: number | null;
+  opponent_score?: number | null;
+};
+
+type Person = {
+  id: string;
+  full_name?: string | null;
+  name?: string | null;
+  nickname?: string | null;
+  jersey_number?: string | number | null;
+  player_type?: string | null;
+};
+
+type RosterRow = {
+  id: string;
+  player_id: string;
+  team_side: string;
+  roster_role?: string | null;
+  person?: Person | null;
+};
+
+type StatRow = Record<string, unknown> & {
+  id: string;
+  player_id: string;
+  autosave_version: number;
+  period_values?: Record<string, Record<string, number>> | null;
+  entry_status?: string | null;
+  verification_status?: string | null;
+};
+
+type FieldDefinition = {
+  field_key: string;
+  label: string;
+  data_type: "integer" | "decimal" | "boolean" | "duration" | "json";
+  display_order: number;
+};
 
 type StatForm = {
-  points: string;
-  three_pointers_made: string;
-  rebounds: string;
-  assists: string;
-  steals: string;
-  blocks: string;
-  plus_minus: string;
+  values: Record<string, string>;
+  periods: Record<string, Record<string, string>>;
+  version: number;
+  statId?: string;
+  verified: boolean;
 };
 
-const emptyStatForm: StatForm = {
-  points: "0",
-  three_pointers_made: "0",
-  rebounds: "0",
-  assists: "0",
-  steals: "0",
-  blocks: "0",
-  plus_minus: "0",
-};
+type SaveState = "Saved" | "Unsaved" | "Saving" | "Conflict" | "Error" | "Verified";
 
-export default function AdminStatsPage() {
-  const [games, setGames] = useState<any[]>([]);
-  const [players, setPlayers] = useState<any[]>([]);
-  const [rosters, setRosters] = useState<any[]>([]);
-  const [stats, setStats] = useState<any[]>([]);
+const periodFields = ["points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls"];
+const fallbackFields: FieldDefinition[] = [
+  ["points", "Points"], ["rebounds", "Rebounds"], ["assists", "Assists"], ["steals", "Steals"], ["blocks", "Blocks"], ["turnovers", "Turnovers"], ["fouls", "Fouls"], ["minutes", "Minutes"], ["plus_minus", "Plus / Minus"], ["offensive_rebounds", "Offensive Rebounds"], ["defensive_rebounds", "Defensive Rebounds"], ["two_made", "2PT Made"], ["two_attempted", "2PT Attempted"], ["three_made", "3PT Made"], ["three_attempted", "3PT Attempted"], ["ft_made", "FT Made"], ["ft_attempted", "FT Attempted"],
+].map(([field_key, label], index) => ({ field_key, label, data_type: field_key === "minutes" ? "decimal" : "integer", display_order: index * 10 })) as FieldDefinition[];
+const periods = ["total", "Q1", "Q2", "Q3", "Q4", "OT1"];
+
+function personName(person?: Person | null) {
+  return person?.full_name || person?.name || person?.nickname || "Unnamed participant";
+}
+
+function gameName(game?: GameRow | null) {
+  return `${game?.home_team_name || "Home"} vs ${game?.away_team_name || "Away"}`;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "Date not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-KE", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function numberPayload(values: Record<string, string>) {
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, Number(value || 0)]));
+}
+
+function periodPayload(values: Record<string, Record<string, string>>) {
+  return Object.fromEntries(Object.entries(values).map(([period, fields]) => [period, numberPayload(fields)]));
+}
+
+export default function SharedStatsPage() {
+  const { readOnly } = useAdminPermission();
+  const [games, setGames] = useState<GameRow[]>([]);
+  const [game, setGame] = useState<GameRow | null>(null);
   const [selectedGameId, setSelectedGameId] = useState("");
+  const [roster, setRoster] = useState<RosterRow[]>([]);
   const [forms, setForms] = useState<Record<string, StatForm>>({});
-  const [loadingPage, setLoadingPage] = useState(true);
-  const [savingPlayerId, setSavingPlayerId] = useState<string | null>(null);
+  const [fields, setFields] = useState<FieldDefinition[]>(fallbackFields);
+  const [activePlayerId, setActivePlayerId] = useState("");
+  const [activePeriod, setActivePeriod] = useState("total");
+  const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({});
+  const [legacyCount, setLegacyCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [workflowSaving, setWorkflowSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function loadPageData() {
-    setLoadingPage(true);
-    setMessage("");
+  const formsRef = useRef<Record<string, StatForm>>({});
+  const timersRef = useRef<Record<string, number>>({});
+  const savingRef = useRef<Record<string, boolean>>({});
+  const sequenceRef = useRef<Record<string, number>>({});
 
-    const [gamesResult, playersResult, rostersResult] = await Promise.all([
-      supabase.from("games").select("*").order("game_date", { ascending: false }),
-      supabase
-        .from("players")
-        .select("*")
-        .eq("is_active", true)
-        .eq("player_type", FACKTS_PLAYER_TYPE)
-        .order("jersey_number", { ascending: true }),
-      supabase
-        .from("game_rosters")
-        .select("*")
-        .order("created_at", { ascending: true }),
-    ]);
-
-    if (gamesResult.error) {
-      setMessage(`Failed to load games: ${gamesResult.error.message}`);
-      setLoadingPage(false);
-      return;
-    }
-
-    if (playersResult.error) {
-      setMessage(`Failed to load players: ${playersResult.error.message}`);
-      setLoadingPage(false);
-      return;
-    }
-
-    if (rostersResult.error) {
-      setMessage(`Failed to load rosters: ${rostersResult.error.message}`);
-      setLoadingPage(false);
-      return;
-    }
-
-    const loadedGames = gamesResult.data ?? [];
-    const loadedPlayers = playersResult.data ?? [];
-
-    setGames(loadedGames);
-    setPlayers(loadedPlayers);
-    setRosters(rostersResult.data ?? []);
-
-    const firstGame = loadedGames[0];
-
-    if (firstGame) {
-      setSelectedGameId(firstGame.id);
-      await loadStatsForGame(firstGame.id, loadedPlayers);
-    }
-
-    setLoadingPage(false);
-  }
-
-  async function loadStatsForGame(gameId: string, loadedPlayers?: any[]) {
-    setMessage("");
-
-    const { data, error } = await supabase
-      .from("player_game_stats")
-      .select("*")
-      .eq("game_id", gameId);
-
-    if (error) {
-      setMessage(`Failed to load stats: ${error.message}`);
-      return;
-    }
-
-    const loadedStats = data ?? [];
-    setStats(loadedStats);
-
-    const playerList = loadedPlayers ?? players;
+  const hydrate = useCallback((result: Record<string, unknown>, preferredClassification?: string) => {
+    const loadedGames = (result.games ?? []) as GameRow[];
+    const loadedGame = (result.game ?? null) as GameRow | null;
+    const loadedRoster = (result.roster ?? []) as RosterRow[];
+    const stats = (result.stats ?? []) as StatRow[];
+    const definitions = (result.field_definitions ?? []) as FieldDefinition[];
+    const config = (result.field_config ?? []) as Array<{ field_key: string }>;
+    const visibleKeys = new Set(config.map((item) => item.field_key));
+    const configuredFields = definitions.filter((field) => !visibleKeys.size || visibleKeys.has(field.field_key));
+    const nextFields = configuredFields.length ? configuredFields : fallbackFields;
+    const statsByPlayer = new Map(stats.map((stat) => [stat.player_id, stat]));
     const nextForms: Record<string, StatForm> = {};
+    const nextStates: Record<string, SaveState> = {};
 
-    playerList.forEach((player) => {
-      const existing = loadedStats.find((row: any) => row.player_id === player.id);
-
-      nextForms[player.id] = {
-        points: String(existing?.points ?? 0),
-        three_pointers_made: String(existing?.three_pointers_made ?? 0),
-        rebounds: String(existing?.rebounds ?? 0),
-        assists: String(existing?.assists ?? 0),
-        steals: String(existing?.steals ?? 0),
-        blocks: String(existing?.blocks ?? 0),
-        plus_minus: String(existing?.plus_minus ?? 0),
-      };
+    loadedRoster.forEach((row) => {
+      const stat = statsByPlayer.get(row.player_id);
+      const preservedFields = Array.from(
+        new Set([...fallbackFields, ...nextFields].map((field) => field.field_key))
+      );
+      const values = Object.fromEntries(
+        preservedFields.map((field) => [field, String(stat?.[field] ?? 0)])
+      );
+      const statPeriods = stat?.period_values && typeof stat.period_values === "object" ? stat.period_values : {};
+      const periodValues = Object.fromEntries(Object.entries(statPeriods).map(([period, periodRow]) => [period, Object.fromEntries(periodFields.map((field) => [field, String(periodRow?.[field] ?? 0)]))]));
+      const verified = stat?.verification_status === "verified" || stat?.entry_status === "verified";
+      nextForms[row.player_id] = { values, periods: periodValues, version: Number(stat?.autosave_version ?? 0), statId: stat?.id, verified };
+      nextStates[row.player_id] = verified ? "Verified" : "Saved";
     });
 
+    formsRef.current = nextForms;
     setForms(nextForms);
-  }
-
-  useEffect(() => {
-    loadPageData();
+    setSaveStates(nextStates);
+    setFields(nextFields);
+    setGames(loadedGames);
+    setGame(loadedGame);
+    setSelectedGameId(loadedGame?.id ?? "");
+    setRoster(loadedRoster);
+    setLegacyCount(Number(result.legacy_guest_stats ?? 0));
+    setActivePlayerId((current) => {
+      if (loadedRoster.some((row) => row.player_id === current)) return current;
+      const preferred = preferredClassification === "guest"
+        ? loadedRoster.find((row) => ["guest", "guest_hooper", "external", "legacy_guest"].some((value) => String(row.person?.player_type ?? "").includes(value)))
+        : null;
+      return preferred?.player_id || loadedRoster[0]?.player_id || "";
+    });
   }, []);
 
-  async function handleGameChange(gameId: string) {
-    setSelectedGameId(gameId);
-    await loadStatsForGame(gameId);
-  }
+  const load = useCallback(async (gameId?: string, classification?: string) => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (gameId) params.set("game_id", gameId);
+    const response = await fetch(`/api/admin/stats?${params}`, { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) setMessage(result.error || "Statistics could not be loaded.");
+    else { hydrate(result, classification); setMessage(""); }
+    setLoading(false);
+  }, [hydrate]);
 
-  const selectedGame = useMemo(() => {
-    return games.find((game) => game.id === selectedGameId) ?? null;
-  }, [games, selectedGameId]);
-
-  const selectedGameRoster = useMemo(() => {
-    return rosters.filter((row) => row.game_id === selectedGameId);
-  }, [rosters, selectedGameId]);
-
-  const rosterPlayerIds = useMemo(() => {
-    return selectedGameRoster
-      .filter((row) => row.roster_status !== "unavailable")
-      .map((row) => row.player_id);
-  }, [selectedGameRoster]);
-
-  const playersForStats = useMemo(() => {
-    if (rosterPlayerIds.length === 0) {
-      return players;
-    }
-
-    const orderedRoster = selectedGameRoster.filter(
-      (row) => row.roster_status !== "unavailable"
-    );
-
-    return orderedRoster
-      .map((row) => players.find((player) => player.id === row.player_id))
-      .filter(Boolean);
-  }, [players, rosterPlayerIds, selectedGameRoster]);
-
-  function getRosterRow(playerId: string) {
-    return selectedGameRoster.find((row) => row.player_id === playerId) ?? null;
-  }
-
-  function getExistingStat(playerId: string) {
-    return stats.find((row) => row.player_id === playerId) ?? null;
-  }
-
-  function updateStatField(playerId: string, field: keyof StatForm, value: string) {
-    setForms((prev) => ({
-      ...prev,
-      [playerId]: {
-        ...(prev[playerId] ?? emptyStatForm),
-        [field]: value,
-      },
-    }));
-  }
-
-  function toNumber(value: string) {
-    if (value === "" || value === null || value === undefined) return 0;
-    return Number(value);
-  }
-
-  async function savePlayerStats(playerId: string) {
-    if (!selectedGameId) {
-      setMessage("Please select a game first.");
-      return;
-    }
-
-    setSavingPlayerId(playerId);
-    setMessage("");
-
-    const form = forms[playerId] ?? emptyStatForm;
-    const existing = getExistingStat(playerId);
-
-    const payload = {
-      game_id: selectedGameId,
-      player_id: playerId,
-      points: toNumber(form.points),
-      three_pointers_made: toNumber(form.three_pointers_made),
-      rebounds: toNumber(form.rebounds),
-      assists: toNumber(form.assists),
-      steals: toNumber(form.steals),
-      blocks: toNumber(form.blocks),
-      plus_minus: toNumber(form.plus_minus),
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialGame = params.get("game_id") || "";
+    const classification = params.get("classification") || "";
+    const timers = timersRef.current;
+    const timer = window.setTimeout(() => void load(initialGame, classification), 0);
+    return () => {
+      window.clearTimeout(timer);
+      Object.values(timers).forEach((pending) => window.clearTimeout(pending));
     };
+  }, [load]);
 
-    if (existing) {
-      const result = await supabase
-        .from("player_game_stats")
-        .update(payload)
-        .eq("id", existing.id);
+  const activeRoster = roster.find((row) => row.player_id === activePlayerId) ?? null;
+  const activeForm = forms[activePlayerId] ?? null;
+  const entryAllowed = ["live", "completed"].includes(String(game?.status));
+  const displayedFields = activePeriod === "total" ? fields : fields.filter((field) => periodFields.includes(field.field_key));
 
-      if (result.error) {
-        setMessage(`Failed to update stats: ${result.error.message}`);
-        setSavingPlayerId(null);
-        return;
-      }
+  async function flush(playerId: string) {
+    if (savingRef.current[playerId]) return;
+    const form = formsRef.current[playerId];
+    if (!form || form.verified || !game) return;
+    savingRef.current[playerId] = true;
+    const sequence = sequenceRef.current[playerId] ?? 0;
+    setSaveStates((current) => ({ ...current, [playerId]: "Saving" }));
+    const response = await fetch("/api/admin/stats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "autosave",
+        game_id: game.id,
+        player_id: playerId,
+        expected_version: form.version,
+        values: numberPayload(form.values),
+        period_values: periodPayload(form.periods),
+        last_period: activePeriod === "total" ? null : activePeriod,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    savingRef.current[playerId] = false;
+    if (!response.ok || !result.ok) {
+      setSaveStates((current) => ({ ...current, [playerId]: result.conflict ? "Conflict" : "Error" }));
+      setMessage(result.error || "Autosave failed.");
+      return;
+    }
+    const nextVersion = Number(result.stat?.autosave_version ?? form.version + 1);
+    formsRef.current[playerId] = { ...formsRef.current[playerId], version: nextVersion, statId: result.stat?.id };
+    setForms((current) => ({ ...current, [playerId]: { ...current[playerId], version: nextVersion, statId: result.stat?.id } }));
+    if ((sequenceRef.current[playerId] ?? 0) > sequence) {
+      window.setTimeout(() => void flush(playerId), 0);
     } else {
-      const result = await supabase.from("player_game_stats").insert([payload]);
+      setSaveStates((current) => ({ ...current, [playerId]: "Saved" }));
+    }
+  }
 
-      if (result.error) {
-        setMessage(`Failed to create stats: ${result.error.message}`);
-        setSavingPlayerId(null);
-        return;
+  function queueAutosave(playerId: string, next: StatForm) {
+    formsRef.current[playerId] = next;
+    setForms((current) => ({ ...current, [playerId]: next }));
+    sequenceRef.current[playerId] = (sequenceRef.current[playerId] ?? 0) + 1;
+    setSaveStates((current) => ({ ...current, [playerId]: "Unsaved" }));
+    if (timersRef.current[playerId]) window.clearTimeout(timersRef.current[playerId]);
+    timersRef.current[playerId] = window.setTimeout(() => void flush(playerId), 900);
+  }
+
+  function updateField(field: string, value: string) {
+    if (readOnly || !activePlayerId || !activeForm || activeForm.verified || !entryAllowed) return;
+    let next: StatForm;
+    if (activePeriod === "total") {
+      next = { ...activeForm, values: { ...activeForm.values, [field]: value } };
+    } else {
+      const nextPeriods = { ...activeForm.periods, [activePeriod]: { ...(activeForm.periods[activePeriod] ?? Object.fromEntries(periodFields.map((key) => [key, "0"]))), [field]: value } };
+      const nextValues = { ...activeForm.values };
+      for (const periodField of periodFields) {
+        nextValues[periodField] = String(Object.values(nextPeriods).reduce((sum, period) => sum + Number(period[periodField] || 0), 0));
       }
+      next = { ...activeForm, values: nextValues, periods: nextPeriods };
     }
-
-    await loadStatsForGame(selectedGameId);
-    setMessage("Stats saved.");
-    setSavingPlayerId(null);
+    queueAutosave(activePlayerId, next);
   }
 
-  async function saveAllStats() {
-    if (!selectedGameId) {
-      setMessage("Please select a game first.");
+  async function workflow(action: "submit_game" | "verify_game") {
+    const pending = Object.values(saveStates).some((state) => ["Unsaved", "Saving", "Conflict", "Error"].includes(state));
+    if (pending) {
+      setMessage("Wait for every participant to show Saved, and resolve any autosave errors first.");
       return;
     }
-
-    setMessage("Saving all visible player stats...");
-
-    for (const player of playersForStats) {
-      const form = forms[player.id] ?? emptyStatForm;
-      const existing = getExistingStat(player.id);
-
-      const payload = {
-        game_id: selectedGameId,
-        player_id: player.id,
-        points: toNumber(form.points),
-        three_pointers_made: toNumber(form.three_pointers_made),
-        rebounds: toNumber(form.rebounds),
-        assists: toNumber(form.assists),
-        steals: toNumber(form.steals),
-        blocks: toNumber(form.blocks),
-        plus_minus: toNumber(form.plus_minus),
-      };
-
-      if (existing) {
-        const result = await supabase
-          .from("player_game_stats")
-          .update(payload)
-          .eq("id", existing.id);
-
-        if (result.error) {
-          setMessage(`Failed while saving ${player.full_name}: ${result.error.message}`);
-          return;
-        }
-      } else {
-        const result = await supabase.from("player_game_stats").insert([payload]);
-
-        if (result.error) {
-          setMessage(`Failed while creating ${player.full_name}: ${result.error.message}`);
-          return;
-        }
-      }
-    }
-
-    await loadStatsForGame(selectedGameId);
-    setMessage("All stats saved successfully.");
+    if (!game) return;
+    setWorkflowSaving(true);
+    setMessage("");
+    const response = await fetch("/api/admin/stats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, game_id: game.id }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) setMessage([result.error, ...(result.errors ?? []).slice(1)].filter(Boolean).join(" "));
+    else { setMessage(result.message || "Statistics workflow updated."); await load(game.id); }
+    setWorkflowSaving(false);
   }
 
-  async function markPlayerOfGame(playerId: string) {
-    if (!selectedGameId) {
-      setMessage("Please select a game first.");
-      return;
-    }
-
-    setMessage("Updating Player of the Game...");
-
-    const existing = getExistingStat(playerId);
-
-    if (!existing) {
-      await savePlayerStats(playerId);
-    }
-
-    const clearResult = await supabase
-      .from("player_game_stats")
-      .update({ player_of_game: false })
-      .eq("game_id", selectedGameId);
-
-    if (clearResult.error) {
-      setMessage(`Failed to clear previous Player of the Game: ${clearResult.error.message}`);
-      return;
-    }
-
-    const latestStatsResult = await supabase
-      .from("player_game_stats")
-      .select("*")
-      .eq("game_id", selectedGameId)
-      .eq("player_id", playerId)
-      .maybeSingle();
-
-    if (latestStatsResult.error || !latestStatsResult.data) {
-      setMessage("Could not find this player's saved stats. Save stats first, then mark Player of the Game.");
-      return;
-    }
-
-    const setResult = await supabase
-      .from("player_game_stats")
-      .update({ player_of_game: true })
-      .eq("id", latestStatsResult.data.id);
-
-    if (setResult.error) {
-      setMessage(`Failed to set Player of the Game: ${setResult.error.message}`);
-      return;
-    }
-
-    await loadStatsForGame(selectedGameId);
-    setMessage("Player of the Game updated.");
-  }
-
-  const totals = playersForStats.reduce(
-    (acc: any, player: any) => {
-      const form = forms[player.id] ?? emptyStatForm;
-      acc.points += toNumber(form.points);
-      acc.three_pointers_made += toNumber(form.three_pointers_made);
-      acc.rebounds += toNumber(form.rebounds);
-      acc.assists += toNumber(form.assists);
-      acc.steals += toNumber(form.steals);
-      acc.blocks += toNumber(form.blocks);
-      return acc;
-    },
-    {
-      points: 0,
-      three_pointers_made: 0,
-      rebounds: 0,
-      assists: 0,
-      steals: 0,
-      blocks: 0,
-    }
-  );
+  const totals = useMemo(() => roster.reduce((result, row) => {
+    const side = row.team_side === "away" ? "away" : "home";
+    result[side] += Number(forms[row.player_id]?.values.points || 0);
+    return result;
+  }, { home: 0, away: 0 }), [forms, roster]);
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white md:px-6 md:py-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <Link
-            href="/admin"
-            className="inline-flex rounded-2xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
-          >
-            ← Back to Admin
-          </Link>
-
-          <div className="mt-4 text-sm uppercase tracking-[0.25em] text-orange-300">
-            FACKTS Admin
+    <main className="min-h-screen bg-black px-4 py-20 text-white sm:px-6">
+      <div className="mx-auto max-w-7xl space-y-5">
+        <header className="rounded-3xl border border-white/10 bg-zinc-950 p-5 sm:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-5">
+            <div><p className="text-xs font-black uppercase tracking-[0.3em] text-orange-300">One shared engine</p><h1 className="mt-2 text-3xl font-black">Game Statistics</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">Roster-bound mobile entry for every canonical participant, including guests. Autosave versions prevent accidental overwrites.</p></div>
+            {!readOnly ? <div className="flex flex-wrap gap-2"><Link href="/admin/stats/editor" className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black">Legacy official editor</Link><Link href="/admin/guest-game-stats/legacy" className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black">Legacy guest records ({legacyCount})</Link></div> : null}
           </div>
+          <label className="mt-5 block text-xs font-black uppercase tracking-wider text-zinc-500">Game<select value={selectedGameId} onChange={(event) => void load(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-sm normal-case text-white"><option value="">Choose game</option>{games.map((item) => <option key={item.id} value={item.id}>{formatDate(item.game_date)} — {gameName(item)}</option>)}</select></label>
+        </header>
 
-          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
-            Game Stats
-          </h1>
-
-          <p className="mt-3 text-slate-400">
-            Enter player stats using the confirmed roster for each game. This now includes 3-pointers made.
-          </p>
-        </div>
-
-        {message ? (
-          <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300">
-            {message}
-          </div>
+        {game ? (
+          <section className="grid gap-3 rounded-3xl border border-white/10 bg-zinc-950 p-5 sm:grid-cols-4">
+            <div className="sm:col-span-2"><p className="text-xs font-black uppercase tracking-wider text-zinc-500">Selected game</p><h2 className="mt-1 text-2xl font-black">{gameName(game)}</h2><p className="mt-1 text-sm capitalize text-zinc-500">{game.status} · {game.game_format || "basketball"} · {game.verification_status || "unverified"}</p></div>
+            <div className="rounded-2xl bg-black p-4"><p className="text-xs font-black uppercase text-zinc-500">Home points</p><p className="mt-1 text-3xl font-black">{totals.home}<span className="text-sm text-zinc-600"> / {game.home_score ?? game.team_score ?? "—"}</span></p></div>
+            <div className="rounded-2xl bg-black p-4"><p className="text-xs font-black uppercase text-zinc-500">Away points</p><p className="mt-1 text-3xl font-black">{totals.away}<span className="text-sm text-zinc-600"> / {game.away_score ?? game.opponent_score ?? "—"}</span></p></div>
+          </section>
         ) : null}
 
-        {loadingPage ? (
-          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
-            Loading stats page...
-          </div>
-        ) : (
+        {!entryAllowed && game ? <p className="rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100">Move the game to Live or Completed before entering statistics.</p> : null}
+        {readOnly ? <p className="rounded-2xl border border-blue-400/20 bg-blue-400/10 p-4 text-sm text-blue-100">Read-only access: canonical statistics and workflow status are visible, but entry, submission and verification are disabled.</p> : null}
+        {message ? <p className="rounded-2xl border border-white/10 bg-zinc-950 p-4 text-sm text-zinc-300">{message}</p> : null}
+
+        {roster.length ? (
           <>
-            <section className="mb-8 rounded-3xl border border-slate-800 bg-slate-900 p-5 md:p-6">
-              <div className="grid gap-5 lg:grid-cols-[1fr,1fr] lg:items-end">
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-300">
-                    Select Game
-                  </div>
-                  <select
-                    value={selectedGameId}
-                    onChange={(e) => handleGameChange(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-orange-400"
-                  >
-                    <option value="">Select game</option>
-                    {games.map((game) => (
-                      <option key={game.id} value={game.id}>
-                        {game.game_date ?? "Date TBA"} — FACKTS vs {game.opponent}
-                        {game.is_upcoming ? " — UPCOMING" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={saveAllStats}
-                    className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-orange-400"
-                  >
-                    Save All Visible Stats
-                  </button>
-
-                  {selectedGame ? (
-                    <Link
-                      href={`/games/${selectedGame.id}`}
-                      className="rounded-2xl border border-slate-700 px-5 py-3 font-semibold text-slate-200 transition hover:bg-slate-800"
-                    >
-                      View Game Page
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-
-              {selectedGame ? (
-                <div className="mt-6 overflow-hidden rounded-3xl border border-slate-800 bg-slate-950">
-                  {selectedGame.poster_url ? (
-                    <img
-                      src={selectedGame.poster_url}
-                      alt={`Poster for FACKTS vs ${selectedGame.opponent}`}
-                      className="h-56 w-full object-cover"
-                      style={{
-                        objectPosition:
-                          selectedGame.poster_position ?? "center center",
-                      }}
-                    />
-                  ) : null}
-
-                  <div className="p-5">
-                    <div className="text-sm uppercase tracking-wide text-orange-300">
-                      Selected Game
-                    </div>
-                    <div className="mt-2 text-2xl font-black">
-                      FACKTS vs {selectedGame.opponent}
-                    </div>
-                    <div className="mt-2 text-sm text-slate-400">
-                      {selectedGame.game_date ?? "Date TBA"} •{" "}
-                      {selectedGame.venue ?? "Venue TBA"} •{" "}
-                      {selectedGame.match_type ?? "Game"}
-                    </div>
-
-                    <div className="mt-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                      <Summary label="PTS" value={String(totals.points)} />
-                      <Summary label="3PM" value={String(totals.three_pointers_made)} />
-                      <Summary label="REB" value={String(totals.rebounds)} />
-                      <Summary label="AST" value={String(totals.assists)} />
-                      <Summary label="STL" value={String(totals.steals)} />
-                      <Summary label="BLK" value={String(totals.blocks)} />
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+            <section className="overflow-x-auto rounded-3xl border border-white/10 bg-zinc-950 p-3">
+              <div className="flex min-w-max gap-2">{roster.map((row) => {
+                const state = saveStates[row.player_id] || "Saved";
+                return <button key={row.id} onClick={() => setActivePlayerId(row.player_id)} className={`min-w-40 rounded-2xl border p-3 text-left ${activePlayerId === row.player_id ? "border-orange-400 bg-orange-400/10" : "border-white/10 bg-black"}`}><span className="block text-xs font-black">#{row.person?.jersey_number ?? "—"} {personName(row.person)}</span><span className="mt-1 block text-[10px] uppercase tracking-wider text-zinc-500">{row.person?.player_type || "person"} · {state}</span></button>;
+              })}</div>
             </section>
 
-            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 md:p-6">
-              <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <div className="text-sm uppercase tracking-wide text-orange-300">
-                    Player Entry
-                  </div>
-                  <h2 className="mt-1 text-2xl font-bold">
-                    {playersForStats.length} players available
-                  </h2>
-                  <p className="mt-2 text-sm text-slate-500">
-                    If a game has a roster, only roster players appear here. If not, all active players appear.
-                  </p>
-                </div>
-              </div>
+            <section className="rounded-3xl border border-white/10 bg-zinc-950 p-4 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-orange-300">{activeRoster?.team_side || "home"} · {activeRoster?.roster_role || "roster"}</p><h2 className="mt-1 text-2xl font-black">{personName(activeRoster?.person)}</h2></div><span className={`rounded-full border px-3 py-1 text-xs font-black ${saveStates[activePlayerId] === "Saved" || saveStates[activePlayerId] === "Verified" ? "border-emerald-400/25 text-emerald-200" : "border-amber-400/25 text-amber-200"}`}>{saveStates[activePlayerId] || "Saved"}</span></div>
 
-              {playersForStats.length === 0 ? (
-                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-slate-400">
-                  No players found for this game.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {playersForStats.map((player: any) => {
-                    const rosterRow = getRosterRow(player.id);
-                    const existingStat = getExistingStat(player.id);
-                    const form = forms[player.id] ?? emptyStatForm;
+              <div className="mt-5 flex flex-wrap gap-2">{periods.map((period) => <button key={period} onClick={() => setActivePeriod(period)} className={`rounded-xl px-3 py-2 text-xs font-black ${activePeriod === period ? "bg-orange-500 text-black" : "border border-white/10 bg-black text-zinc-400"}`}>{period === "total" ? "Game total" : period}</button>)}</div>
 
-                    return (
-                      <div
-                        key={player.id}
-                        className="rounded-3xl border border-slate-800 bg-slate-950 p-5"
-                      >
-                        <div className="grid gap-5 xl:grid-cols-[1fr,1.4fr] xl:items-center">
-                          <div className="flex items-center gap-4">
-                            {player.photo_url ? (
-                              <img
-                                src={player.photo_url}
-                                alt={player.full_name}
-                                className="h-20 w-20 rounded-2xl border border-slate-700 object-cover"
-                                style={{
-                                  objectPosition:
-                                    player.photo_position ?? "center center",
-                                }}
-                              />
-                            ) : (
-                              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-800 text-3xl">
-                                🏀
-                              </div>
-                            )}
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{displayedFields.map((field) => {
+                const value = activePeriod === "total" ? activeForm?.values[field.field_key] ?? "0" : activeForm?.periods[activePeriod]?.[field.field_key] ?? "0";
+                return <label key={field.field_key} className="rounded-2xl bg-black p-3 text-[10px] font-black uppercase tracking-wider text-zinc-500">{field.label}<input type="number" min={field.field_key === "plus_minus" ? undefined : "0"} step={field.data_type === "decimal" ? "0.1" : "1"} disabled={readOnly || !entryAllowed || activeForm?.verified} value={value} onChange={(event) => updateField(field.field_key, event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-3 text-2xl font-black normal-case text-white outline-none focus:border-orange-400 disabled:opacity-40" /></label>;
+              })}</div>
 
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-xl font-bold">
-                                  #{player.jersey_number ?? "—"} {player.full_name}
-                                </div>
-
-                                {existingStat?.player_of_game ? (
-                                  <span className="rounded-full bg-orange-500 px-2 py-1 text-xs font-black text-slate-950">
-                                    PLAYER OF GAME
-                                  </span>
-                                ) : null}
-                              </div>
-
-                              <div className="mt-1 text-sm text-slate-400">
-                                {player.position ?? "Position TBA"} •{" "}
-                                {player.role ?? "Player"}
-                              </div>
-
-                              {rosterRow ? (
-                                <div className="mt-2 text-xs text-slate-500">
-                                  Roster: {rosterRow.roster_role ?? "bench"} •{" "}
-                                  {rosterRow.roster_status ?? "confirmed"}
-                                </div>
-                              ) : (
-                                <div className="mt-2 text-xs text-slate-600">
-                                  Not from roster list
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
-                              <StatInput
-                                label="PTS"
-                                value={form.points}
-                                onChange={(value) =>
-                                  updateStatField(player.id, "points", value)
-                                }
-                              />
-                              <StatInput
-                                label="3PM"
-                                value={form.three_pointers_made}
-                                onChange={(value) =>
-                                  updateStatField(
-                                    player.id,
-                                    "three_pointers_made",
-                                    value
-                                  )
-                                }
-                              />
-                              <StatInput
-                                label="REB"
-                                value={form.rebounds}
-                                onChange={(value) =>
-                                  updateStatField(player.id, "rebounds", value)
-                                }
-                              />
-                              <StatInput
-                                label="AST"
-                                value={form.assists}
-                                onChange={(value) =>
-                                  updateStatField(player.id, "assists", value)
-                                }
-                              />
-                              <StatInput
-                                label="STL"
-                                value={form.steals}
-                                onChange={(value) =>
-                                  updateStatField(player.id, "steals", value)
-                                }
-                              />
-                              <StatInput
-                                label="BLK"
-                                value={form.blocks}
-                                onChange={(value) =>
-                                  updateStatField(player.id, "blocks", value)
-                                }
-                              />
-                              <StatInput
-                                label="+/-"
-                                value={form.plus_minus}
-                                onChange={(value) =>
-                                  updateStatField(player.id, "plus_minus", value)
-                                }
-                              />
-                            </div>
-
-                            <div className="mt-4 flex flex-wrap gap-3">
-                              <button
-                                type="button"
-                                onClick={() => savePlayerStats(player.id)}
-                                disabled={savingPlayerId === player.id}
-                                className="rounded-2xl bg-orange-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-orange-400 disabled:opacity-60"
-                              >
-                                {savingPlayerId === player.id ? "Saving..." : "Save Stats"}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => markPlayerOfGame(player.id)}
-                                className="rounded-2xl border border-orange-500/40 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/10"
-                              >
-                                Mark Player of Game
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              {activeForm?.verified ? <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-100"><span>Verified values are locked.</span>{!readOnly ? <Link href={`/admin/corrections?entity_type=stat&entity_id=${encodeURIComponent(activeForm.statId || "")}`} className="font-black underline">Request correction</Link> : null}</div> : null}
             </section>
+
+            <section className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-zinc-950 p-5"><div><p className="font-black">Submission and verification</p><p className="mt-1 text-sm text-zinc-500">Submission validates every rostered line. Verification also reconciles participant points to final scores and locks edits.</p></div><div className="flex flex-wrap gap-2"><button disabled={readOnly || workflowSaving || !entryAllowed} onClick={() => void workflow("submit_game")} className="rounded-xl border border-orange-300/30 px-4 py-2.5 text-sm font-black text-orange-200 disabled:opacity-40">Submit all</button><button disabled={readOnly || workflowSaving || game?.status !== "completed"} onClick={() => void workflow("verify_game")} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-black text-black disabled:opacity-40">Verify and lock</button></div></section>
           </>
-        )}
+        ) : loading ? <p className="rounded-3xl border border-white/10 bg-zinc-950 p-8 text-center text-zinc-500">Loading shared statistics…</p> : <div className="rounded-3xl border border-dashed border-white/15 bg-zinc-950 p-10 text-center"><h2 className="text-xl font-black">No eligible roster participants</h2><p className="mt-2 text-sm text-zinc-500">Build the canonical game roster before entering statistics.</p></div>}
       </div>
     </main>
-  );
-}
-
-function StatInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <div className="mb-1 text-xs uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-      <input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none transition focus:border-orange-400"
-      />
-    </label>
-  );
-}
-
-function Summary({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-center">
-      <div className="text-xs uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-      <div className="mt-1 text-2xl font-black text-orange-300">{value}</div>
-    </div>
   );
 }
