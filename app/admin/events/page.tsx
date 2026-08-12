@@ -67,6 +67,7 @@ export default function EventsAdminPage() {
   const [visibility, setVisibility] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [deletingEventId, setDeletingEventId] = useState("");
 
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -86,6 +87,45 @@ export default function EventsAdminPage() {
     const timer = window.setTimeout(() => void loadEvents(), 0);
     return () => window.clearTimeout(timer);
   }, [loadEvents]);
+
+  async function deleteEvent(event: EventRow) {
+    if (readOnly || deletingEventId) return;
+    const confirmationTitle = window.prompt(
+      `Delete “${event.title}” and all linked event records?\n\nType the exact event title to confirm:`,
+    );
+    if (confirmationTitle === null) return;
+    if (confirmationTitle.trim() !== event.title) {
+      setMessage("Event not deleted: the title did not match exactly.");
+      return;
+    }
+
+    setDeletingEventId(event.event_id);
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/events", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_id: event.event_id,
+          confirmation_title: confirmationTitle.trim(),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Event could not be deleted.");
+      }
+      setEvents((current) =>
+        current.filter((item) => item.event_id !== event.event_id)
+      );
+      setMessage(`“${event.title}” was deleted.`);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Event could not be deleted."
+      );
+    } finally {
+      setDeletingEventId("");
+    }
+  }
 
   const formats = useMemo(
     () =>
@@ -174,6 +214,12 @@ export default function EventsAdminPage() {
                   className="rounded-2xl bg-orange-500 px-5 py-3 text-sm font-black text-black transition hover:bg-orange-400"
                 >
                   Create event
+                </Link>
+                <Link
+                  href="/admin/corrections?entity_type=event"
+                  className="rounded-2xl border border-blue-400/35 bg-blue-400/10 px-4 py-3 text-sm font-black text-blue-100 transition hover:border-blue-300/60"
+                >
+                  Data corrections
                 </Link>
               </>
             ) : null}
@@ -300,6 +346,8 @@ export default function EventsAdminPage() {
                     <Link href={`/admin/games?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Games</Link>
                     <Link href={`/admin/rosters?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Participants</Link>
                     {!readOnly ? <Link href={`/admin/events/content?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Content</Link> : null}
+                    {!readOnly ? <Link href={`/admin/corrections?entity_type=event&entity_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-blue-400/30 bg-blue-400/10 px-3 py-2 text-xs font-black text-blue-100 hover:border-blue-300/60">Correct data</Link> : null}
+                    {!readOnly ? <button type="button" onClick={() => void deleteEvent(event)} disabled={Boolean(deletingEventId)} className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs font-black text-rose-100 hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-50">{deletingEventId === event.event_id ? "Deleting…" : "Delete event"}</button> : null}
                     {event.is_public ? (
                       <Link href={`/events/${event.slug}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Public overview</Link>
                     ) : null}

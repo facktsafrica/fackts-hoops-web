@@ -27,7 +27,6 @@ const allowedFields = [
   "is_public",
   "event_type",
   "age_category",
-  "deletion_protected",
   "organizer_name",
   "organizer_logo_url",
   "organizer_description",
@@ -410,12 +409,6 @@ export async function DELETE(request: NextRequest) {
         { status: 404 }
       );
     }
-    if (existing.data.deletion_protected) {
-      return NextResponse.json(
-        { ok: false, error: "Turn off deletion protection before deleting this event." },
-        { status: 409 }
-      );
-    }
     if (confirmationTitle !== existing.data.title) {
       return NextResponse.json(
         { ok: false, error: "The confirmation title did not match." },
@@ -437,17 +430,31 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await recordAdminAuditEvent(access.supabase, {
-      action: "delete",
-      entityType: "event_case_study",
-      entityId: eventId,
-      capability: "events",
-      resourceType: "event",
-      resourceId: eventId,
-      before: existing.data,
-    });
+    let auditWarning: string | null = null;
+    try {
+      await recordAdminAuditEvent(access.supabase, {
+        action: "delete",
+        entityType: "event_case_study",
+        entityId: eventId,
+        capability: "events",
+        resourceType: "event",
+        resourceId: eventId,
+        before: existing.data,
+      });
+    } catch (auditError) {
+      // The parent row is already deleted at this point. Return the true
+      // deletion result so Admin does not leave a removed event on screen.
+      auditWarning =
+        auditError instanceof Error
+          ? auditError.message
+          : "The deletion audit entry could not be recorded.";
+    }
 
-    return NextResponse.json({ ok: true, deleted_event_id: eventId });
+    return NextResponse.json({
+      ok: true,
+      deleted_event_id: eventId,
+      audit_warning: auditWarning,
+    });
   } catch (error) {
     return NextResponse.json(
       {
