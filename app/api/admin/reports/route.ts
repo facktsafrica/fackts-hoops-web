@@ -114,25 +114,16 @@ export async function GET(request: NextRequest) {
     );
     let eventIds = events.map((event) => text(event.event_id));
 
-    if (!eventIds.length) {
-      return NextResponse.json({
-        ok: true,
-        generated_at: new Date().toISOString(),
-        filters,
-        options: { events: [], formats: [] },
-        summary: { events: 0, participants: 0, stat_lines: 0, media_assets: 0, partners: 0 },
-        reports: { event_completion: [], participation: [], statistics: [], media_delivery: [], sponsor_summary: [] },
-      });
-    }
-
-    let gamesQuery = admin.from("games").select("*").in("event_id", eventIds).limit(1000);
-    if (filters.date_from) gamesQuery = gamesQuery.gte("game_date", `${filters.date_from}T00:00:00`);
-    if (filters.date_to) gamesQuery = gamesQuery.lte("game_date", `${filters.date_to}T23:59:59.999`);
+    let gamesQuery = eventIds.length
+      ? admin.from("games").select("*").in("event_id", eventIds).limit(1000)
+      : null;
+    if (filters.date_from && gamesQuery) gamesQuery = gamesQuery.gte("game_date", `${filters.date_from}T00:00:00`);
+    if (filters.date_to && gamesQuery) gamesQuery = gamesQuery.lte("game_date", `${filters.date_to}T23:59:59.999`);
     const [gamesResult, progressResult, deliverablesResult, partnersResult] = await Promise.all([
-      gamesQuery,
-      admin.from("event_setup_progress").select("*").in("event_id", eventIds),
-      admin.from("event_deliverables").select("*").in("event_id", eventIds).limit(2000),
-      admin.from("event_records").select("*").in("event_id", eventIds).eq("record_type", "partner").limit(2000),
+      gamesQuery ?? Promise.resolve({ data: [], error: null }),
+      eventIds.length ? admin.from("event_setup_progress").select("*").in("event_id", eventIds) : Promise.resolve({ data: [], error: null }),
+      eventIds.length ? admin.from("event_deliverables").select("*").in("event_id", eventIds).limit(2000) : Promise.resolve({ data: [], error: null }),
+      eventIds.length ? admin.from("event_records").select("*").in("event_id", eventIds).eq("record_type", "partner").limit(2000) : Promise.resolve({ data: [], error: null }),
     ]);
     for (const result of [gamesResult, progressResult, deliverablesResult, partnersResult]) {
       if (result.error) throw result.error;
@@ -361,16 +352,105 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    let competitions: JsonRecord[] = [];
+    let competitionMatches: JsonRecord[] = [];
+    const competitionFilter = filters.event_id.startsWith("competition:")
+      ? filters.event_id.slice("competition:".length)
+      : "";
+    const includeCompetitions =
+      !scoped &&
+      (!filters.event_id || Boolean(competitionFilter)) &&
+      !filters.team;
+
+    if (includeCompetitions) {
+      let competitionQuery = admin
+        .from("competitions")
+        .select("*")
+        .order("is_featured", { ascending: false })
+        .order("start_date", { ascending: false, nullsFirst: false })
+        .limit(200);
+      if (competitionFilter) competitionQuery = competitionQuery.eq("slug", competitionFilter);
+      const competitionResult = await competitionQuery;
+      if (competitionResult.error) throw competitionResult.error;
+      competitions = ((competitionResult.data ?? []) as JsonRecord[])
+        .filter((competition) => eventOverlaps(competition, filters.date_from, filters.date_to))
+        .filter((competition) => !filters.format || lower(competition.competition_format) === lower(filters.format));
+
+      const slugs = competitions.map((competition) => text(competition.slug)).filter(Boolean);
+      if (slugs.length) {
+        let matchesQuery = admin
+          .from("guest_one_on_one_stats")
+          .select("*")
+          .in("competition_slug", slugs)
+          .limit(5000);
+        if (filters.date_from) matchesQuery = matchesQuery.gte("match_date", `${filters.date_from}T00:00:00`);
+        if (filters.date_to) matchesQuery = matchesQuery.lte("match_date", `${filters.date_to}T23:59:59.999`);
+        const matchesResult = await matchesQuery;
+        if (matchesResult.error) throw matchesResult.error;
+        competitionMatches = (matchesResult.data ?? []) as JsonRecord[];
+      }
+
+      if (filters.player) {
+        const playerFilter = lower(filters.player);
+        competitionMatches = competitionMatches.filter((match) =>
+          [match.participant_name, match.opponent_name, match.fackts_player_id, match.guest_hooper_id, match.opponent_player_id, match.opponent_guest_hooper_id]
+            .some((value) => lower(value).includes(playerFilter))
+        );
+        const visibleSlugs = new Set(competitionMatches.map((match) => text(match.competition_slug)));
+        competitions = competitions.filter((competition) => visibleSlugs.has(text(competition.slug)));
+      }
+    }
+
+    const competitionPerformance = competitions.map((competition) => {
+      const slug = text(competition.slug);
+      const matches = competitionMatches.filter((match) => text(match.competition_slug) === slug);
+      const completed = matches.filter((match) => lower(match.status) === "completed").length;
+      const verified = matches.filter((match) => lower(match.verification_status) === "verified").length;
+      const players = new Set(
+        matches.flatMap((match) => [text(match.participant_name), text(match.opponent_name)]).filter(Boolean)
+      );
+      const media = matches.filter((match) => text(match.video_url) || text(match.highlight_url)).length;
+
+      return {
+        event_id: `competition:${slug}`,
+        competition_slug: slug,
+        competition: text(competition.name),
+        season: text(competition.current_season_label) || "Current",
+        format: text(competition.competition_format) || "Competition",
+        status: text(competition.status) || "Upcoming",
+        verification: text(competition.verification_status) || "Unverified",
+        matches: matches.length,
+        completed,
+        scheduled: matches.filter((match) => ["upcoming", "scheduled"].includes(lower(match.status))).length,
+        verified,
+        players: players.size,
+        media,
+        completion_percent: matches.length ? Math.round((completed / matches.length) * 100) : 0,
+      };
+    });
+
+    const competitionOptions = competitions.map((competition) => ({
+      event_id: `competition:${text(competition.slug)}`,
+      title: text(competition.name),
+    }));
+    const reportFormats = Array.from(new Set([
+      ...allFormats,
+      ...competitions.map((competition) => text(competition.competition_format)).filter(Boolean),
+    ])).sort();
+
     return NextResponse.json({
       ok: true,
       generated_at: new Date().toISOString(),
       filters,
       options: {
-        events: events.map((event) => ({ event_id: text(event.event_id), title: text(event.title) })),
-        formats: allFormats,
+        events: [
+          ...events.map((event) => ({ event_id: text(event.event_id), title: text(event.title) })),
+          ...competitionOptions,
+        ],
+        formats: reportFormats,
       },
       summary: {
-        events: eventCompletion.length,
+        events: eventCompletion.length + competitionPerformance.length,
         participants: participation.length,
         stat_lines: statistics.length,
         media_assets: mediaDelivery.length,
@@ -378,6 +458,7 @@ export async function GET(request: NextRequest) {
       },
       reports: {
         event_completion: eventCompletion,
+        competition_performance: competitionPerformance,
         participation,
         statistics,
         media_delivery: mediaDelivery,

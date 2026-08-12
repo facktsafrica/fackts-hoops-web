@@ -93,32 +93,51 @@ export async function GET() {
       .limit(1000);
 
     if (scopedIds) eventQuery = eventQuery.in("event_id", scopedIds);
-    const eventsResult = await eventQuery;
+    const competitionsQuery = scopedIds
+      ? Promise.resolve({ data: [], error: null })
+      : admin
+          .from("competitions")
+          .select(
+            "id,slug,name,summary,competition_format,organizer_name,current_season_label,status,start_date,end_date,venue,location,verification_status,is_public,is_featured,created_at,updated_at"
+          )
+          .order("is_featured", { ascending: false })
+          .order("start_date", { ascending: false, nullsFirst: false })
+          .limit(200);
+    const [eventsResult, competitionsResult] = await Promise.all([
+      eventQuery,
+      competitionsQuery,
+    ]);
     if (eventsResult.error) throw eventsResult.error;
+    if (competitionsResult.error) throw competitionsResult.error;
 
     const events = eventsResult.data ?? [];
+    const competitions = competitionsResult.data ?? [];
     const eventIds = events.map((event) => event.event_id);
-    if (!eventIds.length) {
-      return NextResponse.json({ ok: true, events: [] });
-    }
+    const competitionSlugs = competitions.map((competition) => competition.slug);
 
-    const [gamesResult, entriesResult, progressResult, deliverablesResult] =
+    const [gamesResult, entriesResult, progressResult, deliverablesResult, competitionMatchesResult] =
       await Promise.all([
-        admin.from("games").select("event_id,status").in("event_id", eventIds),
-        admin
-          .from("event_entries")
-          .select("event_id,entry_status")
-          .in("event_id", eventIds),
-        admin
-          .from("event_setup_progress")
-          .select(
-            "event_id,current_stage,completed_stages,validation_status,validation_errors,updated_at"
-          )
-          .in("event_id", eventIds),
-        admin
-          .from("event_deliverables")
-          .select("event_id,deliverable_status")
-          .in("event_id", eventIds),
+        eventIds.length
+          ? admin.from("games").select("event_id,status").in("event_id", eventIds)
+          : Promise.resolve({ data: [], error: null }),
+        eventIds.length
+          ? admin.from("event_entries").select("event_id,entry_status").in("event_id", eventIds)
+          : Promise.resolve({ data: [], error: null }),
+        eventIds.length
+          ? admin
+              .from("event_setup_progress")
+              .select("event_id,current_stage,completed_stages,validation_status,validation_errors,updated_at")
+              .in("event_id", eventIds)
+          : Promise.resolve({ data: [], error: null }),
+        eventIds.length
+          ? admin.from("event_deliverables").select("event_id,deliverable_status").in("event_id", eventIds)
+          : Promise.resolve({ data: [], error: null }),
+        competitionSlugs.length
+          ? admin
+              .from("guest_one_on_one_stats")
+              .select("competition_slug,status,participant_name,opponent_name,video_url,highlight_url")
+              .in("competition_slug", competitionSlugs)
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
     for (const result of [
@@ -126,6 +145,7 @@ export async function GET() {
       entriesResult,
       progressResult,
       deliverablesResult,
+      competitionMatchesResult,
     ]) {
       if (result.error) throw result.error;
     }
@@ -134,9 +154,7 @@ export async function GET() {
       (progressResult.data ?? []).map((progress) => [progress.event_id, progress])
     );
 
-    return NextResponse.json({
-      ok: true,
-      events: events.map((event) => {
+    const eventRows = events.map((event) => {
         const games = (gamesResult.data ?? []).filter(
           (game) => game.event_id === event.event_id
         );
@@ -149,6 +167,7 @@ export async function GET() {
 
         return {
           ...event,
+          source_kind: "event" as const,
           setup: progressByEvent.get(event.event_id) ?? null,
           counts: {
             games: games.length,
@@ -162,7 +181,57 @@ export async function GET() {
             ).length,
           },
         };
-      }),
+      });
+
+    const competitionRows = competitions.map((competition) => {
+      const matches = (competitionMatchesResult.data ?? []).filter(
+        (match) => match.competition_slug === competition.slug
+      );
+      const participants = new Set(
+        matches.flatMap((match) => [match.participant_name, match.opponent_name]).filter(Boolean)
+      );
+      const media = matches.filter(
+        (match) => Boolean(match.video_url || match.highlight_url)
+      ).length;
+
+      return {
+        id: competition.id,
+        event_id: `competition:${competition.slug}`,
+        title: competition.name,
+        slug: competition.slug,
+        summary: competition.summary,
+        start_date: competition.start_date,
+        end_date: competition.end_date,
+        venue: competition.venue,
+        location: competition.location,
+        status: competition.status || "upcoming",
+        is_public: competition.is_public !== false,
+        event_type: competition.competition_format || "Competition",
+        age_category: competition.current_season_label
+          ? `${competition.current_season_label} season`
+          : "Current season",
+        organizer_name: competition.organizer_name,
+        source_kind: "competition" as const,
+        competition_slug: competition.slug,
+        season_label: competition.current_season_label,
+        verification_status: competition.verification_status,
+        setup: null,
+        counts: {
+          games: matches.length,
+          completed_games: matches.filter((match) => match.status === "completed").length,
+          participants: participants.size,
+          deliverables: media,
+        },
+      };
+    });
+
+    const combined = [...eventRows, ...competitionRows].sort((left, right) =>
+      String(right.start_date || "").localeCompare(String(left.start_date || ""))
+    );
+
+    return NextResponse.json({
+      ok: true,
+      events: combined,
     });
   } catch (error) {
     return NextResponse.json(

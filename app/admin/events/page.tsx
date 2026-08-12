@@ -22,11 +22,15 @@ type EventRow = {
   end_date?: string | null;
   venue?: string | null;
   location?: string | null;
-  status: "draft" | "published" | "archived";
+  status: string;
   is_public: boolean;
   event_type?: string | null;
   age_category?: string | null;
   organizer_name?: string | null;
+  source_kind?: "event" | "competition";
+  competition_slug?: string | null;
+  season_label?: string | null;
+  verification_status?: string | null;
   setup?: SetupProgress | null;
   counts: {
     games: number;
@@ -46,10 +50,10 @@ function formatDate(value?: string | null) {
 }
 
 function statusClass(status: string) {
-  if (status === "published" || status === "valid") {
+  if (["published", "valid", "live", "completed", "verified"].includes(status)) {
     return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
   }
-  if (status === "blocked" || status === "archived") {
+  if (["blocked", "archived", "cancelled", "disputed"].includes(status)) {
     return "border-rose-400/30 bg-rose-400/10 text-rose-200";
   }
   return "border-amber-400/30 bg-amber-400/10 text-amber-200";
@@ -61,6 +65,7 @@ export default function EventsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<"active" | "all" | "draft" | "completed">("active");
   const [status, setStatus] = useState("all");
   const [format, setFormat] = useState("all");
   const [organizer, setOrganizer] = useState("all");
@@ -162,6 +167,11 @@ export default function EventsAdminPage() {
       const matchesFrom =
         !dateFrom || !event.start_date || event.start_date >= dateFrom;
       const matchesTo = !dateTo || !event.start_date || event.start_date <= dateTo;
+      const matchesView =
+        view === "all" ||
+        (view === "active" && ["live", "upcoming", "published"].includes(event.status)) ||
+        (view === "draft" && event.status === "draft") ||
+        (view === "completed" && ["completed", "archived"].includes(event.status));
       return (
         matchesSearch &&
         matchesStatus &&
@@ -169,35 +179,35 @@ export default function EventsAdminPage() {
         matchesOrganizer &&
         matchesVisibility &&
         matchesFrom &&
-        matchesTo
+        matchesTo &&
+        matchesView
       );
     });
-  }, [dateFrom, dateTo, events, format, organizer, search, status, visibility]);
+  }, [dateFrom, dateTo, events, format, organizer, search, status, view, visibility]);
 
   const counts = useMemo(
     () => ({
       total: events.length,
-      live: events.filter((event) => event.is_public).length,
+      active: events.filter((event) => ["live", "upcoming", "published"].includes(event.status)).length,
+      competitions: events.filter((event) => event.source_kind === "competition").length,
       draft: events.filter((event) => event.status === "draft").length,
-      blocked: events.filter(
-        (event) => event.setup?.validation_status === "blocked"
-      ).length,
+      completed: events.filter((event) => ["completed", "archived"].includes(event.status)).length,
     }),
     [events]
   );
 
   return (
-    <main className="min-h-screen bg-black px-4 py-24 text-white sm:px-6">
+    <main className="min-h-screen bg-black px-4 py-10 text-white sm:px-6 sm:py-14">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex flex-col gap-5 rounded-3xl border border-white/10 bg-zinc-950 p-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.3em] text-orange-300">
-              Phase 1 operations
+              Portfolio command
             </p>
-            <h1 className="mt-2 text-3xl font-black sm:text-4xl">Events Admin</h1>
+            <h1 className="mt-2 text-3xl font-black sm:text-5xl">Events & Competitions</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400">
-              Find every event, see setup readiness, and move directly into games,
-              participants, delivery or publishing work.
+              One executive register for tournaments, commissioned events and permanent
+              competition properties—including FACKTS Kings.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -207,7 +217,7 @@ export default function EventsAdminPage() {
                   href="/admin/events/content"
                   className="rounded-2xl border border-white/15 px-4 py-3 text-sm font-black text-zinc-200 transition hover:border-orange-300/50 hover:text-orange-200"
                 >
-                  Legacy content editor
+                  Event content
                 </Link>
                 <Link
                   href="/admin/events/new"
@@ -229,9 +239,9 @@ export default function EventsAdminPage() {
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["All events", counts.total],
-            ["Public", counts.live],
-            ["Drafts", counts.draft],
-            ["Blocked", counts.blocked],
+            ["Active now", counts.active],
+            ["Competitions", counts.competitions],
+            ["Completed", counts.completed],
           ].map(([label, value]) => (
             <div key={label} className="rounded-2xl border border-white/10 bg-zinc-950 p-4">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
@@ -241,6 +251,24 @@ export default function EventsAdminPage() {
             </div>
           ))}
         </section>
+
+        <nav className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-950 p-2" aria-label="Event register views">
+          {([
+            ["active", "Active"],
+            ["all", "All records"],
+            ["draft", `Drafts ${counts.draft}`],
+            ["completed", "Completed"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setView(value)}
+              className={`whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-black transition ${view === value ? "bg-orange-500 text-black" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
         <section className="rounded-3xl border border-white/10 bg-zinc-950 p-5">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
@@ -257,6 +285,9 @@ export default function EventsAdminPage() {
               <option value="all">All statuses</option>
               <option value="draft">Draft</option>
               <option value="published">Published</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="live">Live</option>
+              <option value="completed">Completed</option>
               <option value="archived">Archived</option>
             </select>
             <select value={format} onChange={(event) => setFormat(event.target.value)} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm">
@@ -286,6 +317,16 @@ export default function EventsAdminPage() {
               <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm text-zinc-200" />
             </label>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSearch(""); setStatus("all"); setFormat("all"); setOrganizer("all");
+              setVisibility("all"); setDateFrom(""); setDateTo(""); setView("active");
+            }}
+            className="mt-4 text-xs font-black text-orange-300 hover:text-orange-200"
+          >
+            Clear every filter
+          </button>
         </section>
 
         {message ? (
@@ -296,24 +337,29 @@ export default function EventsAdminPage() {
           <p className="rounded-3xl border border-white/10 bg-zinc-950 p-8 text-center text-zinc-400">Loading events…</p>
         ) : filtered.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-white/15 bg-zinc-950 p-10 text-center">
-            <h2 className="text-xl font-black">No events match these filters</h2>
-            <p className="mt-2 text-sm text-zinc-500">Clear filters{readOnly ? "." : " or create a new event draft."}</p>
+            <h2 className="text-xl font-black">{events.length ? "No records match these filters" : "No event records loaded"}</h2>
+            <p className="mt-2 text-sm text-zinc-500">{events.length ? "Clear the filters to restore the full register." : "Refresh the register. FACKTS Kings will appear here from Competition Profiles."}</p>
           </div>
         ) : (
           <section className="grid gap-4 xl:grid-cols-2">
             {filtered.map((event) => {
-              const setupStatus = event.setup?.validation_status ?? "needs_review";
+              const isCompetition = event.source_kind === "competition";
+              const setupStatus = isCompetition
+                ? event.verification_status ?? "needs_review"
+                : event.setup?.validation_status ?? "needs_review";
               return (
-                <article key={event.event_id} className="rounded-3xl border border-white/10 bg-zinc-950 p-5">
+                <article key={event.event_id} className={`relative overflow-hidden rounded-3xl border bg-zinc-950 p-5 ${isCompetition ? "border-orange-400/25" : "border-white/10"}`}>
+                  {isCompetition ? <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-orange-500 via-blue-500 to-transparent" /> : null}
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <div className="flex flex-wrap gap-2">
                         <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${statusClass(event.status)}`}>{event.status}</span>
-                        <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${statusClass(setupStatus)}`}>Setup {setupStatus.replace("_", " ")}</span>
+                        <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${statusClass(setupStatus)}`}>{isCompetition ? "Evidence" : "Setup"} {setupStatus.replace("_", " ")}</span>
+                        {isCompetition ? <span className="rounded-full border border-orange-400/30 bg-orange-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-wider text-orange-200">Competition property</span> : null}
                         <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-wider text-zinc-400">{event.is_public ? "Public" : "Private"}</span>
                       </div>
                       <h2 className="mt-3 text-2xl font-black">{event.title}</h2>
-                      <p className="mt-1 text-xs font-bold uppercase tracking-wider text-zinc-500">{event.event_id}</p>
+                      <p className="mt-1 text-xs font-bold uppercase tracking-wider text-zinc-500">{isCompetition ? `${event.season_label || "Current"} season · ${event.competition_slug}` : event.event_id}</p>
                     </div>
                     <div className="text-right text-sm text-zinc-400">
                       <p className="font-bold text-zinc-200">{formatDate(event.start_date)}</p>
@@ -342,15 +388,24 @@ export default function EventsAdminPage() {
                   </p>
 
                   <div className="mt-5 flex flex-wrap gap-2">
-                    <Link href={`/admin/events/${event.event_id}/setup`} className="rounded-xl bg-orange-500 px-3 py-2 text-xs font-black text-black hover:bg-orange-400">{readOnly ? "View setup" : "Edit setup"}</Link>
-                    <Link href={`/admin/games?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Games</Link>
-                    <Link href={`/admin/rosters?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Participants</Link>
-                    {!readOnly ? <Link href={`/admin/events/content?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Content</Link> : null}
-                    {!readOnly ? <Link href={`/admin/corrections?entity_type=event&entity_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-blue-400/30 bg-blue-400/10 px-3 py-2 text-xs font-black text-blue-100 hover:border-blue-300/60">Correct data</Link> : null}
-                    {!readOnly ? <button type="button" onClick={() => void deleteEvent(event)} disabled={Boolean(deletingEventId)} className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs font-black text-rose-100 hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-50">{deletingEventId === event.event_id ? "Deleting…" : "Delete event"}</button> : null}
-                    {event.is_public ? (
-                      <Link href={`/events/${event.slug}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Public overview</Link>
-                    ) : null}
+                    {isCompetition ? (
+                      <>
+                        <Link href="/admin/one-on-one" className="rounded-xl bg-orange-500 px-3 py-2 text-xs font-black text-black hover:bg-orange-400">Manage Kings battles</Link>
+                        {!readOnly ? <Link href="/admin/competitions" className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Competition profile</Link> : null}
+                        <Link href={`/admin/reports?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-blue-400/30 bg-blue-400/10 px-3 py-2 text-xs font-black text-blue-100 hover:border-blue-300/60">Competition report</Link>
+                        {event.is_public ? <Link href={`/competitions/${event.competition_slug || event.slug}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Public competition hub</Link> : null}
+                      </>
+                    ) : (
+                      <>
+                        <Link href={`/admin/events/${event.event_id}/setup`} className="rounded-xl bg-orange-500 px-3 py-2 text-xs font-black text-black hover:bg-orange-400">{readOnly ? "View setup" : "Edit setup"}</Link>
+                        <Link href={`/admin/games?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Games</Link>
+                        <Link href={`/admin/rosters?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Participants</Link>
+                        {!readOnly ? <Link href={`/admin/events/content?event_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Content</Link> : null}
+                        {!readOnly ? <Link href={`/admin/corrections?entity_type=event&entity_id=${encodeURIComponent(event.event_id)}`} className="rounded-xl border border-blue-400/30 bg-blue-400/10 px-3 py-2 text-xs font-black text-blue-100 hover:border-blue-300/60">Correct data</Link> : null}
+                        {!readOnly ? <button type="button" onClick={() => void deleteEvent(event)} disabled={Boolean(deletingEventId)} className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs font-black text-rose-100 hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-50">{deletingEventId === event.event_id ? "Deleting…" : "Delete event"}</button> : null}
+                        {event.is_public ? <Link href={`/events/${event.slug}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/50">Public overview</Link> : null}
+                      </>
+                    )}
                   </div>
                 </article>
               );

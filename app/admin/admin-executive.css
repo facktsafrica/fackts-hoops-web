@@ -1,0 +1,113 @@
+.admin-executive-shell {
+  --admin-navy: #020617;
+  --admin-panel: rgba(8, 20, 42, 0.88);
+  --admin-panel-strong: rgba(5, 14, 31, 0.96);
+  --admin-line: rgba(96, 165, 250, 0.16);
+  --admin-line-strong: rgba(249, 115, 22, 0.34);
+  --admin-copy: #dce8f8;
+  min-height: 100vh;
+  color: var(--admin-copy);
+  background:
+    radial-gradient(circle at 82% -10%, rgba(37, 99, 235, 0.22), transparent 32rem),
+    radial-gradient(circle at 12% 18%, rgba(249, 115, 22, 0.1), transparent 28rem),
+    linear-gradient(145deg, #020617 0%, #061329 52%, #020617 100%);
+}
+
+.admin-executive-workspace {
+  min-width: 0;
+}
+
+.admin-executive-workspace > main {
+  min-height: 100vh !important;
+  background: transparent !important;
+}
+
+.admin-executive-workspace [class*="bg-zinc-950"],
+.admin-executive-workspace [class*="bg-slate-950"] {
+  background-color: var(--admin-panel) !important;
+  border-color: var(--admin-line) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(18px);
+}
+
+.admin-executive-workspace [class*="bg-black"] {
+  background-color: rgba(1, 7, 18, 0.64) !important;
+}
+
+.admin-executive-workspace [class*="border-white/10"],
+.admin-executive-workspace [class*="border-slate-800"],
+.admin-executive-workspace [class*="border-slate-700"] {
+  border-color: var(--admin-line) !important;
+}
+
+.admin-executive-workspace h1,
+.admin-executive-workspace h2,
+.admin-executive-workspace h3 {
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.admin-executive-workspace input,
+.admin-executive-workspace select,
+.admin-executive-workspace textarea {
+  border-color: rgba(96, 165, 250, 0.2) !important;
+  background: rgba(1, 7, 18, 0.82) !important;
+  color: #f8fafc !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.admin-executive-workspace input:focus,
+.admin-executive-workspace select:focus,
+.admin-executive-workspace textarea:focus {
+  border-color: rgba(249, 115, 22, 0.75) !important;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+
+.admin-executive-workspace button,
+.admin-executive-workspace a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-executive-workspace table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.admin-executive-workspace table tbody tr:hover {
+  background: rgba(59, 130, 246, 0.055);
+}
+
+.admin-executive-workspace ::selection {
+  color: #020617;
+  background: #fb923c;
+}
+
+.admin-executive-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(249, 115, 22, 0.55) transparent;
+}
+
+@media (min-width: 1024px) {
+  .admin-executive-workspace {
+    margin-left: 17.5rem;
+  }
+
+  .admin-executive-workspace > main {
+    padding-top: 2.25rem !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .admin-executive-workspace > main {
+    padding-top: 2rem !important;
+  }
+}
+
+@media print {
+  .admin-executive-workspace {
+    margin-left: 0 !important;
+  }
+
+  .admin-executive-workspace > main {
+    background: white !important;
+  }
+}

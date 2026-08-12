@@ -12,6 +12,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import AdminNavigation from "@/app/components/AdminNavigation";
 import { AdminPermissionProvider } from "@/app/components/AdminPermissionContext";
+import "./admin-executive.css";
 
 type AccessState = "checking" | "allowed" | "denied";
 
@@ -185,8 +186,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <AdminPermissionProvider profile={profile}>
-      <AdminNavigation />
-      {children}
+      <div className="admin-executive-shell">
+        <AdminNavigation />
+        <div className="admin-executive-workspace">{children}</div>
+      </div>
     </AdminPermissionProvider>
   );
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-type ReportKey = "event_completion" | "participation" | "statistics" | "media_delivery" | "sponsor_summary";
+type ReportKey = "event_completion" | "competition_performance" | "participation" | "statistics" | "media_delivery" | "sponsor_summary";
 type Row = Record<string, unknown>;
 type Filters = { event_id: string; date_from: string; date_to: string; format: string; team: string; player: string };
 type ReportResponse = {
@@ -17,13 +17,18 @@ type ReportResponse = {
 };
 
 const emptyFilters: Filters = { event_id: "", date_from: "", date_to: "", format: "", team: "", player: "" };
-const emptyReports: Record<ReportKey, Row[]> = { event_completion: [], participation: [], statistics: [], media_delivery: [], sponsor_summary: [] };
+const emptyReports: Record<ReportKey, Row[]> = { event_completion: [], competition_performance: [], participation: [], statistics: [], media_delivery: [], sponsor_summary: [] };
 
 const reportConfig: Record<ReportKey, { label: string; description: string; columns: Array<[string, string]> }> = {
   event_completion: {
     label: "Event completion",
     description: "Setup, games, verification and delivery completion for each event.",
     columns: [["event", "Event"], ["format", "Format"], ["start_date", "Start"], ["setup_status", "Setup"], ["games", "Games"], ["completed_games", "Completed"], ["verified_stat_lines", "Verified stats"], ["delivered", "Delivered"], ["completion_percent", "Completion %"]],
+  },
+  competition_performance: {
+    label: "Competition performance",
+    description: "Season position for permanent competition properties, including FACKTS Kings matches, verification, players and media.",
+    columns: [["competition", "Competition"], ["season", "Season"], ["format", "Format"], ["status", "Status"], ["matches", "Matches"], ["completed", "Completed"], ["scheduled", "Scheduled"], ["verified", "Verified"], ["players", "Players"], ["media", "Media"], ["completion_percent", "Completion %"]],
   },
   participation: {
     label: "Participation",
@@ -100,7 +105,10 @@ export default function ReportsAdminPage() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(emptyFilters), 0);
+    const requestedEvent = new URLSearchParams(window.location.search).get("event_id") || "";
+    const initialFilters = { ...emptyFilters, event_id: requestedEvent };
+    if (requestedEvent) setFilters(initialFilters);
+    const timer = window.setTimeout(() => void load(initialFilters), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
 
@@ -134,6 +142,7 @@ export default function ReportsAdminPage() {
 
   function actionFor(row: Row) {
     if (active === "event_completion" && row.event_id) return <Link href={`/admin/events/${row.event_id}/setup`} className="font-black text-orange-300">Open setup</Link>;
+    if (active === "competition_performance" && row.competition_slug) return <Link href="/admin/one-on-one" className="font-black text-orange-300">Manage competition</Link>;
     if (active === "participation" && row.game_id) return <Link href={`/admin/rosters?game_id=${row.game_id}`} className="font-black text-orange-300">Open roster</Link>;
     if (active === "statistics" && row.game_id) return <Link href={`/admin/stats?game_id=${row.game_id}`} className="font-black text-orange-300">Open stats</Link>;
     if (active === "media_delivery" && row.url) return <a href={String(row.url)} target="_blank" rel="noreferrer" className="font-black text-orange-300">Open asset</a>;
@@ -142,14 +151,14 @@ export default function ReportsAdminPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black px-4 py-24 text-white sm:px-6">
+    <main className="min-h-screen bg-black px-4 py-10 text-white sm:px-6 sm:py-14">
       <div className="mx-auto max-w-[1500px] space-y-6">
         <header className="rounded-3xl border border-white/10 bg-zinc-950 p-6 print:border-0 print:bg-white print:p-0 print:text-black">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-orange-300 print:text-black">Live operational evidence</p>
-              <h1 className="mt-2 text-3xl font-black sm:text-4xl">Reports</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400 print:text-zinc-700">Every view is derived from the current canonical records. Apply filters once, then present the table or export the exact same rows.</p>
+              <p className="text-xs font-black uppercase tracking-[0.3em] text-orange-300 print:text-black">Executive intelligence suite</p>
+              <h1 className="mt-2 text-3xl font-black sm:text-5xl">Reports & Evidence</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400 print:text-zinc-700">Live operational reporting for events, FACKTS Kings, participation, verified statistics, media delivery and partner recognition.</p>
             </div>
             <div className="flex flex-wrap gap-2 print:hidden">
               <button onClick={() => window.print()} className="rounded-xl border border-white/15 px-4 py-3 text-sm font-black">Print view</button>

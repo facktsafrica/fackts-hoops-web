@@ -46,6 +46,8 @@ export const ADMIN_ROLE_PRESETS = [
 export type AdminRolePreset = (typeof ADMIN_ROLE_PRESETS)[number];
 
 export type AdminPermissionProfile = {
+  display_name?: string | null;
+  email?: string | null;
   role?: string | null;
   is_super_admin?: boolean | null;
   permissions?: string[] | null;
