@@ -8,6 +8,7 @@ import {
 import {
   loadAdminDashboard,
   type DashboardActivity,
+  type DashboardSignal,
   type DashboardMetric,
 } from "@/lib/admin/dashboard";
 import { getAdminAccess } from "@/lib/auth/server";
@@ -27,6 +28,7 @@ const quickActions: QuickAction[] = [
   { label: "Schedule games", description: "Create fixtures or use the bulk scheduler.", href: "/admin/games", capability: "games" },
   { label: "Import roster", description: "Stage and validate CSV or Excel rows.", href: "/admin/rosters", capability: "rosters" },
   { label: "Enter statistics", description: "Open the shared mobile stat engine.", href: "/admin/stats", capability: "stats" },
+  { label: "Manage media", description: "Link, review and publish governed event and game media.", href: "/admin/media", capability: "media" },
   { label: "Review consent", description: "Manage evidence, scope and withdrawals.", href: "/admin/consents", capability: "consents" },
   { label: "Review corrections", description: "Triage, approve or apply data changes.", href: "/admin/corrections", capability: "corrections" },
   { label: "Run reports", description: "Filter, present and export live operations.", href: "/admin/reports", capability: "reports" },
@@ -39,6 +41,13 @@ const toneClasses: Record<DashboardMetric["tone"], string> = {
   amber: "border-amber-400/30 bg-amber-400/10 text-amber-200",
   rose: "border-rose-400/30 bg-rose-400/10 text-rose-200",
   emerald: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+};
+
+const signalClasses: Record<DashboardSignal["severity"], string> = {
+  critical: "border-rose-400/30 bg-rose-400/10 text-rose-100",
+  attention: "border-amber-400/30 bg-amber-400/10 text-amber-100",
+  opportunity: "border-blue-400/30 bg-blue-400/10 text-blue-100",
+  clear: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100",
 };
 
 function relativeTime(value: string) {
@@ -56,12 +65,26 @@ function readable(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function formatGameDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Date not set";
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: "Africa/Nairobi",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function activityHref(activity: DashboardActivity) {
   const capability = activity.capability;
   if (capability === "events") return "/admin/events";
   if (capability === "games") return "/admin/games";
   if (capability === "rosters") return "/admin/rosters";
   if (capability === "stats") return "/admin/stats";
+  if (capability === "media") return "/admin/media";
   if (capability === "consents") return "/admin/consents";
   if (capability === "corrections") return "/admin/corrections";
   if (capability === "reports") return "/admin/reports";
@@ -75,7 +98,16 @@ export default async function AdminPage() {
     return <main className="min-h-screen bg-black px-5 py-24 text-white"><div className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-zinc-950 p-8 text-center"><h1 className="text-2xl font-black">Admin profile unavailable</h1><p className="mt-3 text-sm text-zinc-400">Sign in with an active Admin account to load operations.</p></div></main>;
   }
 
-  let dashboard: Awaited<ReturnType<typeof loadAdminDashboard>> = { metrics: [], activity: [], today: "", queryWarnings: [] };
+  let dashboard: Awaited<ReturnType<typeof loadAdminDashboard>> = {
+    metrics: [],
+    activity: [],
+    today: "",
+    queryWarnings: [],
+    health: { score: 0, label: "Intelligence unavailable", detail: "Live operational data could not be assessed.", attention_count: 0 },
+    signals: [],
+    upcomingGames: [],
+    competitionPulse: [],
+  };
   try {
     dashboard = await loadAdminDashboard(profile);
   } catch {
@@ -94,9 +126,9 @@ export default async function AdminPage() {
             <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.18),transparent_62%)]" />
             <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.3em] text-orange-300">Operational dashboard</p>
-                <h1 className="mt-3 text-4xl font-black sm:text-6xl">Admin Home</h1>
-                <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-400 sm:text-base">Live priorities from events, games, rosters, shared statistics, media, deliveries and governed data workflows. Counts respect your role and assigned scope.</p>
+                <p className="text-xs font-black uppercase tracking-[0.3em] text-orange-300">Director command · Live operations</p>
+                <h1 className="mt-3 text-4xl font-black sm:text-6xl">FACKTS Intelligence Centre</h1>
+                <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-400 sm:text-base">One view of what is happening across competitions, events, games, people, statistics, media and delivery—and the next actions required to keep FACKTS moving.</p>
                 <p className="mt-3 text-xs font-bold text-zinc-600">{profile.display_name || profile.email || "Admin"} · {readable(profile.role || "administrator")}{dashboard.today ? ` · ${dashboard.today}` : ""}</p>
               </div>
               <div className="relative flex flex-wrap gap-2">
@@ -108,6 +140,41 @@ export default async function AdminPage() {
         </header>
 
         {dashboard.queryWarnings.length ? <div className="rounded-2xl border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100"><p className="font-black">Some live dashboard queries are unavailable.</p><p className="mt-1 text-amber-100/70">Available cards remain real; unavailable metrics are omitted rather than replaced with placeholders.</p></div> : null}
+
+        <section className="grid gap-5 xl:grid-cols-[0.78fr,1.22fr]">
+          <div className="relative overflow-hidden rounded-[2rem] border border-blue-400/20 bg-zinc-950 p-6 sm:p-7">
+            <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-blue-500/15 blur-3xl" />
+            <div className="relative">
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-blue-300">Operational readiness</p>
+              <div className="mt-5 flex items-end gap-4">
+                <p className="text-7xl font-black tracking-tighter sm:text-8xl">{dashboard.health.score}</p>
+                <div className="pb-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">out of 100</p><p className="mt-1 font-black text-orange-200">{dashboard.health.label}</p></div>
+              </div>
+              <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-gradient-to-r from-rose-500 via-orange-400 to-emerald-400" style={{ width: `${dashboard.health.score}%` }} /></div>
+              <p className="mt-5 text-sm leading-6 text-zinc-400">{dashboard.health.detail}</p>
+              <div className="mt-5 flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4"><span className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Records needing attention</span><span className="text-2xl font-black text-white">{dashboard.health.attention_count.toLocaleString()}</span></div>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-white/10 bg-zinc-950 p-5 sm:p-7">
+            <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">Decision queue</p><h2 className="mt-1 text-2xl font-black sm:text-3xl">What happens next</h2></div><p className="hidden text-xs text-zinc-600 sm:block">Ranked from live exceptions</p></div>
+            <div className="mt-5 grid gap-3">
+              {dashboard.signals.map((signal, index) => <Link key={signal.key} href={signal.href} className={`group grid gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5 sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:items-center ${signalClasses[signal.severity]}`}><span className="flex h-10 w-10 items-center justify-center rounded-xl border border-current/20 bg-black/20 text-sm font-black">{String(index + 1).padStart(2, "0")}</span><span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{signal.title}</span>{signal.count > 0 ? <span className="rounded-full bg-black/25 px-2 py-0.5 text-[10px] font-black">{signal.count}</span> : null}</span><span className="mt-1 block text-xs leading-5 opacity-70">{signal.detail}</span></span><span className="text-xs font-black whitespace-nowrap">{signal.action} →</span></Link>)}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-[1.15fr,0.85fr]">
+          <div className="rounded-[2rem] border border-white/10 bg-zinc-950 p-5 sm:p-7">
+            <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.25em] text-blue-300">14-day horizon</p><h2 className="mt-1 text-2xl font-black">Next on court</h2></div><Link href="/admin/games" className="text-xs font-black text-orange-300">All games →</Link></div>
+            {dashboard.upcomingGames.length ? <div className="mt-5 divide-y divide-white/5">{dashboard.upcomingGames.map((game) => <Link key={game.id} href={`/admin/games?q=${encodeURIComponent(game.title)}`} className="grid gap-3 py-4 first:pt-0 last:pb-0 transition hover:text-orange-100 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><p className="truncate font-black">{game.title}</p><p className="mt-1 truncate text-xs text-zinc-500">{game.competition} · {formatGameDate(game.game_date)}</p></div><div className="flex gap-2 text-[10px] font-black uppercase"><span className={`rounded-full border px-2 py-1 ${game.roster_count ? "border-emerald-400/25 text-emerald-200" : "border-amber-400/25 text-amber-200"}`}>{game.roster_count} roster</span><span className={`rounded-full border px-2 py-1 ${game.media_count ? "border-blue-400/25 text-blue-200" : "border-zinc-700 text-zinc-500"}`}>{game.media_count} media</span></div></Link>)}</div> : <p className="mt-5 rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-500">No scheduled games appear in the next 14 days.</p>}
+          </div>
+
+          <div className="rounded-[2rem] border border-white/10 bg-zinc-950 p-5 sm:p-7">
+            <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">Property performance</p><h2 className="mt-1 text-2xl font-black">Competition pulse</h2></div><Link href="/admin/events" className="text-xs font-black text-orange-300">Portfolio →</Link></div>
+            {dashboard.competitionPulse.length ? <div className="mt-5 grid gap-3">{dashboard.competitionPulse.map((competition) => <Link key={competition.slug} href={`/admin/reports?event_id=${encodeURIComponent(`competition:${competition.slug}`)}`} className="rounded-2xl border border-white/10 bg-black p-4 transition hover:border-orange-400/35"><div className="flex items-start justify-between gap-4"><div><p className="font-black">{competition.name}</p><p className="mt-1 text-xs text-zinc-500">Season {competition.season} · {readable(competition.status)}</p></div><span className="rounded-full border border-orange-400/25 bg-orange-400/10 px-2 py-1 text-[9px] font-black uppercase text-orange-200">{competition.completed}/{competition.matches} complete</span></div><div className="mt-4 grid grid-cols-3 gap-2 text-center"><PulseStat label="Players" value={competition.players} /><PulseStat label="Verified" value={competition.verified} /><PulseStat label="Media" value={competition.media} /></div></Link>)}</div> : <p className="mt-5 rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-500">No active competition properties are visible to this role.</p>}
+          </div>
+        </section>
 
         <section>
           <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">Now</p><h2 className="mt-1 text-2xl font-black sm:text-3xl">Operational priorities</h2></div><p className="hidden text-xs text-zinc-600 sm:block">Select a card to open its source workflow</p></div>
@@ -130,4 +197,8 @@ export default async function AdminPage() {
       </div>
     </main>
   );
+}
+
+function PulseStat({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-xl border border-white/5 bg-white/[0.025] px-2 py-3"><p className="text-lg font-black text-white">{value.toLocaleString()}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.14em] text-zinc-600">{label}</p></div>;
 }

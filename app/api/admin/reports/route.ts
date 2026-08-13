@@ -326,7 +326,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const mediaDelivery = links.map((link) => {
+    let mediaDelivery = links.map((link) => {
       const asset = assetById.get(text(link.asset_id)) ?? {};
       const game = text(link.owner_type) === "game" ? gameById.get(text(link.owner_id)) : undefined;
       const eventId = game ? text(game.event_id) : text(link.owner_id);
@@ -428,6 +428,60 @@ export async function GET(request: NextRequest) {
         completion_percent: matches.length ? Math.round((completed / matches.length) * 100) : 0,
       };
     });
+
+    if (competitionMatches.length) {
+      const legacyMatchIds = competitionMatches.map((match) => text(match.id)).filter(Boolean);
+      const oneOnOneLinksResult = await admin
+        .from("media_links")
+        .select("*")
+        .eq("owner_type", "one_on_one")
+        .in("owner_id", legacyMatchIds)
+        .limit(10000);
+      if (oneOnOneLinksResult.error) throw oneOnOneLinksResult.error;
+      const oneOnOneLinks = (oneOnOneLinksResult.data ?? []) as JsonRecord[];
+      const oneOnOneAssetIds = Array.from(new Set(oneOnOneLinks.map((link) => text(link.asset_id)).filter(Boolean)));
+      const oneOnOneAssetsResult = oneOnOneAssetIds.length
+        ? await admin.from("media_assets").select("*").in("id", oneOnOneAssetIds).limit(10000)
+        : { data: [], error: null };
+      if (oneOnOneAssetsResult.error) throw oneOnOneAssetsResult.error;
+      const oneOnOneAssetById = new Map(
+        ((oneOnOneAssetsResult.data ?? []) as JsonRecord[]).map((asset) => [text(asset.id), asset])
+      );
+      const matchByLegacyId = new Map(competitionMatches.map((match) => [text(match.id), match]));
+      const competitionBySlug = new Map(competitions.map((competition) => [text(competition.slug), competition]));
+      const canonicalGamesResult = legacyMatchIds.length
+        ? await admin.from("games").select("id,legacy_one_on_one_id,title,game_title").in("legacy_one_on_one_id", legacyMatchIds).limit(5000)
+        : { data: [], error: null };
+      if (canonicalGamesResult.error) throw canonicalGamesResult.error;
+      const gameByLegacyId = new Map(
+        ((canonicalGamesResult.data ?? []) as JsonRecord[]).map((game) => [text(game.legacy_one_on_one_id), game])
+      );
+      const existingAssetIds = new Set(mediaDelivery.map((row) => text(row.asset_id)));
+      const competitionMedia = oneOnOneLinks.flatMap((link) => {
+        const asset = oneOnOneAssetById.get(text(link.asset_id));
+        if (!asset || existingAssetIds.has(text(asset.id))) return [];
+        const match = matchByLegacyId.get(text(link.owner_id)) ?? {};
+        const slug = text(match.competition_slug);
+        const competition = competitionBySlug.get(slug) ?? {};
+        const canonicalGame = gameByLegacyId.get(text(link.owner_id));
+        return [{
+          event_id: `competition:${slug}`,
+          event: text(competition.name) || slug,
+          game_id: text(canonicalGame?.id),
+          game: text(match.match_title || canonicalGame?.title || canonicalGame?.game_title) || "Competition match",
+          asset_id: text(asset.id),
+          title: text(asset.title) || text(match.match_title) || "Competition media",
+          media_type: text(asset.media_type),
+          link_role: text(link.link_role),
+          rights_status: text(asset.rights_status),
+          publish_status: text(asset.publish_status),
+          public: Boolean(asset.is_public),
+          health_status: text(asset.health_status),
+          url: text(asset.url),
+        }];
+      });
+      mediaDelivery = [...mediaDelivery, ...competitionMedia];
+    }
 
     const competitionOptions = competitions.map((competition) => ({
       event_id: `competition:${text(competition.slug)}`,

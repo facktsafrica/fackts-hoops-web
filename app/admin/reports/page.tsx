@@ -107,8 +107,10 @@ export default function ReportsAdminPage() {
   useEffect(() => {
     const requestedEvent = new URLSearchParams(window.location.search).get("event_id") || "";
     const initialFilters = { ...emptyFilters, event_id: requestedEvent };
-    if (requestedEvent) setFilters(initialFilters);
-    const timer = window.setTimeout(() => void load(initialFilters), 0);
+    const timer = window.setTimeout(() => {
+      if (requestedEvent) setFilters(initialFilters);
+      void load(initialFilters);
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
 

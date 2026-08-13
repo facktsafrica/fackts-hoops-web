@@ -22,6 +22,7 @@ const protectedRoutes = [
   "app/api/admin/games/route.ts",
   "app/api/admin/rosters/route.ts",
   "app/api/admin/stats/route.ts",
+  "app/api/admin/media/route.ts",
   "app/api/admin/consents/route.ts",
   "app/api/admin/corrections/route.ts",
   "app/api/admin/reports/route.ts",
@@ -32,6 +33,7 @@ const requiredFiles = [
   ...protectedRoutes,
   "app/admin/events/[eventId]/setup/EventSetupWizard.tsx",
   "app/admin/reports/page.tsx",
+  "app/admin/media/page.tsx",
   "app/admin/page.tsx",
   "lib/admin/dashboard.ts",
   "lib/admin/permissions.ts",
@@ -129,6 +131,14 @@ for (const report of ["event_completion", "participation", "statistics", "media_
 const dashboard = sources.get("lib/admin/dashboard.ts") ?? "";
 for (const metric of ["Active events", "Today's games", "Pending rosters", "Unverified statistics", "Media awaiting links", "Overdue deliveries", "Data errors"]) {
   if (!dashboard.includes(metric)) failures.push(`Admin Home is missing live metric: ${metric}`);
+}
+for (const marker of ["What happens next", "Competition pulse", "Operational readiness"]) {
+  const adminHome = sources.get("app/admin/page.tsx") ?? "";
+  if (!adminHome.includes(marker)) failures.push(`FACKTS Intelligence Centre is missing: ${marker}`);
+}
+const mediaPage = sources.get("app/admin/media/page.tsx") ?? "";
+for (const marker of ["Media Intelligence Centre", "rights_status", "publish_status", "game_id", "event_id"]) {
+  if (!mediaPage.includes(marker)) failures.push(`Media Centre is missing: ${marker}`);
 }
 
 if (failures.length) {

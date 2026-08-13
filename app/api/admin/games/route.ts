@@ -209,18 +209,27 @@ export async function GET(request: NextRequest) {
     }
 
     const gameIds = games.map((game) => String(game.id));
-    const [eventsResult, rostersResult, mediaResult] = await Promise.all([
+    const legacyOneOnOneIds = games.map((game) => String(game.legacy_one_on_one_id ?? "")).filter(Boolean);
+    const [eventsResult, rostersResult, legacyMediaResult, gameMediaLinksResult, oneOnOneMediaLinksResult] = await Promise.all([
       admin.from("event_case_studies").select("event_id,title,start_date,end_date,is_public").order("start_date", { ascending: false }),
       gameIds.length
         ? admin.from("game_rosters").select("game_id,player_id,team_side,roster_status").in("game_id", gameIds)
         : Promise.resolve({ data: [], error: null }),
       gameIds.length
-        ? admin.from("game_media").select("game_id,publish_status,rights_status,is_public").in("game_id", gameIds)
+        ? admin.from("game_media").select("id,game_id").in("game_id", gameIds)
+        : Promise.resolve({ data: [], error: null }),
+      gameIds.length
+        ? admin.from("media_links").select("asset_id,owner_id").eq("owner_type", "game").in("owner_id", gameIds)
+        : Promise.resolve({ data: [], error: null }),
+      legacyOneOnOneIds.length
+        ? admin.from("media_links").select("asset_id,owner_id").eq("owner_type", "one_on_one").in("owner_id", legacyOneOnOneIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
     if (eventsResult.error) throw eventsResult.error;
     if (rostersResult.error) throw rostersResult.error;
-    if (mediaResult.error) throw mediaResult.error;
+    if (legacyMediaResult.error) throw legacyMediaResult.error;
+    if (gameMediaLinksResult.error) throw gameMediaLinksResult.error;
+    if (oneOnOneMediaLinksResult.error) throw oneOnOneMediaLinksResult.error;
 
     const playerIds = Array.from(new Set((rostersResult.data ?? []).map((row) => row.player_id).filter(Boolean)));
     const playersResult = playerIds.length
@@ -233,11 +242,22 @@ export async function GET(request: NextRequest) {
       const roster = (rostersResult.data ?? [])
         .filter((row) => String(row.game_id) === String(game.id))
         .map((row) => ({ ...row, person: playersById.get(row.player_id) ?? null }));
+      const canonicalAssetIds = new Set([
+        ...(gameMediaLinksResult.data ?? [])
+          .filter((row) => String(row.owner_id) === String(game.id))
+          .map((row) => String(row.asset_id)),
+        ...(oneOnOneMediaLinksResult.data ?? [])
+          .filter((row) => String(row.owner_id) === String(game.legacy_one_on_one_id ?? ""))
+          .map((row) => String(row.asset_id)),
+      ]);
+      const legacyCount = (legacyMediaResult.data ?? []).filter(
+        (row) => String(row.game_id) === String(game.id)
+      ).length;
       return {
         ...game,
         roster_participants: roster,
         roster_count: roster.filter((row) => row.roster_status !== "withdrawn").length,
-        media_count: (mediaResult.data ?? []).filter((row) => String(row.game_id) === String(game.id)).length,
+        media_count: Math.max(canonicalAssetIds.size, legacyCount),
       };
     }).filter((game) => {
       const haystack = [

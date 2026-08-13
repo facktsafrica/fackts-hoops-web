@@ -254,6 +254,7 @@ const ADMIN_ROUTE_CAPABILITIES: Array<{
   { prefix: "/admin/roster-announcements", capability: "roster_announcements" },
   { prefix: "/admin/match-previews", capability: "match_previews" },
   { prefix: "/admin/media-stories", capability: "media_stories" },
+  { prefix: "/admin/media", capability: "media" },
   { prefix: "/admin/guest-hoopers", capability: "players" },
   { prefix: "/admin/game-guests", capability: "rosters" },
   { prefix: "/admin/notifications", capability: "notifications" },

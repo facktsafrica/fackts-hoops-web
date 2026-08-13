@@ -4,9 +4,36 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type PlayerSummary = {
+  id: string;
+  full_name?: string | null;
+  jersey_number?: string | number | null;
+  position?: string | null;
+  photo_url?: string | null;
+};
+
+type StatRow = {
+  id: string;
+  game_id?: string | null;
+  points?: number | null;
+  rebounds?: number | null;
+  assists?: number | null;
+  plus_minus?: number | null;
+  is_homepage_pog?: boolean | null;
+  player_of_game?: boolean | null;
+  players?: PlayerSummary | null;
+};
+
+type GameSummary = {
+  id: string;
+  opponent?: string | null;
+  game_date?: string | null;
+  venue?: string | null;
+};
+
 export default function AdminHighlightsPage() {
-  const [rows, setRows] = useState<any[]>([]);
-  const [gamesMap, setGamesMap] = useState<Record<string, any>>({});
+  const [rows, setRows] = useState<StatRow[]>([]);
+  const [gamesMap, setGamesMap] = useState<Record<string, GameSummary>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
@@ -38,10 +65,10 @@ export default function AdminHighlightsPage() {
     }
 
     const gameIds = Array.from(
-      new Set((statsData ?? []).map((row: any) => row.game_id).filter(Boolean))
+      new Set((statsData ?? []).map((row) => row.game_id).filter((value): value is string => Boolean(value)))
     );
 
-    let gameLookup: Record<string, any> = {};
+    let gameLookup: Record<string, GameSummary> = {};
 
     if (gameIds.length > 0) {
       const { data: gamesData, error: gamesError } = await supabase
@@ -52,20 +79,21 @@ export default function AdminHighlightsPage() {
       if (gamesError) {
         console.error("Games load error:", gamesError);
       } else {
-        gameLookup = (gamesData ?? []).reduce((acc: Record<string, any>, game: any) => {
+        gameLookup = (gamesData ?? []).reduce((acc: Record<string, GameSummary>, game) => {
           acc[game.id] = game;
           return acc;
         }, {});
       }
     }
 
-    setRows(statsData ?? []);
+    setRows((statsData ?? []) as StatRow[]);
     setGamesMap(gameLookup);
     setLoading(false);
   }
 
   useEffect(() => {
-    loadRows();
+    const timer = window.setTimeout(() => void loadRows(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   async function setHomepagePOG(rowId: string) {
@@ -116,11 +144,11 @@ export default function AdminHighlightsPage() {
           </div>
 
           <h1 className="mt-2 text-4xl font-black tracking-tight">
-            Homepage Highlights
+            Homepage Player of the Game
           </h1>
 
           <p className="mt-3 text-slate-400">
-            Choose which Player of the Game appears on the homepage.
+            Choose which Player of the Game appears on the homepage. Full games, highlights and interviews are managed separately in the Media Centre.
           </p>
         </div>
 
@@ -141,7 +169,7 @@ export default function AdminHighlightsPage() {
         ) : (
           <div className="space-y-4">
             {rows.map((row) => {
-              const game = gamesMap[row.game_id];
+              const game = row.game_id ? gamesMap[row.game_id] : undefined;
 
               return (
                 <div
@@ -153,7 +181,7 @@ export default function AdminHighlightsPage() {
                       {row.players?.photo_url ? (
                         <img
                           src={row.players.photo_url}
-                          alt={row.players.full_name}
+                          alt={row.players.full_name || "Player"}
                           className="h-16 w-16 rounded-2xl border border-slate-700 object-cover"
                         />
                       ) : (

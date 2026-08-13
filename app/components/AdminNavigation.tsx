@@ -44,7 +44,6 @@ const groups: AdminNavGroup[] = [
       { label: "Kings Battles", href: "/admin/one-on-one", code: "K1", capability: "one_on_one" },
       { label: "Competition Profiles", href: "/admin/competitions", code: "CP", capability: "one_on_one" },
       { label: "Match Previews", href: "/admin/match-previews", code: "MP", capability: "match_previews" },
-      { label: "Highlights", href: "/admin/highlights", code: "HL", capability: "highlights" },
     ],
   },
   {
@@ -61,6 +60,8 @@ const groups: AdminNavGroup[] = [
   {
     label: "Content & growth",
     items: [
+      { label: "Media Centre", href: "/admin/media", code: "MC", capability: "media" },
+      { label: "Homepage Player of Game", href: "/admin/highlights", code: "PG", capability: "highlights" },
       { label: "Media Stories", href: "/admin/media-stories", code: "MS", capability: "media_stories" },
       { label: "Roster Announcements", href: "/admin/roster-announcements", code: "RA", capability: "roster_announcements" },
       { label: "App Notifications", href: "/admin/notifications", code: "NT", capability: "notifications" },

@@ -169,7 +169,7 @@ function GameControl({ game, onSaved, readOnly }: { game: GameRow; onSaved: () =
       <div className="mt-4 flex flex-wrap gap-2">
         <Link href={`/admin/rosters/${game.id}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/40">Roster ({game.roster_count})</Link>
         <Link href={`/admin/stats?game_id=${encodeURIComponent(game.id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/40">Statistics</Link>
-        <Link href={`/admin/highlights?game_id=${encodeURIComponent(game.id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/40">Media ({game.media_count})</Link>
+        <Link href={`/admin/media?game_id=${encodeURIComponent(game.id)}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/40">Media ({game.media_count})</Link>
         <Link href={`/games/${game.id}`} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-orange-300/40">Match centre</Link>
       </div>
     </article>
