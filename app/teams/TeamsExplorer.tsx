@@ -144,7 +144,7 @@ function TeamCard({ team }: { team: TeamDirectoryItem }) {
         <div className="mt-4 grid grid-cols-4 divide-x divide-white/10 rounded-xl border border-white/10 bg-black/35 py-3 text-center">
           <CardStat value={team.rosterCount} label="Players" />
           <CardStat value={team.gameCount} label="Games" />
-          <CardStat value={team.eventCount} label="Events" />
+          <CardStat value={team.leagueCount} label="Leagues" />
           <CardStat value={`${Math.round(performance.winPercentage)}%`} label="Win rate" />
         </div>
 

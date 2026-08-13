@@ -124,12 +124,29 @@ export type TeamCompetitionRecord = {
   title: string;
   href: string;
   summary?: string | null;
-  record_type: "competition" | "event";
+  record_type: "league" | "competition" | "event";
   status?: string | null;
   division?: string | null;
   final_position?: string | null;
   start_date?: string | null;
   image_url?: string | null;
+};
+
+export type TeamLeagueMembership = {
+  id: string;
+  season_label: string;
+  division: string;
+  conference?: string | null;
+  status: string;
+  league: {
+    id: string;
+    slug: string;
+    name: string;
+    short_name?: string | null;
+    description?: string | null;
+    logo_url?: string | null;
+    cover_image_url?: string | null;
+  };
 };
 
 export type TeamPerformance = {
@@ -154,6 +171,7 @@ export type TeamProfileBundle = {
   media: TeamMedia[];
   events: TeamEvent[];
   competitionRecords: TeamCompetitionRecord[];
+  leagueMemberships: TeamLeagueMembership[];
   performance: TeamPerformance;
   canClaim: boolean;
 };
@@ -162,6 +180,7 @@ export type TeamDirectoryItem = {
   profile: TeamProfile;
   rosterCount: number;
   gameCount: number;
+  leagueCount: number;
   eventCount: number;
   mediaCount: number;
   latestGame: TeamGame | null;
@@ -528,8 +547,21 @@ async function loadEvents(
 
 function buildCompetitionRecords(
   profile: TeamProfile,
-  events: TeamEvent[]
+  events: TeamEvent[],
+  leagueMemberships: TeamLeagueMembership[]
 ): TeamCompetitionRecord[] {
+  const leagueRecords = leagueMemberships.map(
+    (membership): TeamCompetitionRecord => ({
+      id: membership.id,
+      title: membership.league.name,
+      href: `/leagues/${membership.league.slug}`,
+      summary: membership.league.description || `${membership.division} league record and public standings.`,
+      record_type: "league",
+      status: `${membership.season_label} · ${membership.status}`,
+      division: membership.division,
+      image_url: membership.league.cover_image_url || membership.league.logo_url || null,
+    })
+  );
   const eventRecords = events.map(
     (event): TeamCompetitionRecord => ({
       id: event.id,
@@ -548,7 +580,7 @@ function buildCompetitionRecords(
     })
   );
 
-  if (profile.slug !== FACKTS_AFRICA_TEAM.slug) return eventRecords;
+  if (profile.slug !== FACKTS_AFRICA_TEAM.slug) return [...leagueRecords, ...eventRecords];
 
   const healthCup = eventRecords.find(
     (record) => record.href === `/events/${HEALTH_CHECKUP_CUP_SLUG}`
@@ -558,6 +590,7 @@ function buildCompetitionRecords(
   );
 
   return [
+    ...leagueRecords,
     FACKTS_KINGS_RECORD,
     healthCup || HEALTH_CHECKUP_CUP_RECORD,
     ...otherEvents,
@@ -578,7 +611,8 @@ export async function loadTeamDirectory(): Promise<TeamDirectoryItem[]> {
         profile: bundle.profile,
         rosterCount: bundle.roster.length,
         gameCount: bundle.games.length,
-        eventCount: bundle.competitionRecords.length,
+        leagueCount: bundle.leagueMemberships.length,
+        eventCount: bundle.events.length,
         mediaCount: bundle.media.length,
         latestGame: bundle.games.find((game) => game.result) || bundle.games[0] || null,
         performance: bundle.performance,
@@ -592,6 +626,7 @@ export async function loadTeamDirectory(): Promise<TeamDirectoryItem[]> {
       profile,
       rosterCount: 0,
       gameCount: directGames.length,
+      leagueCount: 0,
       eventCount: new Set(directGames.map((game) => game.event_id).filter(Boolean)).size,
       mediaCount: 0,
       latestGame: directGames.find((game) => game.result) || directGames[0] || null,
@@ -624,7 +659,7 @@ export async function loadTeamProfileBundle(
   const allGamesPromise = preloadedGames
     ? Promise.resolve(preloadedGames)
     : loadAllPublicGames();
-  const [membersResult, gamesResult, trainingResult, mediaResult, eventLinksResult, allGames] =
+  const [membersResult, gamesResult, trainingResult, mediaResult, eventLinksResult, leagueMembershipsResult, allGames] =
     await Promise.all([
       hasDatabaseProfile
         ? supabase
@@ -666,6 +701,15 @@ export async function loadTeamProfileBundle(
             .eq("team_id", profile.id)
             .eq("is_public", true)
         : Promise.resolve({ data: [], error: null }),
+      hasDatabaseProfile
+        ? supabase
+            .from("team_league_memberships")
+            .select("*,leagues(id,slug,name,short_name,description,logo_url,cover_image_url)")
+            .eq("team_id", profile.id)
+            .eq("is_public", true)
+            .neq("status", "withdrawn")
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
       allGamesPromise,
     ]);
 
@@ -695,7 +739,23 @@ export async function loadTeamProfileBundle(
     ? []
     : ((eventLinksResult.data || []) as TeamEventLinkRow[]);
   const events = await loadEvents(profile, eventLinks, games);
-  const competitionRecords = buildCompetitionRecords(profile, events);
+  const leagueMemberships: TeamLeagueMembership[] = leagueMembershipsResult.error
+    ? []
+    : ((leagueMembershipsResult.data || []) as Array<Record<string, unknown>>).flatMap((row) => {
+        const related = Array.isArray(row.leagues) ? row.leagues[0] : row.leagues;
+        if (!related || typeof related !== "object") return [];
+        const league = related as TeamLeagueMembership["league"];
+        if (!league.slug || !league.name) return [];
+        return [{
+          id: String(row.id),
+          season_label: String(row.season_label || "Current season"),
+          division: String(row.division || "Open"),
+          conference: row.conference ? String(row.conference) : null,
+          status: String(row.status || "active"),
+          league,
+        }];
+      });
+  const competitionRecords = buildCompetitionRecords(profile, events, leagueMemberships);
 
   return {
     profile:
@@ -712,6 +772,7 @@ export async function loadTeamProfileBundle(
       : ((mediaResult.data || []) as TeamMedia[]),
     events,
     competitionRecords,
+    leagueMemberships,
     performance: calculateTeamPerformance(games),
     canClaim: hasDatabaseProfile,
   };

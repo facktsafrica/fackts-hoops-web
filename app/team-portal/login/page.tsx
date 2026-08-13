@@ -27,7 +27,7 @@ export default function TeamPortalLoginPage() {
     const payload = await access.json().catch(() => ({}));
     if (!access.ok || !payload.ok) {
       await supabase.auth.signOut();
-      setMessage(payload.error || "This account is not assigned to an active team portal.");
+      setMessage(payload.error || "This account is not linked to a registered team.");
       setLoading(false);
       return;
     }
@@ -40,9 +40,9 @@ export default function TeamPortalLoginPage() {
       <div className="mx-auto flex min-h-[82vh] max-w-md items-center">
         <section className="w-full overflow-hidden rounded-[2rem] border border-blue-400/15 bg-slate-950 shadow-2xl shadow-black/40">
           <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,.28),transparent_45%),linear-gradient(135deg,#07162b,#020617)] p-7">
-            <p className="text-[10px] font-black uppercase tracking-[.25em] text-orange-300">FACKTS Hoops Partners</p>
-            <h1 className="mt-3 text-4xl font-black uppercase leading-none">Team Intelligence</h1>
-            <p className="mt-4 text-sm leading-6 text-slate-300">Run training, roster operations, media readiness, verified stat submissions and live production from one controlled workspace.</p>
+            <p className="text-[10px] font-black uppercase tracking-[.25em] text-orange-300">FACKTS Hoops Clubs</p>
+            <h1 className="mt-3 text-4xl font-black uppercase leading-none">Club Portal</h1>
+            <p className="mt-4 text-sm leading-6 text-slate-300">Manage your roster, team statistics, league standings, training, media and public club identity from one secure workspace.</p>
           </div>
           <div className="p-7">
             {message ? <div className="mb-5 rounded-2xl border border-orange-400/20 bg-orange-500/10 p-4 text-sm text-orange-100">{message}</div> : null}

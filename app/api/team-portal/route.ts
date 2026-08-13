@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
     if (!access.allowed || !access.membership || !access.team || !access.subscription) {
       return NextResponse.json(
-        { ok: false, error: "This account does not have an active Team Partner Portal assignment." },
+        { ok: false, error: "This account is not linked to an active registered team." },
         { status: 403 }
       );
     }
@@ -62,8 +62,9 @@ export async function GET(request: NextRequest) {
       profileRequestsResult,
       channelResult,
       broadcastsResult,
+      leagueMembershipsResult,
     ] = await Promise.all([
-      admin.from("team_roster_members").select("*").eq("team_id", teamId).order("display_order").limit(500),
+      admin.from("team_roster_members").select("*").eq("team_id", teamId).eq("status", "active").order("display_order").limit(500),
       admin.from("team_training_sessions").select("*").eq("team_id", teamId).order("session_date", { ascending: false }).limit(300),
       admin.from("team_games").select("*").eq("team_id", teamId).order("game_date", { ascending: false }).limit(500),
       admin.from("games").select("*").or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`).order("game_date", { ascending: false }).limit(500),
@@ -73,9 +74,10 @@ export async function GET(request: NextRequest) {
       admin.from("team_player_profile_requests").select("*").eq("team_id", teamId).order("created_at", { ascending: false }).limit(100),
       admin.from("team_broadcast_channels").select("id,team_id,provider,channel_id,channel_title,status,connected_at,last_verified_at,token_expires_at").eq("team_id", teamId).maybeSingle(),
       admin.from("team_broadcasts").select("id,team_id,game_id,training_session_id,broadcast_type,title,scheduled_start,privacy_status,status,watch_url,created_at").eq("team_id", teamId).order("scheduled_start", { ascending: false }).limit(100),
+      admin.from("team_league_memberships").select("*,leagues(id,slug,name,short_name,logo_url,primary_color,secondary_color,status)").eq("team_id", teamId).order("created_at", { ascending: false }),
     ]);
 
-    for (const result of [rosterResult, trainingResult, teamGamesResult, gamesResult, brandingResult, mediaSubmissionsResult, statsResult, profileRequestsResult, channelResult, broadcastsResult]) {
+    for (const result of [rosterResult, trainingResult, teamGamesResult, gamesResult, brandingResult, mediaSubmissionsResult, statsResult, profileRequestsResult, channelResult, broadcastsResult, leagueMembershipsResult]) {
       if (result.error) throw result.error;
     }
 
@@ -179,9 +181,18 @@ export async function GET(request: NextRequest) {
       profile_requests: profileRequestsResult.data ?? [],
       broadcast_channel: channelResult.data ?? null,
       broadcasts: broadcastsResult.data ?? [],
-      leaderboard_links: [
-        { title: "FACKTS Kings standings", href: "/competitions/fackts-kings#standings", record_type: "competition" },
-      ],
+      league_memberships: leagueMembershipsResult.data ?? [],
+      leaderboard_links: (leagueMembershipsResult.data ?? []).length
+        ? (leagueMembershipsResult.data ?? []).map((membership: JsonRecord) => {
+            const league = membership.leagues && typeof membership.leagues === "object" ? membership.leagues as JsonRecord : {};
+            return {
+              title: `${text(league.short_name || league.name) || "League"} · ${text(membership.division) || "Open"} standings`,
+              href: `/leagues/${text(league.slug) || ""}#standings`,
+              record_type: "league",
+              season_label: membership.season_label,
+            };
+          })
+        : [{ title: "Explore public league tables", href: "/leagues", record_type: "league" }],
     });
   } catch (error) {
     return NextResponse.json(
@@ -198,9 +209,9 @@ export async function POST(request: NextRequest) {
     const requestedTeamId = text(body.team_id, 100) || null;
     const capability = action === "create_training"
       ? "training_manage"
-      : action === "add_roster_member"
+      : action === "add_roster_member" || action === "remove_roster_member"
         ? "roster_manage"
-        : action === "submit_stats"
+        : action === "submit_stats" || action === "submit_game_result"
           ? "stats_submit"
           : action === "request_player_profile"
             ? "player_profile_request"
@@ -246,10 +257,63 @@ export async function POST(request: NextRequest) {
         position: text(body.position, 80) || null,
         role: text(body.role, 80) || "Player",
         status: "active",
-        is_public: false,
+        is_public: true,
       }).select("*").single();
       if (result.error) throw result.error;
-      return NextResponse.json({ ok: true, item: result.data, message: "Player added to the private team roster. Super Admin controls official profiling." }, { status: 201 });
+      return NextResponse.json({ ok: true, item: result.data, message: "Player added to the public team roster. This does not create or alter an official player profile." }, { status: 201 });
+    }
+
+    if (action === "remove_roster_member") {
+      const rosterMemberId = text(body.roster_member_id, 100);
+      if (!rosterMemberId) return NextResponse.json({ ok: false, error: "Choose a roster member." }, { status: 400 });
+      const result = await admin.from("team_roster_members").update({ status: "inactive", is_public: false, updated_at: new Date().toISOString() }).eq("id", rosterMemberId).eq("team_id", teamId).select("id").maybeSingle();
+      if (result.error) throw result.error;
+      if (!result.data) return NextResponse.json({ ok: false, error: "Roster member not found." }, { status: 404 });
+      return NextResponse.json({ ok: true, message: "Player removed from the active public roster. Historical records remain intact." });
+    }
+
+    if (action === "submit_game_result") {
+      const leagueId = text(body.league_id, 100);
+      const opponentName = text(body.opponent_name, 180);
+      const gameDate = text(body.game_date, 80);
+      const teamScore = optionalNumber(body.team_score);
+      const opponentScore = optionalNumber(body.opponent_score);
+      if (!leagueId || !opponentName || !gameDate || teamScore === null || opponentScore === null || Number.isNaN(new Date(gameDate).getTime())) {
+        return NextResponse.json({ ok: false, error: "League, opponent, date and both scores are required." }, { status: 400 });
+      }
+      if (teamScore < 0 || opponentScore < 0 || !Number.isInteger(teamScore) || !Number.isInteger(opponentScore)) {
+        return NextResponse.json({ ok: false, error: "Basketball scores must be whole numbers of zero or more." }, { status: 400 });
+      }
+      if (teamScore === opponentScore) {
+        return NextResponse.json({ ok: false, error: "A basketball result needs an overtime winner before it can enter the standings." }, { status: 409 });
+      }
+      const leagueMembership = await admin.from("team_league_memberships").select("id,season_label,division,leagues(id,name,short_name)").eq("team_id", teamId).eq("league_id", leagueId).neq("status", "withdrawn").limit(1).maybeSingle();
+      if (leagueMembership.error) throw leagueMembership.error;
+      if (!leagueMembership.data) return NextResponse.json({ ok: false, error: "This team is not assigned to the selected league." }, { status: 403 });
+      const leagueRelation = Array.isArray(leagueMembership.data.leagues)
+        ? leagueMembership.data.leagues[0]
+        : leagueMembership.data.leagues;
+      const result = await admin.from("team_stat_submissions").insert({
+        team_id: teamId,
+        game_id: `club-result-${crypto.randomUUID()}`,
+        submitted_by_user_id: access.user.id,
+        stat_payload: {
+          submission_type: "game_result",
+          league_id: leagueId,
+          league_name: leagueRelation?.name || leagueRelation?.short_name || "League",
+          season_label: leagueMembership.data.season_label,
+          division: leagueMembership.data.division,
+          opponent_name: opponentName,
+          game_date: new Date(gameDate).toISOString(),
+          venue: text(body.venue, 180),
+          team_score: teamScore,
+          opponent_score: opponentScore,
+          result: teamScore > opponentScore ? "W" : "L",
+          notes: text(body.notes, 2000),
+        },
+      }).select("*").single();
+      if (result.error) throw result.error;
+      return NextResponse.json({ ok: true, item: result.data, message: "Game result sent for FACKTS verification. The public league table updates only after approval." }, { status: 201 });
     }
 
     if (action === "submit_stats") {
@@ -260,6 +324,7 @@ export async function POST(request: NextRequest) {
         game_id: gameId,
         submitted_by_user_id: access.user.id,
         stat_payload: {
+          submission_type: "player_stat_line",
           player_name: text(body.player_name, 180),
           points: optionalNumber(body.points),
           rebounds: optionalNumber(body.rebounds),
@@ -310,7 +375,7 @@ export async function POST(request: NextRequest) {
         const game = await admin.from("games").select("id,home_team_id,away_team_id").eq("id", ownerId).maybeSingle();
         if (game.error) throw game.error;
         if (!game.data || ![game.data.home_team_id, game.data.away_team_id].includes(teamId)) {
-          const attached = await admin.from("team_games").select("id").eq("team_id", teamId).eq("game_id", ownerId).maybeSingle();
+          const attached = await admin.from("team_games").select("id").eq("team_id", teamId).or(`id.eq.${ownerId},game_id.eq.${ownerId}`).maybeSingle();
           if (attached.error) throw attached.error;
           if (!attached.data) return NextResponse.json({ ok: false, error: "That game is not assigned to this team." }, { status: 403 });
         }
@@ -327,7 +392,7 @@ export async function POST(request: NextRequest) {
         p_owner_id: ownerId,
         p_link_role: linkRole,
         p_rights_status: "pending",
-        p_metadata: { source: "team_partner_portal", team_id: teamId, submitted_by_user_id: access.user.id },
+        p_metadata: { source: "club_portal", team_id: teamId, submitted_by_user_id: access.user.id },
       });
       if (capture.error) throw capture.error;
       const assetId = text(capture.data, 100);

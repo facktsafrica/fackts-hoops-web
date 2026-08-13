@@ -20,7 +20,7 @@ const tabs: Array<{ key: TeamTab; label: string }> = [
   { key: "roster", label: "Roster" },
   { key: "results", label: "Results" },
   { key: "statistics", label: "Statistics" },
-  { key: "competitions", label: "Competitions" },
+  { key: "competitions", label: "Leagues & competitions" },
   { key: "events", label: "Events" },
   { key: "training", label: "Training" },
   { key: "media", label: "Media" },
@@ -65,6 +65,7 @@ export default async function TeamProfilePage({
     training,
     media,
     competitionRecords,
+    leagueMemberships,
     performance,
     canClaim,
   } = bundle;
@@ -75,7 +76,10 @@ export default async function TeamProfilePage({
   const alumni = roster.filter((member) => member.status === "alumni");
   const completed = games.filter((game) => game.result);
   const upcoming = games.filter((game) => !game.result);
-  const competitions = competitionRecords.filter((record) => record.record_type === "competition");
+  const leagueRecordIds = new Set(leagueMemberships.map((membership) => membership.id));
+  const leagueRecords = competitionRecords.filter((record) => leagueRecordIds.has(record.id));
+  const competitions = competitionRecords.filter((record) => record.record_type === "competition" && !leagueRecordIds.has(record.id));
+  const seasonRecords = [...leagueRecords, ...competitions];
   const events = competitionRecords.filter((record) => record.record_type === "event");
   const mediaItems: GameMediaItem[] = media.map((item) => ({
     id: item.id,
@@ -113,7 +117,7 @@ export default async function TeamProfilePage({
                   </div>
                   <h1 className="mt-3 break-words text-4xl font-black uppercase leading-[.9] tracking-[-.04em] sm:text-6xl lg:text-7xl">{profile.name}</h1>
                   <p className="mt-3 max-w-3xl text-sm font-bold text-zinc-300 sm:text-base">{profile.tagline || "A permanent FACKTS Hoops team record."}</p>
-                  <p className="mt-3 text-[10px] font-black uppercase tracking-[.13em] text-zinc-400">{[profile.city, profile.country].filter(Boolean).join(", ") || "Location not listed"}{profile.founded_year ? ` · Founded ${profile.founded_year}` : ""}{profile.current_competition ? ` · ${profile.current_competition}` : ""}</p>
+                  <p className="mt-3 text-[10px] font-black uppercase tracking-[.13em] text-zinc-400">{[profile.city, profile.country].filter(Boolean).join(", ") || "Location not listed"}{profile.founded_year ? ` · Founded ${profile.founded_year}` : ""}{leagueMemberships.length ? ` · ${leagueMemberships.map((membership) => membership.league.short_name || membership.league.name).join(" · ")}` : profile.current_competition ? ` · ${profile.current_competition}` : ""}</p>
                 </div>
               </div>
 
@@ -129,9 +133,10 @@ export default async function TeamProfilePage({
       </section>
 
       <section className="border-b border-white/10 bg-[#07162b]/95">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-2 px-4 py-4 sm:grid-cols-4 sm:px-6 lg:grid-cols-7 lg:px-8">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-2 px-4 py-4 sm:grid-cols-4 sm:px-6 lg:grid-cols-8 lg:px-8">
           <TopMetric value={String(activeRoster.length)} label="Active roster" />
           <TopMetric value={String(games.length)} label="Games" />
+          <TopMetric value={String(leagueMemberships.length)} label="Leagues" />
           <TopMetric value={String(competitions.length)} label="Competitions" />
           <TopMetric value={`${Math.round(performance.winPercentage)}%`} label="Win rate" />
           <TopMetric value={String(training.length)} label="Training" />
@@ -161,7 +166,7 @@ export default async function TeamProfilePage({
                 <Info label="Head coach" value={profile.coach_name || "Not listed"} />
                 <Info label="Assistant coach" value={profile.assistant_coach_name || "Not listed"} />
                 <Info label={profile.manager_title || "Team manager"} value={profile.manager_name || "Not listed"} />
-                <Info label="Division" value={[profile.division, profile.age_category].filter(Boolean).join(" · ") || "Not listed"} />
+                <Info label="League & division" value={leagueMemberships.length ? leagueMemberships.map((membership) => `${membership.league.short_name || membership.league.name} · ${membership.division}`).join("; ") : [profile.division, profile.age_category].filter(Boolean).join(" · ") || "Not listed"} />
                 <Info label="Public contact" value={profile.contact_email || "Through FACKTS"} />
                 <Info label="Website" value={profile.website_url || "Not listed"} />
               </div>
@@ -184,7 +189,7 @@ export default async function TeamProfilePage({
               </div>
               <div>
                 <div className="flex items-end justify-between gap-3"><SectionHeading eyebrow="Competition history" title="Competition record" /><Link href={tabHref("competitions")} className="shrink-0 text-[9px] font-black uppercase text-orange-300">All competitions →</Link></div>
-                {competitions.length ? <div className="mt-6 grid gap-3">{competitions.slice(0, 3).map((record) => <CompetitionRow key={record.id} record={record} />)}</div> : <EmptyState title="No competition history linked" body="A competition appears here only when this permanent team actually participated or organized it." compact />}
+                {seasonRecords.length ? <div className="mt-6 grid gap-3">{seasonRecords.slice(0, 3).map((record) => <CompetitionRow key={record.id} record={record} />)}</div> : <EmptyState title="No league or competition linked" body="League placement and competition history appear here only after they are connected to this permanent team." compact />}
               </div>
             </div>
           </section>
@@ -229,9 +234,9 @@ export default async function TeamProfilePage({
 
       {activeTab === "competitions" ? (
         <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-          <SectionHeading eyebrow="Permanent competition record" title="Competitions & leaderboards" text="Season competitions, standings and leaderboards live here. FACKTS Kings is a competition—not a one-off Event Hub." />
-          {competitions.length ? <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{competitions.map((record) => <CompetitionCard key={record.id} record={record} />)}</div> : <EmptyState title="No competitions linked" body="Competition participation appears here when it is connected to this permanent team." />}
-          <Link href="/competitions/fackts-kings#standings" className="mt-7 inline-flex rounded-xl bg-orange-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.12em] text-black">Open FACKTS Kings leaderboard</Link>
+          <SectionHeading eyebrow="Season structure" title="Leagues & competitions" text="League tables, season competitions and leaderboards live here. One-off tournaments remain in the separate Events tab." />
+          {leagueRecords.length ? <div className="mt-8"><p className="text-[9px] font-black uppercase tracking-[.16em] text-orange-300">League placements</p><div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{leagueRecords.map((record) => <CompetitionCard key={record.id} record={record} />)}</div></div> : <EmptyState title="No league assigned" body="When Super Admin places this team in KBF, SIEL, NCL or another league, its public table will appear here." />}
+          {competitions.length ? <div className="mt-12"><p className="text-[9px] font-black uppercase tracking-[.16em] text-orange-300">Other competitions</p><div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{competitions.map((record) => <CompetitionCard key={record.id} record={record} />)}</div></div> : null}
         </section>
       ) : null}
 
@@ -281,5 +286,5 @@ function ResultPill({ result }: { result: "W" | "L" }) { return <span className=
 function PerformanceMetric({ value, label, tone = "default" }: { value: string | number; label: string; tone?: "default" | "green" | "red" | "orange" | "blue" }) { const colors={default:"text-white",green:"text-emerald-300",red:"text-red-300",orange:"text-orange-300",blue:"text-blue-300"}; return <div className="rounded-2xl border border-white/10 bg-slate-950/85 p-5"><p className={`text-3xl font-black ${colors[tone]}`}>{value}</p><p className="mt-2 text-[8px] font-black uppercase tracking-[.13em] text-zinc-600">{label}</p></div>; }
 
 function CompetitionRow({ record }: { record: TeamCompetitionRecord }) { return <Link href={record.href} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-950 p-4 transition hover:border-orange-400/40"><div className="min-w-0"><p className="truncate text-sm font-black uppercase">{record.title}</p><p className="mt-1 truncate text-[8px] font-bold uppercase tracking-[.1em] text-zinc-600">{record.status || record.division || "Competition record"}</p></div><span className="shrink-0 text-[9px] font-black text-orange-300">Open →</span></Link>; }
-function CompetitionCard({ record }: { record: TeamCompetitionRecord }) { return <article className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85"><div className="relative aspect-[16/10] overflow-hidden bg-[#0b1f3a]">{record.image_url ? <img src={record.image_url} alt={record.title} loading="lazy" className="h-full w-full object-cover transition duration-500 hover:scale-105" /> : <div className="grid h-full place-items-center bg-[radial-gradient(circle,rgba(245,130,32,.22),transparent_60%),#0b1f3a] text-4xl font-black text-orange-300">FH</div>}<div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"/><span className="absolute left-3 top-3 rounded-full bg-orange-500 px-3 py-1.5 text-[8px] font-black uppercase text-black">{record.record_type === "event" ? "Event Hub" : "Competition"}</span></div><div className="p-5"><p className="text-[8px] font-black uppercase tracking-[.14em] text-orange-300">{record.start_date ? formatDate(record.start_date) : record.status || "FACKTS record"}</p><h3 className="mt-2 text-xl font-black uppercase">{record.title}</h3><p className="mt-2 line-clamp-3 text-xs leading-5 text-zinc-500">{record.summary || "Published competition record"}</p>{record.final_position ? <p className="mt-3 text-[9px] font-black uppercase text-emerald-300">Finish: {record.final_position}</p> : null}<Link href={record.href} className="mt-5 flex min-h-11 items-center justify-center rounded-xl border border-white/10 text-[9px] font-black uppercase tracking-[.12em] transition hover:border-orange-400/45">{record.record_type === "event" ? "Open Event Hub" : "Open Competition"}</Link></div></article>; }
+function CompetitionCard({ record }: { record: TeamCompetitionRecord }) { const recordLabel = record.record_type === "event" ? "Event Hub" : record.record_type === "league" ? "League" : "Competition"; return <article className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85"><div className="relative aspect-[16/10] overflow-hidden bg-[#0b1f3a]">{record.image_url ? <img src={record.image_url} alt={record.title} loading="lazy" className="h-full w-full object-cover transition duration-500 hover:scale-105" /> : <div className="grid h-full place-items-center bg-[radial-gradient(circle,rgba(245,130,32,.22),transparent_60%),#0b1f3a] text-4xl font-black text-orange-300">FH</div>}<div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"/><span className="absolute left-3 top-3 rounded-full bg-orange-500 px-3 py-1.5 text-[8px] font-black uppercase text-black">{recordLabel}</span></div><div className="p-5"><p className="text-[8px] font-black uppercase tracking-[.14em] text-orange-300">{record.start_date ? formatDate(record.start_date) : record.status || "FACKTS record"}</p><h3 className="mt-2 text-xl font-black uppercase">{record.title}</h3><p className="mt-2 line-clamp-3 text-xs leading-5 text-zinc-500">{record.summary || "Published competition record"}</p>{record.final_position ? <p className="mt-3 text-[9px] font-black uppercase text-emerald-300">Finish: {record.final_position}</p> : null}<Link href={record.href} className="mt-5 flex min-h-11 items-center justify-center rounded-xl border border-white/10 text-[9px] font-black uppercase tracking-[.12em] transition hover:border-orange-400/45">Open {recordLabel}</Link></div></article>; }
 function TrainingCard({ session }: { session: TrainingSession }) { return <article className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85">{session.image_url ? <div className="aspect-video overflow-hidden"><img src={session.image_url} alt={session.title} loading="lazy" className="h-full w-full object-cover" /></div> : null}<div className="p-5"><p className="text-[8px] font-black uppercase tracking-[.14em] text-orange-300">{formatDate(session.session_date)}</p><h3 className="mt-2 text-xl font-black uppercase">{session.title}</h3><p className="mt-2 text-[9px] font-bold uppercase text-blue-300">{session.focus_area || session.venue || "Team development"}</p>{session.summary ? <p className="mt-3 text-xs leading-5 text-zinc-500">{session.summary}</p> : null}</div></article>; }

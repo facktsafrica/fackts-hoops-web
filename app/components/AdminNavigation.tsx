@@ -51,7 +51,7 @@ const groups: AdminNavGroup[] = [
     items: [
       { label: "People & Players", href: "/admin/players", code: "PL", capability: "players" },
       { label: "Teams", href: "/admin/teams", code: "TM", capability: "teams" },
-      { label: "Team Partner Portals", href: "/admin/team-portals", code: "TP", capability: "admin_users" },
+      { label: "Club Portals", href: "/admin/team-portals", code: "CP", capability: "admin_users" },
       { label: "Player Applications", href: "/admin/player-applications", code: "PA", capability: "applications" },
       { label: "Player Accounts", href: "/admin/player-access", code: "AC", capability: "player_access" },
       { label: "FACKTS Team", href: "/admin/team", code: "FT", capability: "team_members" },

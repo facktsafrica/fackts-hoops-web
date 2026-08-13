@@ -27,6 +27,7 @@ const primaryItems: NavItem[] = [
   { label: "Events", href: "/events" },
   { label: "Games", href: "/games" },
   { label: "Teams", href: "/teams" },
+  { label: "Leagues", href: "/leagues" },
   {
     label: "Players",
     href: "/players",
@@ -414,7 +415,7 @@ export default function PublicHeader() {
                   href="/team-portal/login"
                   className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-bold text-[#0B1F3A] transition hover:bg-slate-100"
                 >
-                  Team Partner Sign In
+                  Team Portal Sign In
                   <ArrowIcon />
                 </Link>
                 <Link
@@ -579,7 +580,7 @@ export default function PublicHeader() {
               onClick={() => setMenuOpen(false)}
               className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-[#F58220]/40 px-5 py-3 text-sm font-black text-[#0B1F3A] transition hover:bg-orange-50"
             >
-              Team Partner Sign In
+              Team Portal Sign In
             </Link>
           </div>
         </aside>

@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
         p_owner_id: teamId,
         p_link_role: "gallery",
         p_rights_status: "pending",
-        p_metadata: { source: "team_partner_portal", team_id: teamId, submitted_by_user_id: access.user.id, storage_path: objectPath },
+        p_metadata: { source: "club_portal", team_id: teamId, submitted_by_user_id: access.user.id, storage_path: objectPath },
       });
       if (capture.error) throw capture.error;
       const submission = await admin.from("team_media_submissions").insert({
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     const game = await admin.from("games").select("id,home_team_id,away_team_id,title,game_title,home_team_name,away_team_name").eq("id", gameId).maybeSingle();
     if (game.error) throw game.error;
     if (!game.data || ![game.data.home_team_id, game.data.away_team_id].includes(teamId)) {
-      const attached = await admin.from("team_games").select("id,title").eq("team_id", teamId).eq("game_id", gameId).maybeSingle();
+      const attached = await admin.from("team_games").select("id,title").eq("team_id", teamId).or(`id.eq.${gameId},game_id.eq.${gameId}`).maybeSingle();
       if (attached.error) throw attached.error;
       if (!attached.data) return NextResponse.json({ ok: false, error: "That game is not assigned to this team." }, { status: 403 });
     }
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       p_owner_id: gameId,
       p_link_role: "poster",
       p_rights_status: "pending",
-      p_metadata: { source: "team_partner_portal", team_id: teamId, submitted_by_user_id: access.user.id, storage_path: objectPath },
+      p_metadata: { source: "club_portal", team_id: teamId, submitted_by_user_id: access.user.id, storage_path: objectPath },
     });
     if (capture.error) throw capture.error;
     const assetId = String(capture.data || "");
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
         asset_id: assetId,
         player_id: playerId,
         required_scope: "photo_use",
-        metadata: { source: "team_partner_portal_game_roster" },
+        metadata: { source: "club_portal_game_roster" },
       }));
       if (subjects.length) await admin.from("media_subjects").upsert(subjects, { onConflict: "asset_id,player_id" });
     }

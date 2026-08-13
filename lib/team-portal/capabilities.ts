@@ -11,49 +11,53 @@ export const TEAM_CAPABILITIES = [
 
 export type TeamCapability = (typeof TEAM_CAPABILITIES)[number];
 
+export const CORE_TEAM_CAPABILITIES = [
+  "portal_view",
+  "training_manage",
+  "branding_submit",
+  "media_submit",
+  "roster_manage",
+  "stats_submit",
+] as const satisfies readonly TeamCapability[];
+
+export const TEAM_UPGRADE_CAPABILITIES = [
+  "player_profile_request",
+  "broadcast_manage",
+] as const satisfies readonly TeamCapability[];
+
 export const TEAM_CAPABILITY_LABELS: Record<TeamCapability, string> = {
-  portal_view: "Partner dashboard",
-  training_manage: "Training workspace",
-  branding_submit: "Hero and logo uploads",
+  portal_view: "Club dashboard",
+  training_manage: "Training management",
+  branding_submit: "Club colours, hero and logo",
   media_submit: "Media and poster submissions",
   roster_manage: "Roster management",
-  stats_submit: "Game stat submissions",
-  player_profile_request: "Player profile requests",
-  broadcast_manage: "YouTube live production",
+  stats_submit: "Stats and leaderboard submissions",
+  player_profile_request: "Official profile requests",
+  broadcast_manage: "YouTube Live Studio",
 };
 
 export const TEAM_PLAN_PRESETS = {
-  training_partner: {
-    label: "Training Partner",
-    capabilities: ["portal_view", "training_manage", "branding_submit", "media_submit"],
+  club_core: {
+    label: "Club Core",
+    description: "The standard workspace included with every registered team.",
+    capabilities: [...CORE_TEAM_CAPABILITIES],
   },
-  team_operations: {
-    label: "Team Operations",
-    capabilities: [
-      "portal_view",
-      "training_manage",
-      "branding_submit",
-      "media_submit",
-      "roster_manage",
-    ],
+  club_profile: {
+    label: "Club + Profile Requests",
+    description: "Core club operations plus governed official player-profile requests.",
+    capabilities: [...CORE_TEAM_CAPABILITIES, "player_profile_request"],
   },
-  performance: {
-    label: "Performance",
-    capabilities: [
-      "portal_view",
-      "training_manage",
-      "branding_submit",
-      "media_submit",
-      "roster_manage",
-      "stats_submit",
-      "player_profile_request",
-    ],
+  club_broadcast: {
+    label: "Club + Broadcast",
+    description: "Core club operations plus secure YouTube live production.",
+    capabilities: [...CORE_TEAM_CAPABILITIES, "broadcast_manage"],
   },
-  broadcast: {
-    label: "Broadcast",
+  club_pro: {
+    label: "Club Pro",
+    description: "All club operations and both controlled premium upgrades.",
     capabilities: [...TEAM_CAPABILITIES],
   },
-} satisfies Record<string, { label: string; capabilities: readonly TeamCapability[] }>;
+} satisfies Record<string, { label: string; description: string; capabilities: readonly TeamCapability[] }>;
 
 export type TeamPlanCode = keyof typeof TEAM_PLAN_PRESETS;
 
@@ -70,4 +74,12 @@ export function normalizeTeamCapabilities(value: unknown): TeamCapability[] {
   if (!Array.isArray(value)) return [];
   const allowed = new Set<string>(TEAM_CAPABILITIES);
   return Array.from(new Set(value.map(String).filter((item): item is TeamCapability => allowed.has(item))));
+}
+
+export function normalizeTeamPlan(value: unknown): TeamPlanCode {
+  const plan = String(value || "").trim();
+  if (plan in TEAM_PLAN_PRESETS) return plan as TeamPlanCode;
+  if (plan === "performance") return "club_profile";
+  if (plan === "broadcast") return "club_pro";
+  return "club_core";
 }

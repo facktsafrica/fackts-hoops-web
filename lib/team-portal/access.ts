@@ -2,6 +2,7 @@ import type { User } from "@supabase/supabase-js";
 import { getAuthenticatedUser } from "@/lib/auth/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
+  CORE_TEAM_CAPABILITIES,
   normalizeTeamCapabilities,
   TEAM_ROLE_CAPABILITIES,
   type TeamCapability,
@@ -79,12 +80,19 @@ export async function getTeamPortalAccess(teamId?: string | null) {
   if (subscriptionResult.error) throw subscriptionResult.error;
   if (teamResult.error) throw teamResult.error;
 
-  const subscription = subscriptionResult.data as PortalSubscription | null;
-  const enabled = new Set(normalizeTeamCapabilities(subscription?.enabled_capabilities));
+  const storedSubscription = subscriptionResult.data as PortalSubscription | null;
+  const subscription: PortalSubscription = storedSubscription ?? {
+    team_id: membership.team_id,
+    plan_code: "club_core",
+    status: "active",
+    enabled_capabilities: [...CORE_TEAM_CAPABILITIES],
+  };
+  const enabled = new Set<TeamCapability>(CORE_TEAM_CAPABILITIES);
+  if (subscriptionIsActive(storedSubscription)) {
+    normalizeTeamCapabilities(storedSubscription?.enabled_capabilities).forEach((capability) => enabled.add(capability));
+  }
   const roleCapabilities = TEAM_ROLE_CAPABILITIES[membership.role] ?? TEAM_ROLE_CAPABILITIES.viewer;
-  const capabilities = subscriptionIsActive(subscription)
-    ? roleCapabilities.filter((capability) => enabled.has(capability))
-    : [];
+  const capabilities = roleCapabilities.filter((capability) => enabled.has(capability));
 
   return {
     user,
