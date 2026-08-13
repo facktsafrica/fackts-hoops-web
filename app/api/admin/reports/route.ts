@@ -44,6 +44,50 @@ function gameFormat(game: JsonRecord) {
   return text(game.game_format || game.match_type) || "Unspecified";
 }
 
+function normalizedIdentity(...values: unknown[]) {
+  return values.map((value) => lower(value)).join(" ").replace(/[^a-z0-9]+/g, "");
+}
+
+function competitionSlugForGame(game: JsonRecord, legacySlugById: Map<string, string>) {
+  const legacySlug = legacySlugById.get(text(game.legacy_one_on_one_id));
+  if (legacySlug) return legacySlug;
+
+  const identity = normalizedIdentity(
+    game.competition_name,
+    game.game_format,
+    game.match_type,
+    game.title,
+    game.game_title
+  );
+  if (identity.includes("courttakeover")) return "court-takeovers";
+  return "";
+}
+
+function completedGame(game: JsonRecord) {
+  if (["completed", "played", "final"].includes(lower(game.status))) return true;
+  const home = game.home_score ?? game.team_score ?? game.fackts_score;
+  const away = game.away_score ?? game.opponent_score;
+  return home !== null && home !== undefined && away !== null && away !== undefined;
+}
+
+function verifiedGame(game: JsonRecord) {
+  return ["verified", "published", "final"].includes(lower(game.verification_status));
+}
+
+function normalizedMediaUrl(value: unknown) {
+  const url = text(value);
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    ["utm_source", "utm_medium", "utm_campaign", "utm_content", "fbclid"].forEach((key) =>
+      parsed.searchParams.delete(key)
+    );
+    return `${parsed.hostname.toLowerCase()}${parsed.pathname.replace(/\/$/, "")}${parsed.search}`;
+  } catch {
+    return url.toLowerCase().replace(/\/+$/, "");
+  }
+}
+
 function sideName(game: JsonRecord, side: string) {
   if (side === "away") return text(game.away_team_name || game.opponent_name || game.opponent) || "Away";
   if (side === "neutral") return "Neutral";
@@ -140,7 +184,7 @@ export async function GET(request: NextRequest) {
     }
 
     const candidateGameIds = games.map((game) => text(game.id));
-    const [rostersResult, statsResult, eventLinksResult, gameLinksResult] = await Promise.all([
+    const [rostersResult, statsResult, eventLinksResult, gameLinksResult, legacyGameMediaResult] = await Promise.all([
       candidateGameIds.length
         ? admin.from("game_rosters").select("*").in("game_id", candidateGameIds).limit(5000)
         : Promise.resolve({ data: [], error: null }),
@@ -153,8 +197,11 @@ export async function GET(request: NextRequest) {
       candidateGameIds.length
         ? admin.from("media_links").select("*").eq("owner_type", "game").in("owner_id", candidateGameIds).limit(3000)
         : Promise.resolve({ data: [], error: null }),
+      candidateGameIds.length
+        ? admin.from("game_media").select("*").in("game_id", candidateGameIds).limit(3000)
+        : Promise.resolve({ data: [], error: null }),
     ]);
-    for (const result of [rostersResult, statsResult, eventLinksResult, gameLinksResult]) {
+    for (const result of [rostersResult, statsResult, eventLinksResult, gameLinksResult, legacyGameMediaResult]) {
       if (result.error) throw result.error;
     }
 
@@ -274,7 +321,7 @@ export async function GET(request: NextRequest) {
       const eventDeliverables = deliverables.filter((item) => text(item.event_id) === eventId && text(item.deliverable_status) !== "cancelled");
       const setup = progressByEvent.get(eventId);
       const setupComplete = text(setup?.validation_status) === "valid";
-      const completedGames = eventGames.filter((game) => text(game.status) === "completed").length;
+      const completedGames = eventGames.filter(completedGame).length;
       const verifiedStats = eventStats.filter((stat) => text(stat.verification_status) === "verified").length;
       const delivered = eventDeliverables.filter((item) => text(item.deliverable_status) === "delivered").length;
       const checks = [setupComplete, eventGames.length > 0 && completedGames === eventGames.length, eventStats.length > 0 && verifiedStats === eventStats.length, eventDeliverables.length === 0 || delivered === eventDeliverables.length];
@@ -297,7 +344,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const participation = rosters.map((roster) => {
+    let participation: JsonRecord[] = rosters.map((roster) => {
       const game = gameById.get(text(roster.game_id)) ?? {};
       const event = eventById.get(text(game.event_id)) ?? {};
       const person = playerById.get(text(roster.player_id));
@@ -310,8 +357,27 @@ export async function GET(request: NextRequest) {
         jersey: text(roster.jersey_snapshot),
       };
     });
+    const participationKeys = new Set(
+      participation.map((row) => `${text(row.game_id)}:${text(row.player_id)}`)
+    );
+    stats.forEach((stat) => {
+      const game = gameById.get(text(stat.game_id));
+      const participantId = text(stat.player_id);
+      const key = `${text(game?.id)}:${participantId}`;
+      if (!game || !participantId || participationKeys.has(key)) return;
+      participationKeys.add(key);
+      const event = eventById.get(text(game.event_id)) ?? {};
+      const person = playerById.get(participantId);
+      const side = text(stat.team_side) || "home";
+      participation.push({
+        event_id: text(event.event_id), event: text(event.title), game_id: text(game.id), game: text(game.title || game.game_title),
+        game_date: gameDate(game), format: gameFormat(game), player_id: participantId, person: personName(person),
+        classification: text(person?.player_type) || (stat.source_guest_stat_id ? "guest" : "player"), team: sideName(game, side), team_side: side,
+        role: stat.source_guest_stat_id ? "guest" : "player", roster_status: "confirmed from statistics", jersey: "",
+      });
+    });
 
-    const statistics = stats.map((stat) => {
+    let statistics: JsonRecord[] = stats.map((stat) => {
       const game = gameById.get(text(stat.game_id)) ?? {};
       const event = eventById.get(text(game.event_id)) ?? {};
       const person = playerById.get(text(stat.player_id));
@@ -326,7 +392,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    let mediaDelivery = links.map((link) => {
+    const mediaDelivery: JsonRecord[] = links.map((link) => {
       const asset = assetById.get(text(link.asset_id)) ?? {};
       const game = text(link.owner_type) === "game" ? gameById.get(text(link.owner_id)) : undefined;
       const eventId = game ? text(game.event_id) : text(link.owner_id);
@@ -337,6 +403,57 @@ export async function GET(request: NextRequest) {
         rights_status: text(asset.rights_status), publish_status: text(asset.publish_status), public: Boolean(asset.is_public),
         health_status: text(asset.health_status), url: text(asset.url),
       };
+    });
+    const eventMediaKeys = new Set(
+      mediaDelivery.map((row) => `${text(row.event_id)}:${text(row.game_id)}:${normalizedMediaUrl(row.url) || text(row.asset_id)}`)
+    );
+    const appendEventMedia = (row: JsonRecord) => {
+      const key = `${text(row.event_id)}:${text(row.game_id)}:${normalizedMediaUrl(row.url) || text(row.asset_id)}`;
+      if (!text(row.url) || eventMediaKeys.has(key)) return;
+      eventMediaKeys.add(key);
+      mediaDelivery.push(row);
+    };
+    ((legacyGameMediaResult.data ?? []) as JsonRecord[]).forEach((item) => {
+      const game = gameById.get(text(item.game_id));
+      if (!game) return;
+      const event = eventById.get(text(game.event_id)) ?? {};
+      appendEventMedia({
+        event_id: text(event.event_id),
+        event: text(event.title),
+        game_id: text(game.id),
+        game: text(game.title || game.game_title),
+        asset_id: `legacy-game-media:${text(item.id)}`,
+        title: text(item.title) || text(game.title || game.game_title) || "Game media",
+        media_type: text(item.media_type) || "video",
+        link_role: text(item.category) || "game media",
+        rights_status: text(item.rights_status) || "legacy review required",
+        publish_status: text(item.publish_status) || "legacy",
+        public: item.is_public !== false,
+        health_status: "unchecked",
+        url: text(item.url || item.video_url || item.media_url),
+      });
+    });
+    games.forEach((game) => {
+      const event = eventById.get(text(game.event_id)) ?? {};
+      const builtInMedia = [
+        { url: text(game.video_url || game.game_video_url), role: "full game", title: `${text(game.title || game.game_title) || "Game"} · Full game` },
+        { url: text(game.highlight_url), role: "highlights", title: `${text(game.title || game.game_title) || "Game"} · Highlights` },
+      ];
+      builtInMedia.forEach((item) => appendEventMedia({
+        event_id: text(event.event_id),
+        event: text(event.title),
+        game_id: text(game.id),
+        game: text(game.title || game.game_title),
+        asset_id: `game-field:${text(game.id)}:${item.role}`,
+        title: item.title,
+        media_type: "video",
+        link_role: item.role,
+        rights_status: "legacy review required",
+        publish_status: game.is_public === false ? "private" : "published game record",
+        public: game.is_public !== false,
+        health_status: "unchecked",
+        url: item.url,
+      }));
     });
 
     const sponsorSummary = reportPartners.map((partner) => {
@@ -354,13 +471,20 @@ export async function GET(request: NextRequest) {
 
     let competitions: JsonRecord[] = [];
     let competitionMatches: JsonRecord[] = [];
+    let competitionGames: JsonRecord[] = [];
+    let competitionRosters: JsonRecord[] = [];
+    let competitionStats: JsonRecord[] = [];
+    let competitionGuestStats: JsonRecord[] = [];
+    let competitionGameMedia: JsonRecord[] = [];
+    let competitionGameLinks: JsonRecord[] = [];
+    let competitionOneOnOneLinks: JsonRecord[] = [];
+    const competitionSlugByGameId = new Map<string, string>();
     const competitionFilter = filters.event_id.startsWith("competition:")
       ? filters.event_id.slice("competition:".length)
       : "";
     const includeCompetitions =
       !scoped &&
-      (!filters.event_id || Boolean(competitionFilter)) &&
-      !filters.team;
+      (!filters.event_id || Boolean(competitionFilter));
 
     if (includeCompetitions) {
       let competitionQuery = admin
@@ -390,85 +514,294 @@ export async function GET(request: NextRequest) {
         competitionMatches = (matchesResult.data ?? []) as JsonRecord[];
       }
 
+      if (filters.team) {
+        const teamFilter = lower(filters.team);
+        competitionMatches = competitionMatches.filter((match) =>
+          [match.participant_name, match.opponent_name]
+            .some((value) => lower(value).includes(teamFilter))
+        );
+      }
       if (filters.player) {
         const playerFilter = lower(filters.player);
         competitionMatches = competitionMatches.filter((match) =>
           [match.participant_name, match.opponent_name, match.fackts_player_id, match.guest_hooper_id, match.opponent_player_id, match.opponent_guest_hooper_id]
             .some((value) => lower(value).includes(playerFilter))
         );
-        const visibleSlugs = new Set(competitionMatches.map((match) => text(match.competition_slug)));
-        competitions = competitions.filter((competition) => visibleSlugs.has(text(competition.slug)));
       }
-    }
 
-    const competitionPerformance = competitions.map((competition) => {
-      const slug = text(competition.slug);
-      const matches = competitionMatches.filter((match) => text(match.competition_slug) === slug);
-      const completed = matches.filter((match) => lower(match.status) === "completed").length;
-      const verified = matches.filter((match) => lower(match.verification_status) === "verified").length;
-      const players = new Set(
-        matches.flatMap((match) => [text(match.participant_name), text(match.opponent_name)]).filter(Boolean)
+      const legacySlugById = new Map(
+        competitionMatches.map((match) => [text(match.id), text(match.competition_slug)])
       );
-      const media = matches.filter((match) => text(match.video_url) || text(match.highlight_url)).length;
+      const allowedSlugs = new Set(slugs);
+      let competitionGamesQuery = admin.from("games").select("*").limit(5000);
+      if (filters.date_from) competitionGamesQuery = competitionGamesQuery.gte("game_date", `${filters.date_from}T00:00:00`);
+      if (filters.date_to) competitionGamesQuery = competitionGamesQuery.lte("game_date", `${filters.date_to}T23:59:59.999`);
+      const competitionGamesResult = await competitionGamesQuery;
+      if (competitionGamesResult.error) throw competitionGamesResult.error;
+      competitionGames = ((competitionGamesResult.data ?? []) as JsonRecord[]).filter((game) => {
+        const slug = competitionSlugForGame(game, legacySlugById);
+        if (!slug || !allowedSlugs.has(slug)) return false;
+        competitionSlugByGameId.set(text(game.id), slug);
+        if (filters.format && lower(gameFormat(game)) !== lower(filters.format)) return false;
+        if (filters.team) {
+          const teamFilter = lower(filters.team);
+          if (![game.home_team_id, game.away_team_id, game.home_team_name, game.away_team_name, game.team_name, game.opponent_name]
+            .some((value) => lower(value).includes(teamFilter))) return false;
+        }
+        return true;
+      });
 
-      return {
-        event_id: `competition:${slug}`,
-        competition_slug: slug,
-        competition: text(competition.name),
-        season: text(competition.current_season_label) || "Current",
-        format: text(competition.competition_format) || "Competition",
-        status: text(competition.status) || "Upcoming",
-        verification: text(competition.verification_status) || "Unverified",
-        matches: matches.length,
-        completed,
-        scheduled: matches.filter((match) => ["upcoming", "scheduled"].includes(lower(match.status))).length,
-        verified,
-        players: players.size,
-        media,
-        completion_percent: matches.length ? Math.round((completed / matches.length) * 100) : 0,
-      };
-    });
-
-    if (competitionMatches.length) {
+      const competitionGameIds = competitionGames.map((game) => text(game.id)).filter(Boolean);
       const legacyMatchIds = competitionMatches.map((match) => text(match.id)).filter(Boolean);
-      const oneOnOneLinksResult = await admin
-        .from("media_links")
-        .select("*")
-        .eq("owner_type", "one_on_one")
-        .in("owner_id", legacyMatchIds)
-        .limit(10000);
-      if (oneOnOneLinksResult.error) throw oneOnOneLinksResult.error;
-      const oneOnOneLinks = (oneOnOneLinksResult.data ?? []) as JsonRecord[];
-      const oneOnOneAssetIds = Array.from(new Set(oneOnOneLinks.map((link) => text(link.asset_id)).filter(Boolean)));
-      const oneOnOneAssetsResult = oneOnOneAssetIds.length
-        ? await admin.from("media_assets").select("*").in("id", oneOnOneAssetIds).limit(10000)
-        : { data: [], error: null };
-      if (oneOnOneAssetsResult.error) throw oneOnOneAssetsResult.error;
-      const oneOnOneAssetById = new Map(
-        ((oneOnOneAssetsResult.data ?? []) as JsonRecord[]).map((asset) => [text(asset.id), asset])
+      const [competitionRostersResult, competitionStatsResult, competitionGuestStatsResult, competitionGameLinksResult, competitionGameMediaResult, competitionOneOnOneLinksResult] = await Promise.all([
+        competitionGameIds.length
+          ? admin.from("game_rosters").select("*").in("game_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGameIds.length
+          ? admin.from("player_game_stats").select("*").in("game_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGameIds.length
+          ? admin.from("guest_game_stats").select("*").in("game_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGameIds.length
+          ? admin.from("media_links").select("*").eq("owner_type", "game").in("owner_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGameIds.length
+          ? admin.from("game_media").select("*").in("game_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        legacyMatchIds.length
+          ? admin.from("media_links").select("*").eq("owner_type", "one_on_one").in("owner_id", legacyMatchIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      for (const result of [competitionRostersResult, competitionStatsResult, competitionGuestStatsResult, competitionGameLinksResult, competitionGameMediaResult, competitionOneOnOneLinksResult]) {
+        if (result.error) throw result.error;
+      }
+      competitionRosters = (competitionRostersResult.data ?? []) as JsonRecord[];
+      competitionStats = (competitionStatsResult.data ?? []) as JsonRecord[];
+      competitionGuestStats = (competitionGuestStatsResult.data ?? []) as JsonRecord[];
+      competitionGameLinks = (competitionGameLinksResult.data ?? []) as JsonRecord[];
+      competitionGameMedia = (competitionGameMediaResult.data ?? []) as JsonRecord[];
+      competitionOneOnOneLinks = (competitionOneOnOneLinksResult.data ?? []) as JsonRecord[];
+
+      const competitionPlayerIds = Array.from(new Set(
+        [...competitionRosters, ...competitionStats].map((row) => text(row.player_id)).filter(Boolean)
+      ));
+      const competitionGuestIds = Array.from(new Set(
+        competitionGuestStats.map((row) => text(row.guest_hooper_id)).filter(Boolean)
+      ));
+      const competitionAssetIds = Array.from(new Set(
+        [...competitionGameLinks, ...competitionOneOnOneLinks].map((link) => text(link.asset_id)).filter(Boolean)
+      ));
+      const [competitionPlayersResult, competitionGuestsResult, competitionAssetsResult] = await Promise.all([
+        competitionPlayerIds.length
+          ? admin.from("players").select("*").in("id", competitionPlayerIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGuestIds.length
+          ? admin.from("guest_hoopers").select("*").in("id", competitionGuestIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionAssetIds.length
+          ? admin.from("media_assets").select("*").in("id", competitionAssetIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      for (const result of [competitionPlayersResult, competitionGuestsResult, competitionAssetsResult]) {
+        if (result.error) throw result.error;
+      }
+      const competitionPlayerById = new Map(
+        ((competitionPlayersResult.data ?? []) as JsonRecord[]).map((person) => [text(person.id), person])
       );
-      const matchByLegacyId = new Map(competitionMatches.map((match) => [text(match.id), match]));
+      const competitionGuestById = new Map(
+        ((competitionGuestsResult.data ?? []) as JsonRecord[]).map((person) => [text(person.id), person])
+      );
+      const competitionAssetById = new Map(
+        ((competitionAssetsResult.data ?? []) as JsonRecord[]).map((asset) => [text(asset.id), asset])
+      );
       const competitionBySlug = new Map(competitions.map((competition) => [text(competition.slug), competition]));
-      const canonicalGamesResult = legacyMatchIds.length
-        ? await admin.from("games").select("id,legacy_one_on_one_id,title,game_title").in("legacy_one_on_one_id", legacyMatchIds).limit(5000)
-        : { data: [], error: null };
-      if (canonicalGamesResult.error) throw canonicalGamesResult.error;
-      const gameByLegacyId = new Map(
-        ((canonicalGamesResult.data ?? []) as JsonRecord[]).map((game) => [text(game.legacy_one_on_one_id), game])
-      );
-      const existingAssetIds = new Set(mediaDelivery.map((row) => text(row.asset_id)));
-      const competitionMedia = oneOnOneLinks.flatMap((link) => {
-        const asset = oneOnOneAssetById.get(text(link.asset_id));
-        if (!asset || existingAssetIds.has(text(asset.id))) return [];
-        const match = matchByLegacyId.get(text(link.owner_id)) ?? {};
-        const slug = text(match.competition_slug);
+      const competitionGameById = new Map(competitionGames.map((game) => [text(game.id), game]));
+
+      if (filters.player) {
+        const playerFilter = lower(filters.player);
+        const matchingPlayerIds = new Set(
+          Array.from(competitionPlayerById.values())
+            .filter((person) => [person.id, person.full_name, person.name, person.nickname].some((value) => lower(value).includes(playerFilter)))
+            .map((person) => text(person.id))
+        );
+        const matchingGuestIds = new Set(
+          Array.from(competitionGuestById.values())
+            .filter((person) => [person.id, person.full_name, person.name, person.nickname].some((value) => lower(value).includes(playerFilter)))
+            .map((person) => text(person.id))
+        );
+        competitionRosters = competitionRosters.filter((row) => matchingPlayerIds.has(text(row.player_id)));
+        competitionStats = competitionStats.filter((row) => matchingPlayerIds.has(text(row.player_id)));
+        competitionGuestStats = competitionGuestStats.filter((row) => matchingGuestIds.has(text(row.guest_hooper_id)));
+        const visibleCompetitionGameIds = new Set(
+          [...competitionRosters, ...competitionStats, ...competitionGuestStats].map((row) => text(row.game_id))
+        );
+        competitionGames = competitionGames.filter((game) => visibleCompetitionGameIds.has(text(game.id)));
+      }
+
+      const visibleCompetitionGameIds = new Set(competitionGames.map((game) => text(game.id)));
+      competitionRosters = competitionRosters.filter((row) => visibleCompetitionGameIds.has(text(row.game_id)));
+      competitionStats = competitionStats.filter((row) => visibleCompetitionGameIds.has(text(row.game_id)));
+      competitionGuestStats = competitionGuestStats.filter((row) => visibleCompetitionGameIds.has(text(row.game_id)));
+      competitionGameLinks = competitionGameLinks.filter((row) => visibleCompetitionGameIds.has(text(row.owner_id)));
+      competitionGameMedia = competitionGameMedia.filter((row) => visibleCompetitionGameIds.has(text(row.game_id)));
+
+      const participationKeys = new Set(participation.map((row) => `${text(row.game_id)}:${text(row.player_id)}`));
+      const competitionParticipation: JsonRecord[] = [];
+      const addCompetitionParticipant = (source: JsonRecord, participantId: string, person: JsonRecord | undefined, classification: string) => {
+        const game = competitionGameById.get(text(source.game_id));
+        if (!game || !visibleCompetitionGameIds.has(text(game.id))) return;
+        const key = `${text(game.id)}:${participantId}`;
+        if (!participantId || participationKeys.has(key)) return;
+        participationKeys.add(key);
+        const slug = competitionSlugByGameId.get(text(game.id)) ?? "";
         const competition = competitionBySlug.get(slug) ?? {};
-        const canonicalGame = gameByLegacyId.get(text(link.owner_id));
-        return [{
+        const side = text(source.team_side) || "home";
+        competitionParticipation.push({
           event_id: `competition:${slug}`,
           event: text(competition.name) || slug,
-          game_id: text(canonicalGame?.id),
-          game: text(match.match_title || canonicalGame?.title || canonicalGame?.game_title) || "Competition match",
+          game_id: text(game.id),
+          game: text(game.title || game.game_title),
+          game_date: gameDate(game),
+          format: gameFormat(game),
+          player_id: participantId,
+          person: personName(person),
+          classification,
+          team: sideName(game, side),
+          team_side: side,
+          role: text(source.participation_role || source.roster_role) || (classification === "guest" ? "guest" : "player"),
+          roster_status: text(source.roster_status) || (source.id ? "confirmed from statistics" : "confirmed"),
+          jersey: text(source.jersey_snapshot),
+        });
+      };
+      competitionRosters.forEach((roster) => {
+        const person = competitionPlayerById.get(text(roster.player_id));
+        addCompetitionParticipant(
+          roster,
+          text(roster.player_id),
+          person,
+          text(person?.player_type || roster.participation_role) || "player"
+        );
+      });
+      competitionStats.forEach((stat) => {
+        const person = competitionPlayerById.get(text(stat.player_id));
+        addCompetitionParticipant(
+          stat,
+          text(stat.player_id),
+          person,
+          text(person?.player_type) || (stat.source_guest_stat_id ? "guest" : "player")
+        );
+      });
+      const canonicalGuestStatIds = new Set(competitionStats.map((stat) => text(stat.source_guest_stat_id)).filter(Boolean));
+      competitionGuestStats
+        .filter((stat) => !canonicalGuestStatIds.has(text(stat.id)))
+        .forEach((stat) => {
+          const guestId = text(stat.guest_hooper_id);
+          addCompetitionParticipant(stat, `guest:${guestId}`, competitionGuestById.get(guestId), "guest");
+        });
+      participation = [...participation, ...competitionParticipation];
+
+      const statisticKeys = new Set(statistics.map((row) => `${text(row.game_id)}:${text(row.player_id)}`));
+      const competitionStatistics: JsonRecord[] = [];
+      const addCompetitionStatistic = (stat: JsonRecord, participantId: string, person: JsonRecord | undefined, classification: string) => {
+        const game = competitionGameById.get(text(stat.game_id));
+        if (!game || !visibleCompetitionGameIds.has(text(game.id))) return;
+        const key = `${text(game.id)}:${participantId}`;
+        if (!participantId || statisticKeys.has(key)) return;
+        statisticKeys.add(key);
+        const slug = competitionSlugByGameId.get(text(game.id)) ?? "";
+        const competition = competitionBySlug.get(slug) ?? {};
+        const side = text(stat.team_side) || "home";
+        competitionStatistics.push({
+          event_id: `competition:${slug}`,
+          event: text(competition.name) || slug,
+          game_id: text(game.id),
+          game: text(game.title || game.game_title),
+          game_date: gameDate(game),
+          format: gameFormat(game),
+          player_id: participantId,
+          person: personName(person),
+          classification,
+          team: sideName(game, side),
+          team_side: side,
+          points: number(stat.points),
+          rebounds: number(stat.rebounds),
+          assists: number(stat.assists),
+          steals: number(stat.steals),
+          blocks: number(stat.blocks),
+          turnovers: number(stat.turnovers),
+          fouls: number(stat.fouls),
+          minutes: number(stat.minutes ?? stat.minutes_played),
+          entry_status: text(stat.entry_status) || "submitted",
+          verification_status: text(stat.verification_status) || "unverified",
+        });
+      };
+      competitionStats.forEach((stat) => {
+        const person = competitionPlayerById.get(text(stat.player_id));
+        addCompetitionStatistic(
+          stat,
+          text(stat.player_id),
+          person,
+          text(person?.player_type) || (stat.source_guest_stat_id ? "guest" : "player")
+        );
+      });
+      competitionGuestStats
+        .filter((stat) => !canonicalGuestStatIds.has(text(stat.id)))
+        .forEach((stat) => {
+          const guestId = text(stat.guest_hooper_id);
+          addCompetitionStatistic(stat, `guest:${guestId}`, competitionGuestById.get(guestId), "guest");
+        });
+      statistics = [...statistics, ...competitionStatistics];
+
+      const matchByLegacyId = new Map(competitionMatches.map((match) => [text(match.id), match]));
+      const gameByLegacyId = new Map(
+        competitionGames
+          .filter((game) => text(game.legacy_one_on_one_id))
+          .map((game) => [text(game.legacy_one_on_one_id), game])
+      );
+      const mediaKeys = new Set(
+        mediaDelivery.map((row) => `${text(row.event_id)}:${text(row.game_id)}:${normalizedMediaUrl(row.url) || text(row.asset_id)}`)
+      );
+      const appendCompetitionMedia = (row: JsonRecord) => {
+        const key = `${text(row.event_id)}:${text(row.game_id)}:${normalizedMediaUrl(row.url) || text(row.asset_id)}`;
+        if (!text(row.url) || mediaKeys.has(key)) return;
+        mediaKeys.add(key);
+        mediaDelivery.push(row);
+      };
+      competitionGameLinks.forEach((link) => {
+        const game = competitionGameById.get(text(link.owner_id));
+        const asset = competitionAssetById.get(text(link.asset_id));
+        if (!game || !asset) return;
+        const slug = competitionSlugByGameId.get(text(game.id)) ?? "";
+        const competition = competitionBySlug.get(slug) ?? {};
+        appendCompetitionMedia({
+          event_id: `competition:${slug}`,
+          event: text(competition.name) || slug,
+          game_id: text(game.id),
+          game: text(game.title || game.game_title),
+          asset_id: text(asset.id),
+          title: text(asset.title) || "Competition media",
+          media_type: text(asset.media_type),
+          link_role: text(link.link_role),
+          rights_status: text(asset.rights_status),
+          publish_status: text(asset.publish_status),
+          public: Boolean(asset.is_public),
+          health_status: text(asset.health_status),
+          url: text(asset.url),
+        });
+      });
+      competitionOneOnOneLinks.forEach((link) => {
+        const match = matchByLegacyId.get(text(link.owner_id));
+        const asset = competitionAssetById.get(text(link.asset_id));
+        if (!match || !asset) return;
+        const slug = text(match.competition_slug);
+        const competition = competitionBySlug.get(slug) ?? {};
+        const game = gameByLegacyId.get(text(match.id));
+        appendCompetitionMedia({
+          event_id: `competition:${slug}`,
+          event: text(competition.name) || slug,
+          game_id: text(game?.id),
+          game: text(match.match_title || game?.title || game?.game_title) || "Competition match",
           asset_id: text(asset.id),
           title: text(asset.title) || text(match.match_title) || "Competition media",
           media_type: text(asset.media_type),
@@ -478,10 +811,108 @@ export async function GET(request: NextRequest) {
           public: Boolean(asset.is_public),
           health_status: text(asset.health_status),
           url: text(asset.url),
-        }];
+        });
       });
-      mediaDelivery = [...mediaDelivery, ...competitionMedia];
+      competitionGameMedia.forEach((item) => {
+        const game = competitionGameById.get(text(item.game_id));
+        if (!game) return;
+        const slug = competitionSlugByGameId.get(text(game.id)) ?? "";
+        const competition = competitionBySlug.get(slug) ?? {};
+        appendCompetitionMedia({
+          event_id: `competition:${slug}`,
+          event: text(competition.name) || slug,
+          game_id: text(game.id),
+          game: text(game.title || game.game_title),
+          asset_id: `legacy-game-media:${text(item.id)}`,
+          title: text(item.title) || text(game.title || game.game_title) || "Game media",
+          media_type: text(item.media_type) || "video",
+          link_role: text(item.category) || "game media",
+          rights_status: text(item.rights_status) || "legacy review required",
+          publish_status: text(item.publish_status) || "legacy",
+          public: item.is_public !== false,
+          health_status: "unchecked",
+          url: text(item.url || item.video_url || item.media_url),
+        });
+      });
+      competitionGames.forEach((game) => {
+        const slug = competitionSlugByGameId.get(text(game.id)) ?? "";
+        const competition = competitionBySlug.get(slug) ?? {};
+        const builtInMedia = [
+          { url: text(game.video_url || game.game_video_url), role: "full game", title: `${text(game.title || game.game_title) || "Game"} · Full game` },
+          { url: text(game.highlight_url), role: "highlights", title: `${text(game.title || game.game_title) || "Game"} · Highlights` },
+        ];
+        builtInMedia.forEach((item) => appendCompetitionMedia({
+          event_id: `competition:${slug}`,
+          event: text(competition.name) || slug,
+          game_id: text(game.id),
+          game: text(game.title || game.game_title),
+          asset_id: `game-field:${text(game.id)}:${item.role}`,
+          title: item.title,
+          media_type: "video",
+          link_role: item.role,
+          rights_status: "legacy review required",
+          publish_status: game.is_public === false ? "private" : "published game record",
+          public: game.is_public !== false,
+          health_status: "unchecked",
+          url: item.url,
+        }));
+      });
+
+      if (filters.player || filters.team) {
+        const visibleSlugs = new Set([
+          ...competitionMatches.map((match) => text(match.competition_slug)),
+          ...competitionGames.map((game) => competitionSlugByGameId.get(text(game.id)) ?? ""),
+        ].filter(Boolean));
+        competitions = competitions.filter((competition) => visibleSlugs.has(text(competition.slug)));
+      }
     }
+
+    const competitionPerformance = competitions.map((competition) => {
+      const slug = text(competition.slug);
+      const legacyMatches = competitionMatches.filter((match) => text(match.competition_slug) === slug);
+      const canonicalGames = competitionGames.filter((game) => competitionSlugByGameId.get(text(game.id)) === slug);
+      const useCanonicalGames = slug === "court-takeovers" || (canonicalGames.length > 0 && legacyMatches.length === 0);
+      const matchCount = useCanonicalGames ? canonicalGames.length : legacyMatches.length;
+      const completed = useCanonicalGames
+        ? canonicalGames.filter(completedGame).length
+        : legacyMatches.filter((match) => ["completed", "played", "final"].includes(lower(match.status))).length;
+      const verified = useCanonicalGames
+        ? canonicalGames.filter(verifiedGame).length
+        : legacyMatches.filter((match) => lower(match.verification_status) === "verified").length;
+      const scheduled = useCanonicalGames
+        ? canonicalGames.filter((game) => ["upcoming", "scheduled"].includes(lower(game.status)) && !completedGame(game)).length
+        : legacyMatches.filter((match) => ["upcoming", "scheduled"].includes(lower(match.status))).length;
+      const reportedPlayers = new Set(
+        participation
+          .filter((row) => text(row.event_id) === `competition:${slug}`)
+          .map((row) => text(row.player_id || row.person))
+          .filter(Boolean)
+      );
+      if (!reportedPlayers.size) {
+        legacyMatches
+          .flatMap((match) => [text(match.participant_name), text(match.opponent_name)])
+          .filter(Boolean)
+          .forEach((name) => reportedPlayers.add(name));
+      }
+      const media = mediaDelivery.filter((row) => text(row.event_id) === `competition:${slug}`).length;
+
+      return {
+        event_id: `competition:${slug}`,
+        competition_slug: slug,
+        competition: text(competition.name),
+        season: text(competition.current_season_label) || "Current",
+        format: text(competition.competition_format) || "Competition",
+        status: text(competition.status) || "Upcoming",
+        verification: text(competition.verification_status) || "Unverified",
+        matches: matchCount,
+        completed,
+        scheduled,
+        verified,
+        players: reportedPlayers.size,
+        media,
+        completion_percent: matchCount ? Math.round((completed / matchCount) * 100) : 0,
+      };
+    });
 
     const competitionOptions = competitions.map((competition) => ({
       event_id: `competition:${text(competition.slug)}`,
@@ -489,6 +920,7 @@ export async function GET(request: NextRequest) {
     }));
     const reportFormats = Array.from(new Set([
       ...allFormats,
+      ...competitionGames.map(gameFormat),
       ...competitions.map((competition) => text(competition.competition_format)).filter(Boolean),
     ])).sort();
 
