@@ -13,13 +13,14 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type TeamTab = "overview" | "roster" | "results" | "statistics" | "events" | "training" | "media";
+type TeamTab = "overview" | "roster" | "results" | "statistics" | "competitions" | "events" | "training" | "media";
 
 const tabs: Array<{ key: TeamTab; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "roster", label: "Roster" },
   { key: "results", label: "Results" },
   { key: "statistics", label: "Statistics" },
+  { key: "competitions", label: "Competitions" },
   { key: "events", label: "Events" },
   { key: "training", label: "Training" },
   { key: "media", label: "Media" },
@@ -74,6 +75,8 @@ export default async function TeamProfilePage({
   const alumni = roster.filter((member) => member.status === "alumni");
   const completed = games.filter((game) => game.result);
   const upcoming = games.filter((game) => !game.result);
+  const competitions = competitionRecords.filter((record) => record.record_type === "competition");
+  const events = competitionRecords.filter((record) => record.record_type === "event");
   const mediaItems: GameMediaItem[] = media.map((item) => ({
     id: item.id,
     title: item.title,
@@ -129,7 +132,7 @@ export default async function TeamProfilePage({
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-2 px-4 py-4 sm:grid-cols-4 sm:px-6 lg:grid-cols-7 lg:px-8">
           <TopMetric value={String(activeRoster.length)} label="Active roster" />
           <TopMetric value={String(games.length)} label="Games" />
-          <TopMetric value={String(competitionRecords.length)} label="Competitions" />
+          <TopMetric value={String(competitions.length)} label="Competitions" />
           <TopMetric value={`${Math.round(performance.winPercentage)}%`} label="Win rate" />
           <TopMetric value={String(training.length)} label="Training" />
           <TopMetric value={String(media.length)} label="Media" />
@@ -180,8 +183,8 @@ export default async function TeamProfilePage({
                 {activeRoster.length ? <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">{activeRoster.slice(0, 6).map((member) => <MiniMember key={member.id} member={member} />)}</div> : <EmptyState title="Roster coming soon" body="Permanent team members will appear after publication." compact />}
               </div>
               <div>
-                <div className="flex items-end justify-between gap-3"><SectionHeading eyebrow="Competition history" title="Competition record" /><Link href={tabHref("events")} className="shrink-0 text-[9px] font-black uppercase text-orange-300">All records →</Link></div>
-                {competitionRecords.length ? <div className="mt-6 grid gap-3">{competitionRecords.slice(0, 3).map((record) => <CompetitionRow key={record.id} record={record} />)}</div> : <EmptyState title="No competition history linked" body="A competition appears here only when this permanent team actually participated or organized it." compact />}
+                <div className="flex items-end justify-between gap-3"><SectionHeading eyebrow="Competition history" title="Competition record" /><Link href={tabHref("competitions")} className="shrink-0 text-[9px] font-black uppercase text-orange-300">All competitions →</Link></div>
+                {competitions.length ? <div className="mt-6 grid gap-3">{competitions.slice(0, 3).map((record) => <CompetitionRow key={record.id} record={record} />)}</div> : <EmptyState title="No competition history linked" body="A competition appears here only when this permanent team actually participated or organized it." compact />}
               </div>
             </div>
           </section>
@@ -224,10 +227,18 @@ export default async function TeamProfilePage({
         </section>
       ) : null}
 
+      {activeTab === "competitions" ? (
+        <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
+          <SectionHeading eyebrow="Permanent competition record" title="Competitions & leaderboards" text="Season competitions, standings and leaderboards live here. FACKTS Kings is a competition—not a one-off Event Hub." />
+          {competitions.length ? <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{competitions.map((record) => <CompetitionCard key={record.id} record={record} />)}</div> : <EmptyState title="No competitions linked" body="Competition participation appears here when it is connected to this permanent team." />}
+          <Link href="/competitions/fackts-kings#standings" className="mt-7 inline-flex rounded-xl bg-orange-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.12em] text-black">Open FACKTS Kings leaderboard</Link>
+        </section>
+      ) : null}
+
       {activeTab === "events" ? (
         <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-          <SectionHeading eyebrow="Competition history" title="Competitions and events" text="Permanent competition routes and verified Event Hubs connected to this team live together here. Other tournament participants remain inside their own Event Hub record." />
-          {competitionRecords.length ? <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{competitionRecords.map((record) => <CompetitionCard key={record.id} record={record} />)}</div> : <EmptyState title="No competitions linked" body="Teams Admin can connect this profile to a published event without copying every participant into the permanent Teams directory." />}
+          <SectionHeading eyebrow="One-off coverage" title="Events" text="Tournaments, commissioned coverage and other one-off Event Hubs stay separate from permanent competitions and season standings." />
+          {events.length ? <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{events.map((record) => <CompetitionCard key={record.id} record={record} />)}</div> : <EmptyState title="No events linked" body="Verified Event Hubs connected to this team will appear here." />}
         </section>
       ) : null}
 

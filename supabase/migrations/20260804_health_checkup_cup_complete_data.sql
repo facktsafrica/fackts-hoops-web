@@ -63,7 +63,7 @@ begin
     (event_id,record_type,title,subtitle,division,team_name,opponent_name,score_for,score_against,status,is_public,sort_order,metadata)
   select event_key,'result',v.a||' '||v.sa||'–'||v.sb||' '||v.b,
     'Day '||v.day||' • Game '||v.game_no,v.round,v.a,v.b,v.sa,v.sb,'verified',true,v.ord,
-    jsonb_build_object('historical_seed_version','complete-20260804','day',v.day,'game_number',v.game_no,'round',v.round,'walkover',v.walkover,'winner',case when v.sa>v.sb then v.a when v.sb>v.sa then v.b else 'Draw' end)
+    jsonb_build_object('historical_seed_version','complete-20260804','day',v.day,'game_number',v.game_no,'round',v.round,'walkover',v.walkover,'winner',case when v.sa>v.sb then v.a when v.sb>v.sa then v.b else null end)
   from (values
     (1,1,1,'Group stage','D Block Hoopers','Nairobi Chapel',18,25,false),
     (1,2,2,'Group stage','Boys Odit','JBA',29,22,false),

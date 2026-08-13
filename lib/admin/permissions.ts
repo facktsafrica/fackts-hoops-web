@@ -246,6 +246,7 @@ const ADMIN_ROUTE_CAPABILITIES: Array<{
   { prefix: "/admin/player-applications", capability: "applications" },
   { prefix: "/admin/player-access", capability: "player_access" },
   { prefix: "/admin/player-profiles", capability: "players" },
+  { prefix: "/admin/team-portals", capability: "admin_users" },
   { prefix: "/admin/teams", capability: "teams" },
   { prefix: "/admin/team", capability: "team_members" },
   { prefix: "/admin/guest-one-on-one-stats", capability: "guest_one_on_one_stats" },

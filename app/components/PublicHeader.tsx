@@ -411,6 +411,13 @@ export default function PublicHeader() {
                   <ArrowIcon />
                 </Link>
                 <Link
+                  href="/team-portal/login"
+                  className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-bold text-[#0B1F3A] transition hover:bg-slate-100"
+                >
+                  Team Partner Sign In
+                  <ArrowIcon />
+                </Link>
+                <Link
                   href="/admin/login"
                   className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-bold text-[#0B1F3A] transition hover:bg-slate-100"
                 >
@@ -566,6 +573,13 @@ export default function PublicHeader() {
               className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-5 py-3 text-sm font-black text-slate-700 transition hover:border-[#F58220] hover:text-[#0B1F3A]"
             >
               Admin Login
+            </Link>
+            <Link
+              href="/team-portal/login"
+              onClick={() => setMenuOpen(false)}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-[#F58220]/40 px-5 py-3 text-sm font-black text-[#0B1F3A] transition hover:bg-orange-50"
+            >
+              Team Partner Sign In
             </Link>
           </div>
         </aside>

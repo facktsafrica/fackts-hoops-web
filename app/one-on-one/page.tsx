@@ -420,8 +420,12 @@ function hasDecisiveScore(row: OneOnOneRow) {
 
 function getMatchStatus(row: OneOnOneRow) {
   const status = (row.status || "").toLowerCase().trim();
+  const score1 = getPlayer1Score(row);
+  const score2 = getPlayer2Score(row);
 
   if (status === "cancelled") return "Cancelled";
+
+  if (score1 !== null && score2 !== null && score1 === score2) return "Overtime Required";
 
   if (
     status === "upcoming" ||
@@ -640,6 +644,8 @@ function buildLeaderboard(
 
     if (player1Score === null || player2Score === null) return;
 
+    if (player1Score === player2Score) return;
+
     const player1 = getPlayer1Identity(
       row,
       playerMap,
@@ -766,7 +772,7 @@ export default async function OneOnOnePage({
     guests
   );
 
-  const upcomingRows = rows.filter((row) => getMatchStatus(row) === "Upcoming");
+  const upcomingRows = rows.filter((row) => ["Upcoming", "Overtime Required"].includes(getMatchStatus(row)));
   const completedRows = rows.filter((row) => getMatchStatus(row) === "Completed");
   const cancelledRows = rows.filter((row) => getMatchStatus(row) === "Cancelled");
 

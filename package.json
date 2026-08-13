@@ -9,7 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "phase0:validate": "node scripts/validate-phase0.mjs",
-    "phase1:validate": "node scripts/validate-phase1.mjs"
+    "phase1:validate": "node scripts/validate-phase1.mjs",
+    "team-portal:validate": "node scripts/validate-team-portal.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
