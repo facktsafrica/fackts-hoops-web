@@ -374,7 +374,10 @@ export default function AdminTeamsPage() {
     if (!opponentName) return setError("Choose an existing game or enter an opponent.");
     const teamScore = linked ? scoreValue(linked, side) : optionalNumber(data.get("team_score"));
     const opponentScore = linked ? scoreValue(linked, side === "home" ? "away" : "home") : optionalNumber(data.get("opponent_score"));
-    const resultCode = teamScore === null || opponentScore === null ? null : teamScore === opponentScore ? "D" : teamScore > opponentScore ? "W" : "L";
+    if (teamScore !== null && opponentScore !== null && teamScore === opponentScore) {
+      return setError("A completed basketball result must have a winner. Enter the overtime final score.");
+    }
+    const resultCode = teamScore === null || opponentScore === null ? null : teamScore > opponentScore ? "W" : "L";
     const result = await supabase.from("team_games").insert({
       team_id: selected.id,
       game_id: linked?.id || null,

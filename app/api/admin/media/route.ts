@@ -253,6 +253,7 @@ export async function POST(request: NextRequest) {
       assetId = text(capture.data, 100);
     }
     if (!assetId) throw new Error("The media asset could not be created.");
+    const warnings: string[] = [];
 
     const updated = await admin
       .from("media_assets")
@@ -275,33 +276,50 @@ export async function POST(request: NextRequest) {
         .select("player_id")
         .eq("game_id", ownerId)
         .neq("roster_status", "withdrawn");
-      if (roster.error) throw roster.error;
-      const subjects = Array.from(new Set((roster.data ?? []).map((row) => row.player_id).filter(Boolean)))
-        .map((playerId) => ({
-          asset_id: assetId,
-          player_id: playerId,
-          required_scope: mediaType === "image" ? "photo_use" : mediaType === "audio" ? "audio_use" : "video_use",
-          metadata: { source: "phase1_media_center_game_roster" },
-          created_by: profileId,
-        }));
-      if (subjects.length) {
-        const subjectResult = await admin.from("media_subjects").upsert(subjects, { onConflict: "asset_id,player_id" });
-        if (subjectResult.error) throw subjectResult.error;
+      if (roster.error) {
+        console.error(`Media subject roster sync failed: ${roster.error.message}`);
+        warnings.push("Player consent indexing still needs review.");
+      } else {
+        const subjects = Array.from(new Set((roster.data ?? []).map((row) => row.player_id).filter(Boolean)))
+          .map((playerId) => ({
+            asset_id: assetId,
+            player_id: playerId,
+            required_scope: mediaType === "image" ? "photo_use" : mediaType === "audio" ? "audio_use" : "video_use",
+            metadata: { source: "phase1_media_center_game_roster" },
+            created_by: profileId,
+          }));
+        if (subjects.length) {
+          const subjectResult = await admin.from("media_subjects").upsert(subjects, { onConflict: "asset_id,player_id" });
+          if (subjectResult.error) {
+            console.error(`Media subject indexing failed: ${subjectResult.error.message}`);
+            warnings.push("Player consent indexing still needs review.");
+          }
+        }
       }
     }
 
-    await recordAdminAuditEvent(access.supabase, {
-      action: "create",
-      entityType: "media",
-      entityId: assetId,
-      capability: "media",
-      resourceType: ownerType,
-      resourceId: ownerId,
-      after: updated.data,
-      metadata: { source: "phase1_media_center", link_role: linkRole },
-    });
+    try {
+      await recordAdminAuditEvent(access.supabase, {
+        action: "create",
+        entityType: "media",
+        entityId: assetId,
+        capability: "media",
+        resourceType: ownerType,
+        resourceId: ownerId,
+        after: updated.data,
+        metadata: { source: "phase1_media_center", link_role: linkRole },
+      });
+    } catch (error) {
+      console.error(error);
+      warnings.push("The audit entry needs review.");
+    }
 
-    return NextResponse.json({ ok: true, asset: updated.data, message: "Media saved privately for review." }, { status: 201 });
+    return NextResponse.json({
+      ok: true,
+      asset: updated.data,
+      message: ["Media saved privately for review.", ...warnings].join(" "),
+      warnings,
+    }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "Media could not be created." },

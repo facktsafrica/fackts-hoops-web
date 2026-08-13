@@ -344,7 +344,7 @@ export default async function GameDetailsPage({ params }: { params: Promise<{ id
               <div className="mt-5 rounded-3xl border border-white/10 bg-black/45 px-5 py-5 backdrop-blur">
                 <p className="text-[9px] font-black uppercase tracking-[.18em] text-zinc-600">{scored ? "Final score" : "Tip-off"}</p>
                 <p className="mt-1 text-5xl font-black tracking-[-.05em] sm:text-7xl">{scored ? `${homeScore}–${awayScore}` : "VS"}</p>
-                {winner && winner !== "Draw" ? <p className="mt-2 text-xs font-black uppercase tracking-[.12em] text-orange-300">Winner: {winner}</p> : null}
+                {winner ? <p className="mt-2 text-xs font-black uppercase tracking-[.12em] text-orange-300">Winner: {winner}</p> : null}
               </div>
             </div>
             <ScoreTeam name={awayTeam} score={awayScore} align="right" winner={winner === awayTeam} />

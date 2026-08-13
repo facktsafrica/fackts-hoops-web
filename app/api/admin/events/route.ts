@@ -34,6 +34,49 @@ const allowedFields = [
 ] as const;
 
 const EVENT_STATUSES = new Set(["draft", "published", "archived"]);
+type JsonRecord = Record<string, unknown>;
+
+function text(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function lower(value: unknown) {
+  return text(value).toLowerCase();
+}
+
+function completedGame(game: JsonRecord) {
+  if (["completed", "played", "final"].includes(lower(game.status))) return true;
+  const home = game.home_score ?? game.team_score ?? game.fackts_score;
+  const away = game.away_score ?? game.opponent_score;
+  return home !== null && home !== undefined && away !== null && away !== undefined;
+}
+
+function competitionSlugForGame(game: JsonRecord, legacySlugById: Map<string, string>) {
+  const legacySlug = legacySlugById.get(text(game.legacy_one_on_one_id));
+  if (legacySlug) return legacySlug;
+  const identity = [
+    game.competition_name,
+    game.game_format,
+    game.match_type,
+    game.title,
+    game.game_title,
+  ]
+    .map(lower)
+    .join(" ")
+    .replace(/[^a-z0-9]+/g, "");
+  return identity.includes("courttakeover") ? "court-takeovers" : "";
+}
+
+function optionalRows(
+  result: { data: unknown[] | null; error: { message: string } | null },
+  source: string
+) {
+  if (result.error) {
+    console.warn(`Admin events optional source unavailable (${source}): ${result.error.message}`);
+    return [] as JsonRecord[];
+  }
+  return (result.data ?? []) as JsonRecord[];
+}
 
 function cleanText(value: unknown, max = 1000) {
   const cleaned = String(value ?? "").trim();
@@ -86,7 +129,7 @@ export async function GET() {
     let eventQuery = admin
       .from("event_case_studies")
       .select(
-        "id,event_id,title,slug,summary,start_date,end_date,venue,location,status,is_public,event_type,age_category,organizer_name,poster_url,hero_image_url,deletion_protected,created_at,updated_at"
+        "id,event_id,title,slug,summary,start_date,end_date,venue,location,status,is_public,event_type,age_category,organizer_name,poster_url,hero_image_url,created_at,updated_at"
       )
       .order("start_date", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -108,18 +151,18 @@ export async function GET() {
       competitionsQuery,
     ]);
     if (eventsResult.error) throw eventsResult.error;
-    if (competitionsResult.error) throw competitionsResult.error;
 
     const events = eventsResult.data ?? [];
-    const competitions = competitionsResult.data ?? [];
+    const competitions = competitionsResult.error ? [] : competitionsResult.data ?? [];
+    if (competitionsResult.error) {
+      console.warn(`Admin events competitions unavailable: ${competitionsResult.error.message}`);
+    }
     const eventIds = events.map((event) => event.event_id);
     const competitionSlugs = competitions.map((competition) => competition.slug);
 
     const [gamesResult, entriesResult, progressResult, deliverablesResult, competitionMatchesResult] =
       await Promise.all([
-        eventIds.length
-          ? admin.from("games").select("event_id,status").in("event_id", eventIds)
-          : Promise.resolve({ data: [], error: null }),
+        admin.from("games").select("*").limit(5000),
         eventIds.length
           ? admin.from("event_entries").select("event_id,entry_status").in("event_id", eventIds)
           : Promise.resolve({ data: [], error: null }),
@@ -140,29 +183,58 @@ export async function GET() {
           : Promise.resolve({ data: [], error: null }),
       ]);
 
-    for (const result of [
-      gamesResult,
-      entriesResult,
-      progressResult,
-      deliverablesResult,
-      competitionMatchesResult,
-    ]) {
-      if (result.error) throw result.error;
-    }
+    const games = optionalRows(gamesResult, "games");
+    const entries = optionalRows(entriesResult, "event entries");
+    const progress = optionalRows(progressResult, "event setup progress");
+    const deliverables = optionalRows(deliverablesResult, "event deliverables");
+    const competitionMatches = optionalRows(competitionMatchesResult, "competition matches");
+
+    const legacySlugById = new Map(
+      competitionMatches.map((match) => [text(match.id), text(match.competition_slug)])
+    );
+    const competitionSlugByGameId = new Map<string, string>();
+    games.forEach((game) => {
+      const slug = competitionSlugForGame(game, legacySlugById);
+      if (slug) competitionSlugByGameId.set(text(game.id), slug);
+    });
+    const competitionGameIds = Array.from(competitionSlugByGameId.keys());
+    const [rostersResult, statsResult, guestStatsResult, gameMediaResult, mediaLinksResult] =
+      await Promise.all([
+        competitionGameIds.length
+          ? admin.from("game_rosters").select("game_id,player_id").in("game_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGameIds.length
+          ? admin.from("player_game_stats").select("game_id,player_id").in("game_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGameIds.length
+          ? admin.from("guest_game_stats").select("game_id,guest_hooper_id").in("game_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGameIds.length
+          ? admin.from("game_media").select("id,game_id,url,video_url,media_url").in("game_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+        competitionGameIds.length
+          ? admin.from("media_links").select("asset_id,owner_id").eq("owner_type", "game").in("owner_id", competitionGameIds).limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+    const rosters = optionalRows(rostersResult, "competition rosters");
+    const stats = optionalRows(statsResult, "competition statistics");
+    const guestStats = optionalRows(guestStatsResult, "competition guest statistics");
+    const gameMedia = optionalRows(gameMediaResult, "competition game media");
+    const mediaLinks = optionalRows(mediaLinksResult, "competition governed media");
 
     const progressByEvent = new Map(
-      (progressResult.data ?? []).map((progress) => [progress.event_id, progress])
+      progress.map((item) => [text(item.event_id), item])
     );
 
     const eventRows = events.map((event) => {
-        const games = (gamesResult.data ?? []).filter(
-          (game) => game.event_id === event.event_id
+        const eventGames = games.filter(
+          (game) => text(game.event_id) === event.event_id
         );
-        const entries = (entriesResult.data ?? []).filter(
-          (entry) => entry.event_id === event.event_id
+        const eventEntries = entries.filter(
+          (entry) => text(entry.event_id) === event.event_id
         );
-        const deliverables = (deliverablesResult.data ?? []).filter(
-          (deliverable) => deliverable.event_id === event.event_id
+        const eventDeliverables = deliverables.filter(
+          (deliverable) => text(deliverable.event_id) === event.event_id
         );
 
         return {
@@ -170,29 +242,70 @@ export async function GET() {
           source_kind: "event" as const,
           setup: progressByEvent.get(event.event_id) ?? null,
           counts: {
-            games: games.length,
-            completed_games: games.filter((game) => game.status === "completed")
-              .length,
-            participants: entries.filter(
-              (entry) => !["withdrawn", "disqualified"].includes(entry.entry_status)
+            games: eventGames.length,
+            completed_games: eventGames.filter(completedGame).length,
+            participants: eventEntries.filter(
+              (entry) => !["withdrawn", "disqualified"].includes(text(entry.entry_status))
             ).length,
-            deliverables: deliverables.filter(
-              (deliverable) => deliverable.deliverable_status !== "cancelled"
+            deliverables: eventDeliverables.filter(
+              (deliverable) => text(deliverable.deliverable_status) !== "cancelled"
             ).length,
           },
         };
       });
 
     const competitionRows = competitions.map((competition) => {
-      const matches = (competitionMatchesResult.data ?? []).filter(
-        (match) => match.competition_slug === competition.slug
+      const matches = competitionMatches.filter(
+        (match) => text(match.competition_slug) === competition.slug
       );
-      const participants = new Set(
-        matches.flatMap((match) => [match.participant_name, match.opponent_name]).filter(Boolean)
+      const canonicalGames = games.filter(
+        (game) => competitionSlugByGameId.get(text(game.id)) === competition.slug
       );
-      const media = matches.filter(
-        (match) => Boolean(match.video_url || match.highlight_url)
-      ).length;
+      const useCanonical = competition.slug === "court-takeovers" || (!matches.length && canonicalGames.length > 0);
+      const canonicalGameIds = new Set(canonicalGames.map((game) => text(game.id)));
+      const participants = new Set<string>();
+      if (useCanonical) {
+        rosters
+          .filter((row) => canonicalGameIds.has(text(row.game_id)))
+          .forEach((row) => { if (text(row.player_id)) participants.add(text(row.player_id)); });
+        stats
+          .filter((row) => canonicalGameIds.has(text(row.game_id)))
+          .forEach((row) => { if (text(row.player_id)) participants.add(text(row.player_id)); });
+        guestStats
+          .filter((row) => canonicalGameIds.has(text(row.game_id)))
+          .forEach((row) => { if (text(row.guest_hooper_id)) participants.add(`guest:${text(row.guest_hooper_id)}`); });
+      } else {
+        matches
+          .flatMap((match) => [text(match.participant_name), text(match.opponent_name)])
+          .filter(Boolean)
+          .forEach((name) => participants.add(name));
+      }
+      const media = new Set<string>();
+      if (useCanonical) {
+        canonicalGames.forEach((game) => {
+          [game.video_url, game.game_video_url, game.highlight_url]
+            .map(text)
+            .filter(Boolean)
+            .forEach((url) => media.add(`url:${url.toLowerCase()}`));
+        });
+        gameMedia
+          .filter((item) => canonicalGameIds.has(text(item.game_id)))
+          .forEach((item) => {
+            const url = text(item.url || item.video_url || item.media_url);
+            media.add(url ? `url:${url.toLowerCase()}` : `legacy:${text(item.id)}`);
+          });
+        mediaLinks
+          .filter((link) => canonicalGameIds.has(text(link.owner_id)))
+          .forEach((link) => media.add(`asset:${text(link.asset_id)}`));
+      } else {
+        matches.forEach((match) => {
+          [match.video_url, match.highlight_url]
+            .map(text)
+            .filter(Boolean)
+            .forEach((url) => media.add(`url:${url.toLowerCase()}`));
+        });
+      }
+      const sourceGames = useCanonical ? canonicalGames : matches;
 
       return {
         id: competition.id,
@@ -217,10 +330,10 @@ export async function GET() {
         verification_status: competition.verification_status,
         setup: null,
         counts: {
-          games: matches.length,
-          completed_games: matches.filter((match) => match.status === "completed").length,
+          games: sourceGames.length,
+          completed_games: sourceGames.filter(completedGame).length,
           participants: participants.size,
-          deliverables: media,
+          deliverables: media.size,
         },
       };
     });

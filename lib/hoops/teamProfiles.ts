@@ -77,7 +77,7 @@ export type TeamGame = {
   opponent_score?: number | null;
   game_id?: string | null;
   event_id?: string | null;
-  result?: "W" | "L" | "D" | null;
+  result?: "W" | "L" | null;
   home_away?: "home" | "away" | null;
   image_url?: string | null;
 };
@@ -136,7 +136,6 @@ export type TeamPerformance = {
   played: number;
   wins: number;
   losses: number;
-  draws: number;
   pointsFor: number;
   pointsAgainst: number;
   averagePoints: number;
@@ -144,7 +143,7 @@ export type TeamPerformance = {
   pointDifference: number;
   winPercentage: number;
   currentStreak: string;
-  lastFive: Array<"W" | "L" | "D">;
+  lastFive: Array<"W" | "L">;
 };
 
 export type TeamProfileBundle = {
@@ -288,7 +287,7 @@ function gameSide(game: LinkedGameRecord, profile: TeamProfile) {
 
 function resultFromScores(teamScore: number | null, opponentScore: number | null) {
   if (teamScore === null || opponentScore === null) return null;
-  if (teamScore === opponentScore) return "D" as const;
+  if (teamScore === opponentScore) return null;
   return teamScore > opponentScore ? ("W" as const) : ("L" as const);
 }
 
@@ -328,7 +327,9 @@ function normalizeStoredGame(row: TeamGameRow): TeamGame {
     ...row,
     team_score: teamScore,
     opponent_score: opponentScore,
-    result: row.result || resultFromScores(teamScore, opponentScore),
+    result: row.result === "W" || row.result === "L"
+      ? row.result
+      : resultFromScores(teamScore, opponentScore),
   };
 }
 
@@ -348,10 +349,12 @@ function mergeGames(stored: TeamGame[], direct: TeamGame[]) {
 
 export function calculateTeamPerformance(games: TeamGame[]): TeamPerformance {
   const completed = games.filter(
-    (game) => game.team_score !== null && game.team_score !== undefined && game.opponent_score !== null && game.opponent_score !== undefined
+    (game) => game.team_score !== null && game.team_score !== undefined && game.opponent_score !== null && game.opponent_score !== undefined && game.team_score !== game.opponent_score
   );
   const results = completed.map(
-    (game) => game.result || resultFromScores(game.team_score ?? null, game.opponent_score ?? null) || "D"
+    (game) => game.result || resultFromScores(game.team_score ?? null, game.opponent_score ?? null)
+  ).filter(
+    (result): result is "W" | "L" => result === "W" || result === "L"
   );
   const pointsFor = completed.reduce((sum, game) => sum + Number(game.team_score || 0), 0);
   const pointsAgainst = completed.reduce(
@@ -360,7 +363,6 @@ export function calculateTeamPerformance(games: TeamGame[]): TeamPerformance {
   );
   const wins = results.filter((result) => result === "W").length;
   const losses = results.filter((result) => result === "L").length;
-  const draws = results.filter((result) => result === "D").length;
   const current = results[0];
   let streakLength = 0;
   if (current) {
@@ -374,7 +376,6 @@ export function calculateTeamPerformance(games: TeamGame[]): TeamPerformance {
     played: completed.length,
     wins,
     losses,
-    draws,
     pointsFor,
     pointsAgainst,
     averagePoints: completed.length ? pointsFor / completed.length : 0,

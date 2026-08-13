@@ -71,6 +71,7 @@ export default function AdminMediaPage() {
   const [gameFilter, setGameFilter] = useState("");
   const [eventFilter, setEventFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [ownerType, setOwnerType] = useState<"game" | "event">("game");
   const [selected, setSelected] = useState<MediaAsset | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -118,35 +119,53 @@ export default function AdminMediaPage() {
   async function createMedia(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (readOnly || saving) return;
-    const form = new FormData(event.currentTarget);
-    const ownerType = String(form.get("owner_type") || "game");
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const ownerId = ownerType === "event" ? String(form.get("event_id") || "") : String(form.get("game_id") || "");
-    setSaving(true);
-    setMessage("Saving media privately for review…");
-    const response = await fetch("/api/admin/media", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: form.get("title"),
-        url: form.get("url"),
-        thumbnail_url: form.get("thumbnail_url"),
-        platform: form.get("platform"),
-        media_type: form.get("media_type"),
-        link_role: form.get("link_role"),
-        owner_type: ownerType,
-        owner_id: ownerId,
-      }),
-    });
-    const result = await response.json().catch(() => ({}));
-    setSaving(false);
-    if (!response.ok || !result.ok) {
-      setMessage(result.error || "Media could not be saved.");
+    if (!ownerId) {
+      setMessage(`Choose the ${ownerType} this media belongs to.`);
       return;
     }
-    event.currentTarget.reset();
-    setShowCreate(false);
-    setMessage(result.message || "Media saved.");
-    await load();
+    setSaving(true);
+    setMessage("Saving media privately for review…");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch("/api/admin/media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          title: form.get("title"),
+          url: form.get("url"),
+          thumbnail_url: form.get("thumbnail_url"),
+          platform: form.get("platform"),
+          media_type: form.get("media_type"),
+          link_role: form.get("link_role"),
+          owner_type: ownerType,
+          owner_id: ownerId,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        setMessage(result.error || "Media could not be saved.");
+        return;
+      }
+      formElement.reset();
+      setOwnerType("game");
+      setShowCreate(false);
+      setMessage(result.message || "Media saved.");
+      await load();
+    } catch (error) {
+      setMessage(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "The save took too long. Check your connection, then try again."
+          : "Media could not be saved. Check your connection, then try again."
+      );
+    } finally {
+      window.clearTimeout(timeout);
+      setSaving(false);
+    }
   }
 
   async function saveReview(event: FormEvent<HTMLFormElement>) {
@@ -208,7 +227,7 @@ export default function AdminMediaPage() {
           ].map(([label, value, target]) => <button key={String(label)} onClick={() => setState(String(target))} className={`rounded-2xl border p-4 text-left transition ${state === target ? "border-orange-400/50 bg-orange-400/10" : "border-white/10 bg-zinc-950 hover:border-blue-400/35"}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">{label}</p><p className="mt-2 text-3xl font-black">{Number(value).toLocaleString()}</p></button>)}
         </section>
 
-        {showCreate ? <section className="rounded-3xl border border-orange-400/25 bg-zinc-950 p-5 sm:p-7"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">New governed asset</p><h2 className="mt-1 text-2xl font-black">Link media to its source</h2><p className="mt-2 text-sm text-zinc-500">New media is private and pending by default. Publication is a separate rights-and-consent decision.</p></div><form onSubmit={createMedia} className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Media title" wide><input name="title" required className={control} placeholder="e.g. Hanss vs BR full game" /></Field><Field label="Media URL" wide><input name="url" type="url" required className={control} placeholder="https://…" /></Field><Field label="Thumbnail URL" wide><input name="thumbnail_url" type="url" className={control} placeholder="Optional image URL" /></Field><Field label="Platform"><select name="platform" className={control}><option>YouTube</option><option>Instagram</option><option>TikTok</option><option>Facebook</option><option>Google Drive</option><option>FACKTS Website</option><option>Other</option></select></Field><Field label="Media type"><select name="media_type" defaultValue="video" className={control}><option value="video">Video</option><option value="image">Image</option><option value="audio">Audio</option><option value="document">Document</option><option value="link">Link</option></select></Field><Field label="Media role"><select name="link_role" defaultValue="full_game" className={control}><option value="full_game">Full game</option><option value="highlight">Game highlights</option><option value="interview">Interview</option><option value="recap">Event recap</option><option value="poster">Poster</option><option value="gallery">Gallery</option><option value="attachment">Other attachment</option></select></Field><Field label="Owner type"><select name="owner_type" defaultValue="game" className={control}><option value="game">Game</option><option value="event">Event</option></select></Field><Field label="Game"><select name="game_id" className={control}><option value="">Choose game</option>{games.map((game) => <option key={game.id} value={game.id}>{game.title} · {game.competition_name}</option>)}</select></Field><Field label="Event"><select name="event_id" className={control}><option value="">Choose event</option>{events.map((item) => <option key={item.event_id} value={item.event_id}>{item.title}</option>)}</select></Field><div className="flex items-end md:col-span-2 xl:col-span-4"><button disabled={saving} className="min-h-12 w-full rounded-xl bg-orange-500 px-6 text-sm font-black text-black disabled:opacity-50 sm:ml-auto sm:w-auto">{saving ? "Saving…" : "Save private asset"}</button></div></form></section> : null}
+        {showCreate ? <section className="rounded-3xl border border-orange-400/25 bg-zinc-950 p-5 sm:p-7"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">New governed asset</p><h2 className="mt-1 text-2xl font-black">Link media to its source</h2><p className="mt-2 text-sm text-zinc-500">New media is private and pending by default. Publication is a separate rights-and-consent decision.</p></div><form onSubmit={createMedia} className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Media title" wide><input name="title" required className={control} placeholder="e.g. Hanss vs BR full game" /></Field><Field label="Media URL" wide><input name="url" type="url" required className={control} placeholder="https://…" /></Field><Field label="Thumbnail URL" wide><input name="thumbnail_url" type="url" className={control} placeholder="Optional image URL" /></Field><Field label="Platform"><select name="platform" className={control}><option>YouTube</option><option>Instagram</option><option>TikTok</option><option>Facebook</option><option>Google Drive</option><option>FACKTS Website</option><option>Other</option></select></Field><Field label="Media type"><select name="media_type" defaultValue="video" className={control}><option value="video">Video</option><option value="image">Image</option><option value="audio">Audio</option><option value="document">Document</option><option value="link">Link</option></select></Field><Field label="Media role"><select name="link_role" defaultValue="full_game" className={control}><option value="full_game">Full game</option><option value="highlight">Game highlights</option><option value="interview">Interview</option><option value="recap">Event recap</option><option value="poster">Poster</option><option value="gallery">Gallery</option><option value="attachment">Other attachment</option></select></Field><Field label="Owner type"><select name="owner_type" value={ownerType} onChange={(event) => setOwnerType(event.target.value === "event" ? "event" : "game")} className={control}><option value="game">Game</option><option value="event">Event</option></select></Field>{ownerType === "game" ? <Field label="Game"><select name="game_id" required className={control}><option value="">Choose game</option>{games.map((game) => <option key={game.id} value={game.id}>{game.title} · {game.competition_name}</option>)}</select></Field> : <Field label="Event"><select name="event_id" required className={control}><option value="">Choose event</option>{events.map((item) => <option key={item.event_id} value={item.event_id}>{item.title}</option>)}</select></Field>}<div className="flex items-end md:col-span-2 xl:col-span-4"><button disabled={saving} className="min-h-12 w-full rounded-xl bg-orange-500 px-6 text-sm font-black text-black disabled:opacity-50 sm:ml-auto sm:w-auto">{saving ? "Saving…" : "Save private asset"}</button></div></form></section> : null}
 
         {message ? <p className="rounded-2xl border border-blue-400/25 bg-blue-400/10 p-4 text-sm text-blue-100">{message}</p> : null}
 

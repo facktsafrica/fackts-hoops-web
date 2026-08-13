@@ -59,11 +59,10 @@ export default async function PlayerProfilePage({
     .join("")
     .toUpperCase();
   const completedBattles = player.oneOnOne.filter(
-    (battle) => battle.result !== "Upcoming"
+    (battle) => battle.result === "Win" || battle.result === "Loss"
   );
   const wins = completedBattles.filter((battle) => battle.result === "Win").length;
   const losses = completedBattles.filter((battle) => battle.result === "Loss").length;
-  const draws = completedBattles.filter((battle) => battle.result === "Draw").length;
 
   return (
     <main
@@ -319,7 +318,7 @@ export default async function PlayerProfilePage({
           <div className="mt-6 grid gap-5 lg:grid-cols-[.32fr_.68fr]">
             <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/90 p-6">
               <p className="text-[9px] font-black uppercase tracking-[.14em] text-orange-300">Completed record</p>
-              <p className="mt-3 text-4xl font-black">{wins}W – {losses}L – {draws}D</p>
+              <p className="mt-3 text-4xl font-black">{wins}W – {losses}L</p>
               <p className="mt-3 text-xs leading-5 text-zinc-500">Based only on completed 1v1 results currently recorded.</p>
             </div>
             {player.oneOnOne.length ? (

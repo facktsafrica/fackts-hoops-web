@@ -12,7 +12,7 @@ import { formatGameDate, getAwayScore, getAwayTeam, getGameDate, getGameStatus, 
 
 type EventCase = { event_id:string; slug:string; title:string; summary:string|null; start_date:string|null; end_date:string|null; venue:string|null; location:string|null; poster_url:string|null; hero_image_url:string|null; photo_count:number; event_type:string; age_category:string; organizer_name?:string|null; organizer_logo_url?:string|null; organizer_description?:string|null; organizer_url?:string|null };
 type RecordRow = { id:string; record_type:string; title:string; subtitle:string|null; details:string|null; division:string|null; team_name:string|null; opponent_name:string|null; score_for:number|null; score_against:number|null; url:string|null; image_url:string|null; metadata?:Record<string,unknown>|null };
-type Standing = { name:string; played:number; wins:number; losses:number; draws:number; pf:number; pa:number; diff:number; pct:number };
+type Standing = { name:string; played:number; wins:number; losses:number; pf:number; pa:number; diff:number; pct:number };
 type PoolStanding = Standing & { pool:string; poolRank:number };
 
 const WOMEN_TEAMS=["Aces","Nuru","Safe Spaces","Tigers","Usiku SACCO"];
@@ -153,16 +153,18 @@ const winner=(row:RecordRow)=>row.score_for===row.score_against?null:(Number(row
 
 function calculateStandings(results:RecordRow[], division:"Men"|"Women", stage:"pool"|"all"="all") {
   const table=new Map<string,Standing>();
-  const ensure=(name:string)=>{if(!table.has(name)) table.set(name,{name,played:0,wins:0,losses:0,draws:0,pf:0,pa:0,diff:0,pct:0}); return table.get(name)!};
+  const ensure=(name:string)=>{if(!table.has(name)) table.set(name,{name,played:0,wins:0,losses:0,pf:0,pa:0,diff:0,pct:0}); return table.get(name)!};
   results.forEach(row=>{
     if(!row.team_name||!row.opponent_name||row.score_for==null||row.score_against==null) return;
     if(stage==="pool"&&isKnockout(row)) return;
     const teamName=canonicalTeamName(row.team_name), opponentName=canonicalTeamName(row.opponent_name);
     const rowDivision=WOMEN_TEAMS.includes(teamName)||WOMEN_TEAMS.includes(opponentName)?"Women":"Men";
     if(rowDivision!==division) return;
-    const a=ensure(teamName), b=ensure(opponentName), sa=Number(row.score_for), sb=Number(row.score_against);
+    const sa=Number(row.score_for), sb=Number(row.score_against);
+    if(sa===sb) return;
+    const a=ensure(teamName), b=ensure(opponentName);
     a.played++; b.played++; a.pf+=sa; a.pa+=sb; b.pf+=sb; b.pa+=sa;
-    if(sa>sb){a.wins++;b.losses++}else if(sb>sa){b.wins++;a.losses++}else{a.draws++;b.draws++}
+    if(sa>sb){a.wins++;b.losses++}else{b.wins++;a.losses++}
   });
   const rows=[...table.values()].map(x=>{
     // The verified sheets show Boys Odit were beaten. Protect the historical
@@ -170,7 +172,7 @@ function calculateStandings(results:RecordRow[], division:"Men"|"Women", stage:"
     const corrected=x.name==="Boys Odit"&&x.losses===0&&x.wins>0
       ? {...x,wins:x.wins-1,losses:1}
       : x;
-    return {...corrected,diff:corrected.pf-corrected.pa,pct:corrected.played?(corrected.wins+corrected.draws*.5)/corrected.played:0};
+    return {...corrected,diff:corrected.pf-corrected.pa,pct:corrected.played?corrected.wins/corrected.played:0};
   });
 
   return rows.sort((a,b)=>{

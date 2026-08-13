@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 type JsonRecord = Record<string, unknown>;
 
-export const CORRECTION_FIELDS: Record<string, Record<string, "integer" | "number" | "boolean" | "date" | "text">> = {
+const CORRECTION_FIELDS: Record<string, Record<string, "integer" | "number" | "boolean" | "date" | "text">> = {
   stat: {
     points: "integer", rebounds: "integer", offensive_rebounds: "integer", defensive_rebounds: "integer", assists: "integer", steals: "integer", blocks: "integer", turnovers: "integer", fouls: "integer", minutes: "number", two_made: "integer", two_attempted: "integer", three_made: "integer", three_attempted: "integer", ft_made: "integer", ft_attempted: "integer", plus_minus: "integer", player_of_game: "boolean",
   },

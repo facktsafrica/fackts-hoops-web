@@ -177,8 +177,9 @@ function statusLabel(status?: string | null) {
 }
 
 function resultLabel(result?: string | null) {
-  if (!result) return "No result";
-  return result.charAt(0).toUpperCase() + result.slice(1);
+  if (result === "win") return "Win";
+  if (result === "loss") return "Loss";
+  return "No result";
 }
 
 function getResult(player1Score: string, player2Score: string) {
@@ -190,7 +191,7 @@ function getResult(player1Score: string, player2Score: string) {
   if (Number.isNaN(score1) || Number.isNaN(score2)) return null;
   if (score1 > score2) return "win";
   if (score1 < score2) return "loss";
-  return "draw";
+  return null;
 }
 
 function toInputDateTime(value?: string | null) {
@@ -433,7 +434,7 @@ export default function AdminOneOnOnePage() {
     if (score1 > score2) return getPlayer1Name(row);
     if (score2 > score1) return getPlayer2Name(row);
 
-    return "Draw";
+    return "Not decided";
   }
 
   function editMatch(row: OneOnOneRow) {
@@ -541,6 +542,14 @@ export default function AdminOneOnOnePage() {
 
     if (form.player2Score.trim() && Number.isNaN(Number(form.player2Score))) {
       return "Player 2 score must be a number.";
+    }
+
+    if (
+      form.player1Score.trim() &&
+      form.player2Score.trim() &&
+      Number(form.player1Score) === Number(form.player2Score)
+    ) {
+      return "A completed basketball result must have a winner. Enter the overtime final score.";
     }
 
     return "";

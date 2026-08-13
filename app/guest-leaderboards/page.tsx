@@ -125,19 +125,21 @@ function oneOnOneCareerTotals(
       const hasScores = Number.isFinite(score1) && Number.isFinite(score2);
       const result = String(row.result ?? "").toLowerCase();
 
-      if (!hasScores && !["win", "won", "loss", "lost", "draw"].includes(result)) {
+      if (!hasScores && !["win", "won", "loss", "lost"].includes(result)) {
         return totals;
       }
-
-      totals.matches += 1;
 
       if (hasScores) {
         const ownScore = isParticipant ? score1 : score2;
         const otherScore = isParticipant ? score2 : score1;
+        if (ownScore === otherScore) return totals;
+        totals.matches += 1;
         if (ownScore > otherScore) totals.wins += 1;
         if (ownScore < otherScore) totals.losses += 1;
         return totals;
       }
+
+      totals.matches += 1;
 
       const participantWon = result === "win" || result === "won";
       const participantLost = result === "loss" || result === "lost";

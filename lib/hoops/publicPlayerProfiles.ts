@@ -229,7 +229,7 @@ export type PublicPlayerOneOnOne = {
   venue: string;
   ownScore: number | null;
   opponentScore: number | null;
-  result: "Win" | "Loss" | "Draw" | "Upcoming";
+  result: "Win" | "Loss" | "Pending" | "Upcoming";
   hasMedia: boolean;
 };
 
@@ -530,10 +530,9 @@ function oneOnOneView(
   let result: PublicPlayerOneOnOne["result"] = "Upcoming";
 
   if (completed) {
-    result = ownScore > opponentScore ? "Win" : ownScore < opponentScore ? "Loss" : "Draw";
+    result = ownScore > opponentScore ? "Win" : ownScore < opponentScore ? "Loss" : "Pending";
   } else if (!["upcoming", "pending", "scheduled", "cancelled"].includes(status)) {
     const stored = text(row.result).toLowerCase();
-    if (stored === "draw") result = "Draw";
     if (["win", "won"].includes(stored)) result = participant ? "Win" : "Loss";
     if (["loss", "lost"].includes(stored)) result = participant ? "Loss" : "Win";
   }

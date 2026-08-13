@@ -90,7 +90,6 @@ type LeaderboardItem = {
   name: string;
   wins: number;
   losses: number;
-  draws: number;
   matches: number;
   points: number;
   pointsAllowed: number;
@@ -413,6 +412,12 @@ function hasScores(row: OneOnOneRow) {
   return getPlayer1Score(row) !== null && getPlayer2Score(row) !== null;
 }
 
+function hasDecisiveScore(row: OneOnOneRow) {
+  const score1 = getPlayer1Score(row);
+  const score2 = getPlayer2Score(row);
+  return score1 !== null && score2 !== null && score1 !== score2;
+}
+
 function getMatchStatus(row: OneOnOneRow) {
   const status = (row.status || "").toLowerCase().trim();
 
@@ -427,10 +432,10 @@ function getMatchStatus(row: OneOnOneRow) {
   }
 
   if (status === "completed" || status === "played" || status === "final") {
-    return "Completed";
+    return hasDecisiveScore(row) ? "Completed" : "Upcoming";
   }
 
-  if (hasScores(row)) return "Completed";
+  if (hasScores(row)) return hasDecisiveScore(row) ? "Completed" : "Upcoming";
 
   return "Upcoming";
 }
@@ -442,7 +447,7 @@ function getWinnerSide(row: OneOnOneRow) {
   if (score1 === null || score2 === null) return null;
   if (score1 > score2) return "player1";
   if (score2 > score1) return "player2";
-  return "draw";
+  return null;
 }
 
 function getWinnerName(row: OneOnOneRow, player1Name: string, player2Name: string) {
@@ -452,7 +457,6 @@ function getWinnerName(row: OneOnOneRow, player1Name: string, player2Name: strin
 
   if (winnerSide === "player1") return player1Name;
   if (winnerSide === "player2") return player2Name;
-  if (winnerSide === "draw") return "Draw";
 
   return "Not decided";
 }
@@ -616,7 +620,6 @@ function buildLeaderboard(
         type: identity.type,
         wins: 0,
         losses: 0,
-        draws: 0,
         matches: 0,
         points: 0,
         pointsAllowed: 0,
@@ -669,9 +672,6 @@ function buildLeaderboard(
     } else if (player2Score > player1Score) {
       player2Item.wins += 1;
       player1Item.losses += 1;
-    } else {
-      player1Item.draws += 1;
-      player2Item.draws += 1;
     }
   });
 
@@ -1291,12 +1291,11 @@ function LeaderboardCard({
           </div>
 
           <div className="hidden sm:block">
-            <div className="grid grid-cols-[42px_minmax(170px,1fr)_42px_42px_42px_42px_50px_50px_56px_62px] items-center gap-1 bg-[#0d2350] px-4 py-2 text-center text-[9px] font-black uppercase tracking-[0.09em] text-blue-200">
+            <div className="grid grid-cols-[42px_minmax(170px,1fr)_42px_42px_42px_50px_50px_56px_62px] items-center gap-1 bg-[#0d2350] px-4 py-2 text-center text-[9px] font-black uppercase tracking-[0.09em] text-blue-200">
               <span>Pos</span>
               <span className="text-left">Hooper</span>
               <span>P</span>
               <span>W</span>
-              <span>D</span>
               <span>L</span>
               <span>PF</span>
               <span>PA</span>
@@ -1342,7 +1341,7 @@ function LeaderboardMobileRow({
       </div>
       <div className="min-w-0">
         <p className="truncate text-xs font-black uppercase text-white">{item.name}</p>
-        <p className="mt-1 text-[8px] font-black uppercase tracking-[.08em] text-zinc-500">{item.wins}W · {item.losses}L · {item.draws}D · {item.points}-{item.pointsAllowed}</p>
+        <p className="mt-1 text-[8px] font-black uppercase tracking-[.08em] text-zinc-500">{item.wins}W · {item.losses}L · {item.points}-{item.pointsAllowed}</p>
       </div>
       <div className="grid grid-cols-3 gap-1 text-center">
         <MobileStandingStat label="GP" value={String(item.matches)} />
@@ -1367,7 +1366,7 @@ function LeaderboardDesktopRow({
 }) {
   return (
     <div
-      className={`grid min-h-12 grid-cols-[42px_minmax(170px,1fr)_42px_42px_42px_42px_50px_50px_56px_62px] items-center gap-1 border-t border-white/7 px-4 py-2 text-center text-xs font-black transition hover:bg-blue-500/8 ${
+      className={`grid min-h-12 grid-cols-[42px_minmax(170px,1fr)_42px_42px_42px_50px_50px_56px_62px] items-center gap-1 border-t border-white/7 px-4 py-2 text-center text-xs font-black transition hover:bg-blue-500/8 ${
         position === 1 ? "bg-orange-500/8" : "bg-black/10"
       }`}
     >
@@ -1391,7 +1390,6 @@ function LeaderboardDesktopRow({
       )}
       <span className="text-slate-300">{item.matches}</span>
       <span className="text-white">{item.wins}</span>
-      <span className="text-slate-400">{item.draws}</span>
       <span className="text-slate-500">{item.losses}</span>
       <span className="text-slate-300">{item.points}</span>
       <span className="text-slate-400">{item.pointsAllowed}</span>

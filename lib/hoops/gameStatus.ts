@@ -127,7 +127,7 @@ export function getDisplayGameStatus(game: GameLike): string {
   if (facktsScore !== null && opponentScore !== null) {
     if (facktsScore > opponentScore) return "Win";
     if (facktsScore < opponentScore) return "Loss";
-    return "Draw";
+    return "Score correction required";
   }
 
   if (

@@ -244,7 +244,6 @@ function getResult(row: OneOnOneRow) {
 
   if (result === "win") return "Win";
   if (result === "loss") return "Loss";
-  if (result === "draw") return "Draw";
   if (result === "pending") return "Upcoming";
 
   const scored = numberValue(row.points_scored);
@@ -253,7 +252,7 @@ function getResult(row: OneOnOneRow) {
   if (scored !== null && allowed !== null) {
     if (scored > allowed) return "Win";
     if (scored < allowed) return "Loss";
-    return "Draw";
+    return "Upcoming";
   }
 
   return "Upcoming";
@@ -262,7 +261,6 @@ function getResult(row: OneOnOneRow) {
 function getStatusClass(result: string) {
   if (result === "Win") return "bg-emerald-500/15 text-emerald-300";
   if (result === "Loss") return "bg-red-500/15 text-red-300";
-  if (result === "Draw") return "bg-zinc-500/15 text-zinc-300";
   return "bg-orange-500/15 text-orange-300";
 }
 

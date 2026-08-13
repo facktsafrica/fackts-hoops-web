@@ -118,7 +118,7 @@ function getDisplayGameStatus(game: GameCardGame): string {
   if (facktsScore !== null && opponentScore !== null) {
     if (facktsScore > opponentScore) return "Win";
     if (facktsScore < opponentScore) return "Loss";
-    return "Draw";
+    return "Score correction required";
   }
 
   if (status === "played" || status === "completed" || status === "final") {

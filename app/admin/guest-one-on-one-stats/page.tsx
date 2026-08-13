@@ -58,7 +58,7 @@ type FormState = {
   venue: string;
   points_scored: string;
   points_allowed: string;
-  result: "pending" | "win" | "loss" | "draw";
+  result: "pending" | "win" | "loss";
   notes: string;
   video_url: string;
 };
@@ -96,7 +96,6 @@ function getScoreResult(pointsScored: string, pointsAllowed: string) {
 
   if (scored > allowed) return "win";
   if (scored < allowed) return "loss";
-  if (scored === allowed && (scored > 0 || allowed > 0)) return "draw";
 
   return "pending";
 }
@@ -106,7 +105,6 @@ function getResultLabel(result?: string | null) {
 
   if (clean === "win") return "Win";
   if (clean === "loss") return "Loss";
-  if (clean === "draw") return "Draw";
 
   return "Pending";
 }
@@ -142,7 +140,6 @@ function normalizeResult(result?: string | null): FormState["result"] {
 
   if (clean === "win") return "win";
   if (clean === "loss") return "loss";
-  if (clean === "draw") return "draw";
 
   return "pending";
 }
@@ -398,6 +395,14 @@ export default function AdminGuestOneOnOneStatsPage() {
       form.participant_id === form.opponent_id
     ) {
       setMessage("A player cannot play 1-on-1 against themselves.");
+      setSaving(false);
+      return;
+    }
+
+    const scored = numberValue(form.points_scored);
+    const allowed = numberValue(form.points_allowed);
+    if (scored === allowed && (scored > 0 || allowed > 0)) {
+      setMessage("A completed basketball result must have a winner. Enter the overtime final score.");
       setSaving(false);
       return;
     }
@@ -778,7 +783,6 @@ export default function AdminGuestOneOnOneStatsPage() {
                       <option value="pending">Auto / Pending</option>
                       <option value="win">Participant Win</option>
                       <option value="loss">Participant Loss</option>
-                      <option value="draw">Draw</option>
                     </select>
                   </label>
                 </div>

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./fackts-motion.css";
 import PublicHeader from "./components/PublicHeader";
+import FacktsTicker from "./components/FacktsTicker";
 import PwaInstallButton from "./components/PwaInstallButton";
 import PwaServiceWorkerClient from "./components/PwaServiceWorkerClient";
 import PlayerPortalReturn from "./components/PlayerPortalReturn";
@@ -69,6 +70,7 @@ export default function RootLayout({
       <body>
         <PwaServiceWorkerClient />
         <PublicHeader />
+        <FacktsTicker />
         <PwaInstallButton />
         <PublicPageShell>{children}</PublicPageShell>
         <PlayerPortalReturn />

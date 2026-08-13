@@ -137,7 +137,7 @@ export function getWinner(game: GameRecord) {
   const away = getAwayScore(game);
 
   if (home === null || away === null) return null;
-  if (home === away) return "Draw";
+  if (home === away) return null;
   return home > away ? getHomeTeam(game) : getAwayTeam(game);
 }
 
