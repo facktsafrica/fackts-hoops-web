@@ -185,9 +185,12 @@ export async function GET(request: NextRequest) {
       leaderboard_links: (leagueMembershipsResult.data ?? []).length
         ? (leagueMembershipsResult.data ?? []).map((membership: JsonRecord) => {
             const league = membership.leagues && typeof membership.leagues === "object" ? membership.leagues as JsonRecord : {};
+            const parameters = new URLSearchParams();
+            if (text(membership.division)) parameters.set("division", text(membership.division));
+            if (text(membership.season_label)) parameters.set("season", text(membership.season_label));
             return {
               title: `${text(league.short_name || league.name) || "League"} · ${text(membership.division) || "Open"} standings`,
-              href: `/leagues/${text(league.slug) || ""}#standings`,
+              href: `/leagues/${text(league.slug) || ""}${parameters.size ? `?${parameters.toString()}` : ""}#standings`,
               record_type: "league",
               season_label: membership.season_label,
             };

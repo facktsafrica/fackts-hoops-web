@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { loadLeagueDirectory } from "@/lib/hoops/leagues";
@@ -16,20 +17,39 @@ export default async function LeaguesPage() {
 
   return (
     <main className="fackts-public-bg min-h-screen text-white">
-      <section className="relative overflow-hidden border-b border-white/10 bg-[#07162b]/90">
-        <div className="absolute -right-20 -top-24 h-80 w-80 rounded-full bg-orange-500/20 blur-3xl" />
-        <div className="relative mx-auto max-w-7xl px-5 pb-16 pt-14 sm:px-6 lg:px-8 lg:pb-20">
-          <p className="text-[10px] font-black uppercase tracking-[.24em] text-orange-300">FACKTS League Network</p>
-          <h1 className="mt-4 max-w-5xl text-5xl font-black uppercase leading-[.9] tracking-[-.04em] sm:text-7xl lg:text-8xl">Teams belong to leagues.<br/><span className="text-orange-400">Leagues deserve proper tables.</span></h1>
-          <p className="mt-6 max-w-3xl text-sm leading-7 text-zinc-300 sm:text-base">Open a league to see its clubs, seasons, divisions and verified wins-and-losses standings. One-off tournaments remain separate Event Hubs.</p>
-          <div className="mt-8 flex flex-wrap gap-3"><a href="#league-directory" className="rounded-xl bg-orange-500 px-6 py-3 text-[10px] font-black uppercase tracking-[.13em] text-black">Browse leagues</a><Link href="/teams" className="rounded-xl border border-white/15 bg-white/[.04] px-6 py-3 text-[10px] font-black uppercase tracking-[.13em]">Browse teams</Link></div>
-          <div className="mt-9 grid max-w-lg grid-cols-2 gap-3"><HeroMetric value={leagues.length} label="Public leagues"/><HeroMetric value={teams} label="League team placements"/></div>
+      <section className="relative overflow-hidden border-b border-white/10 bg-[#07162b]/92">
+        <div className="absolute -right-16 -top-24 h-64 w-64 rounded-full bg-orange-500/15 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:px-8 lg:py-12">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[.22em] text-orange-300">FACKTS League Network</p>
+              <h1 className="mt-3 text-4xl font-black uppercase leading-none tracking-[-.035em] sm:text-5xl">Leagues, divisions<br/><span className="text-orange-400">and live standings.</span></h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-300">Choose a league, open its division, then see every registered team and its verified basketball record.</p>
+            </div>
+            <div className="flex gap-2">
+              <HeroMetric value={leagues.length} label="Leagues" />
+              <HeroMetric value={teams} label="Teams placed" />
+            </div>
+          </div>
         </div>
       </section>
 
-      <section id="league-directory" className="mx-auto max-w-7xl scroll-mt-24 px-5 py-12 sm:px-6 lg:px-8 lg:py-16">
-        <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-300">League portals</p><h2 className="mt-2 text-3xl font-black uppercase sm:text-5xl">Choose the competition structure.</h2></div>
-        {leagues.length ? <div className="mt-8 grid gap-5 md:grid-cols-2">{leagues.map((item) => <LeagueCard key={item.league.id} item={item}/>)}</div> : <div className="mt-8 rounded-3xl border border-dashed border-white/15 p-12 text-center text-zinc-500">League records will appear after the production migration is applied.</div>}
+      <section className="mx-auto max-w-7xl px-5 py-9 sm:px-6 lg:px-8 lg:py-12">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[.2em] text-orange-300">League directory</p>
+            <h2 className="mt-2 text-2xl font-black uppercase sm:text-3xl">Choose a league</h2>
+          </div>
+          <Link href="/teams" className="text-[9px] font-black uppercase tracking-[.12em] text-zinc-400 transition hover:text-orange-300">View all teams →</Link>
+        </div>
+
+        {leagues.length ? (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {leagues.map((item) => <LeagueCard key={item.league.id} item={item} />)}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-2xl border border-dashed border-white/15 p-8 text-center text-sm text-zinc-500">No public leagues yet.</div>
+        )}
       </section>
     </main>
   );
@@ -37,9 +57,42 @@ export default async function LeaguesPage() {
 
 function LeagueCard({ item }: { item: Awaited<ReturnType<typeof loadLeagueDirectory>>[number] }) {
   const { league } = item;
-  return <article className="group overflow-hidden rounded-[1.8rem] border border-white/10 bg-slate-950/90 transition hover:-translate-y-1 hover:border-orange-400/45"><div className="relative aspect-[16/8] overflow-hidden" style={{ background: `linear-gradient(135deg,${safeColor(league.primary_color, "#0B1F3A")},${safeColor(league.secondary_color, "#F58220")})` }}>{league.cover_image_url ? <img src={league.cover_image_url} alt="" className="h-full w-full object-cover opacity-55 transition duration-700 group-hover:scale-105"/> : null}<div className="absolute inset-0 bg-gradient-to-t from-black/85 to-transparent"/><div className="absolute inset-x-5 bottom-5 flex items-end gap-4">{league.logo_url ? <img src={league.logo_url} alt="" className="h-16 w-16 rounded-2xl border border-white/20 bg-white object-contain p-1"/> : <span className="grid h-16 w-16 place-items-center rounded-2xl border border-white/20 bg-black/35 text-xl font-black">{league.short_name || league.name.slice(0,3)}</span>}<div><p className="text-[9px] font-black uppercase tracking-[.14em] text-white/65">{league.country} · {league.status}</p><h2 className="mt-1 text-3xl font-black uppercase leading-none">{league.name}</h2></div></div></div><div className="p-5 sm:p-6"><p className="text-sm leading-6 text-zinc-400">{league.description || "Public league teams, divisions and verified standings."}</p><div className="mt-5 grid grid-cols-3 gap-2"><SmallMetric value={item.teamCount} label="Teams"/><SmallMetric value={item.divisions.length} label="Divisions"/><SmallMetric value={item.seasons.length} label="Seasons"/></div>{item.divisions.length ? <p className="mt-4 text-[9px] font-black uppercase tracking-[.1em] text-zinc-500">{item.divisions.join(" · ")}</p> : null}<Link href={`/leagues/${league.slug}`} className="mt-5 flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-5 text-[10px] font-black uppercase tracking-[.13em] text-black">Open league portal</Link></div></article>;
+  const primary = safeColor(league.primary_color, "#0B1F3A");
+  const secondary = safeColor(league.secondary_color, "#F58220");
+  const style = { "--league-primary": primary, "--league-accent": secondary } as CSSProperties;
+
+  return (
+    <Link
+      href={`/leagues/${league.slug}`}
+      style={style}
+      className="group relative min-h-28 overflow-hidden rounded-2xl border border-white/10 bg-[#07162b] p-4 transition hover:-translate-y-0.5 hover:border-[var(--league-accent)]"
+    >
+      {league.cover_image_url ? <img src={league.cover_image_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-[.08] transition duration-500 group-hover:opacity-[.14]" /> : null}
+      <div className="absolute inset-0 bg-gradient-to-r from-[#07162b] via-[#07162b]/95 to-transparent" />
+      <div className="absolute inset-y-0 right-0 w-20 opacity-20" style={{ background: `linear-gradient(90deg,transparent,${primary})` }} />
+      <div className="relative flex items-center gap-3">
+        {league.logo_url ? (
+          <img src={league.logo_url} alt="" className="h-12 w-12 shrink-0 rounded-xl bg-white object-contain p-1" />
+        ) : (
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-white/15 bg-black/25 text-sm font-black" style={{ color: secondary }}>{league.short_name || league.name.slice(0, 3)}</span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-base font-black uppercase">{league.name}</span>
+          <span className="mt-1 block text-[8px] font-black uppercase tracking-[.1em] text-zinc-500">{item.teamCount} team{item.teamCount === 1 ? "" : "s"} · {item.divisions.length} division{item.divisions.length === 1 ? "" : "s"}</span>
+        </span>
+        <span className="text-lg font-black transition group-hover:translate-x-1" style={{ color: secondary }}>→</span>
+      </div>
+      <div className="relative mt-3 flex gap-1.5 overflow-hidden">
+        {item.divisions.slice(0, 4).map((division) => <span key={division} className="truncate rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[7px] font-black uppercase text-zinc-400">{division}</span>)}
+      </div>
+    </Link>
+  );
 }
 
-function safeColor(value: string | null | undefined, fallback: string) { return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback; }
-function HeroMetric({ value, label }: { value: number; label: string }) { return <div className="rounded-2xl border border-white/10 bg-black/30 p-4"><p className="text-4xl font-black text-orange-300">{value}</p><p className="mt-1 text-[8px] font-black uppercase tracking-[.1em] text-zinc-500">{label}</p></div>; }
-function SmallMetric({ value, label }: { value: number; label: string }) { return <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-center"><p className="text-xl font-black">{value}</p><p className="mt-1 text-[7px] font-black uppercase text-zinc-600">{label}</p></div>; }
+function safeColor(value: string | null | undefined, fallback: string) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
+}
+
+function HeroMetric({ value, label }: { value: number; label: string }) {
+  return <div className="min-w-24 rounded-xl border border-white/10 bg-black/25 px-4 py-3"><p className="text-2xl font-black text-orange-300">{value}</p><p className="mt-1 text-[7px] font-black uppercase tracking-[.1em] text-zinc-500">{label}</p></div>;
+}

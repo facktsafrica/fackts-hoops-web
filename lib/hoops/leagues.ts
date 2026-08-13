@@ -67,6 +67,16 @@ export type LeagueDirectoryItem = {
 
 type JsonRecord = Record<string, unknown>;
 
+const LEAGUE_DIVISION_DEFAULTS: Record<string, string[]> = {
+  kbf: ["Premier League", "Division 1", "Division 2", "Division 3"],
+};
+
+export function getLeagueDivisions(slug: string, assignedDivisions: string[] = []) {
+  const defaults = LEAGUE_DIVISION_DEFAULTS[String(slug || "").toLowerCase()] || [];
+  const divisions = [...defaults, ...assignedDivisions.map((item) => String(item || "").trim()).filter(Boolean)];
+  return Array.from(new Set(divisions.length ? divisions : ["League table"]));
+}
+
 function relatedTeam(value: unknown): LeagueTeam | null {
   const team = Array.isArray(value) ? value[0] : value;
   if (!team || typeof team !== "object") return null;
@@ -97,7 +107,7 @@ export async function loadLeagueDirectory(): Promise<LeagueDirectoryItem[]> {
     return {
       league,
       teamCount: new Set(rows.map((row) => String(row.team_id))).size,
-      divisions: Array.from(new Set(rows.map((row) => String(row.division || "Open")))).sort(),
+      divisions: getLeagueDivisions(league.slug, rows.map((row) => String(row.division || "League table"))),
       seasons: Array.from(new Set(rows.map((row) => String(row.season_label || "Current season")))).sort().reverse(),
     };
   });
@@ -188,5 +198,10 @@ export async function loadLeaguePortal(slug: string) {
     left.team.name.localeCompare(right.team.name)
   );
 
-  return { league, memberships, standings };
+  return {
+    league,
+    memberships,
+    standings,
+    divisions: getLeagueDivisions(league.slug, memberships.map((membership) => membership.division)),
+  };
 }

@@ -64,10 +64,28 @@ export type TeamPlanCode = keyof typeof TEAM_PLAN_PRESETS;
 export const TEAM_ROLE_CAPABILITIES: Record<string, readonly TeamCapability[]> = {
   owner: TEAM_CAPABILITIES,
   manager: TEAM_CAPABILITIES,
-  coach: ["portal_view", "training_manage", "roster_manage", "stats_submit", "player_profile_request"],
+  coach: CORE_TEAM_CAPABILITIES,
   statistician: ["portal_view", "stats_submit"],
   media: ["portal_view", "branding_submit", "media_submit", "broadcast_manage"],
   viewer: ["portal_view"],
+};
+
+export const TEAM_ROLE_LABELS: Record<string, string> = {
+  owner: "Club owner",
+  manager: "Team manager",
+  coach: "Coach",
+  statistician: "Statistician",
+  media: "Media team",
+  viewer: "Viewer",
+};
+
+export const TEAM_ROLE_DESCRIPTIONS: Record<string, string> = {
+  owner: "Full club operations, subject to the club's approved premium upgrades.",
+  manager: "Full club operations, subject to the club's approved premium upgrades.",
+  coach: "Training, roster, team branding, media and verified statistics submissions.",
+  statistician: "Statistics and result submissions only. FACKTS still verifies every entry.",
+  media: "Club branding and media submissions, plus Live Studio when approved.",
+  viewer: "Read-only access to the club workspace.",
 };
 
 export function normalizeTeamCapabilities(value: unknown): TeamCapability[] {

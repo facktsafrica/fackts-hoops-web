@@ -4,7 +4,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { supabase } from "@/lib/supabase";
-import { TEAM_CAPABILITY_LABELS, type TeamCapability } from "@/lib/team-portal/capabilities";
+import {
+  TEAM_CAPABILITY_LABELS,
+  TEAM_ROLE_DESCRIPTIONS,
+  TEAM_ROLE_LABELS,
+  type TeamCapability,
+} from "@/lib/team-portal/capabilities";
 
 type JsonRecord = Record<string, any>;
 type PortalData = {
@@ -24,7 +29,7 @@ type PortalData = {
 };
 
 const tabs = [
-  ["command", "Command Centre"],
+  ["command", "Overview"],
   ["training", "Training"],
   ["team", "Team & Players"],
   ["media", "Media Readiness"],
@@ -32,8 +37,20 @@ const tabs = [
   ["live", "Live Studio"],
 ] as const;
 
+type PortalTab = (typeof tabs)[number][0];
+type PortalTheme = "club" | "midnight" | "arena";
+
+const workspaces: Array<{ tab: PortalTab; capability: TeamCapability; label: string; description: string }> = [
+  { tab: "training", capability: "training_manage", label: "Training", description: "Plan sessions, development work and training evidence." },
+  { tab: "team", capability: "roster_manage", label: "Team & Players", description: "Manage the public team roster without editing official player profiles." },
+  { tab: "media", capability: "media_submit", label: "Media Readiness", description: "Upload club images, posters, full games and highlights for review." },
+  { tab: "stats", capability: "stats_submit", label: "Stats Desk", description: "Submit results and player stat lines for FACKTS verification." },
+  { tab: "team", capability: "player_profile_request", label: "Profile Requests", description: "Request an official player profile; Super Admin remains the approver." },
+  { tab: "live", capability: "broadcast_manage", label: "Live Studio", description: "Connect YouTube and schedule games, training or team broadcasts." },
+];
+
 const input = "w-full rounded-xl border border-white/10 bg-black/35 px-3.5 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-[var(--club-accent)]";
-const button = "rounded-xl bg-[var(--club-accent)] px-5 py-3 text-xs font-black uppercase tracking-[.08em] text-white shadow-lg transition hover:brightness-110 disabled:opacity-50";
+const button = "rounded-xl bg-[var(--club-accent)] px-5 py-3 text-xs font-black uppercase tracking-[.08em] text-[var(--club-accent-text)] shadow-lg transition hover:brightness-110 disabled:opacity-50";
 
 function formatDate(value?: string | null) {
   if (!value) return "Date TBA";
@@ -51,9 +68,22 @@ function safeColor(value: unknown, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }
 
+function withAlpha(color: string, alpha: string) {
+  return `${safeColor(color, "#0B1F3A")}${alpha}`;
+}
+
+function readableText(color: string) {
+  const normalized = safeColor(color, "#F58220").slice(1);
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  return (red * 299 + green * 587 + blue * 114) / 1000 > 165 ? "#06101f" : "#ffffff";
+}
+
 export default function TeamPortalClient({ teamId }: { teamId: string }) {
   const [data, setData] = useState<PortalData | null>(null);
-  const [tab, setTab] = useState<(typeof tabs)[number][0]>("command");
+  const [tab, setTab] = useState<PortalTab>("command");
+  const [theme, setTheme] = useState<PortalTheme>("club");
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState("");
@@ -70,20 +100,33 @@ export default function TeamPortalClient({ teamId }: { teamId: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    const saved = window.localStorage.getItem(`fackts-club-theme:${teamId}`);
+    if (saved === "club" || saved === "midnight" || saved === "arena") setTheme(saved);
+  }, [teamId]);
+
   const has = (capability: TeamCapability) => data?.portal.capabilities.includes(capability) || false;
   const team = data?.portal.team;
   const primaryColor = safeColor(team?.primary_color, "#0B1F3A");
   const accentColor = safeColor(team?.secondary_color, "#F58220");
+  const themePrimary = theme === "midnight" ? "#0B1F3A" : theme === "arena" ? "#27272A" : primaryColor;
+  const themeAccent = theme === "arena" ? primaryColor : accentColor;
+  const themeBase = theme === "arena" ? "#0d0d10" : theme === "midnight" ? "#020817" : "#030b1a";
   const portalStyle = {
-    "--club-primary": primaryColor,
-    "--club-accent": accentColor,
+    "--club-primary": themePrimary,
+    "--club-accent": themeAccent,
+    "--club-accent-text": readableText(themeAccent),
+    background: `radial-gradient(circle at 8% 16%,${withAlpha(themePrimary, "28")},transparent 30rem),radial-gradient(circle at 92% 38%,${withAlpha(themeAccent, "12")},transparent 30rem),${themeBase}`,
   } as CSSProperties;
+  const role = String(data?.portal.membership.role || "viewer").toLowerCase();
+  const roleLabel = TEAM_ROLE_LABELS[role] || "Team member";
+  const roleDescription = TEAM_ROLE_DESCRIPTIONS[role] || TEAM_ROLE_DESCRIPTIONS.viewer;
   const missingActions = useMemo(() => data?.games.flatMap((game) => [
     !game.poster.ready && !game.poster.pending ? { game, role: "poster", label: "poster" } : null,
     !game.full_game.ready && !game.full_game.pending ? { game, role: "full_game", label: "full game" } : null,
   ]).filter(Boolean) as Array<{ game: JsonRecord; role: string; label: string }> || [], [data]);
 
-  async function post(body: JsonRecord, successTab?: typeof tab) {
+  async function post(body: JsonRecord, successTab?: PortalTab) {
     setWorking(true);
     setMessage("");
     const response = await fetch("/api/team-portal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, team_id: teamId }) });
@@ -111,23 +154,29 @@ export default function TeamPortalClient({ teamId }: { teamId: string }) {
     window.location.assign("/team-portal/login");
   }
 
+  function changeTheme(nextTheme: PortalTheme) {
+    setTheme(nextTheme);
+    window.localStorage.setItem(`fackts-club-theme:${teamId}`, nextTheme);
+  }
+
   if (loading && !data) return <main className="grid min-h-screen place-items-center bg-[#030b1a] text-white"><div className="rounded-3xl border border-white/10 bg-slate-950 p-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-300">Team intelligence</p><p className="mt-3 text-2xl font-black">Opening workspace…</p></div></main>;
   if (!data || !team) return <main className="grid min-h-screen place-items-center bg-[#030b1a] px-4 text-white"><div className="max-w-lg rounded-3xl border border-red-400/20 bg-red-500/10 p-8 text-center"><h1 className="text-2xl font-black">Portal unavailable</h1><p className="mt-3 text-sm text-red-100">{message}</p><Link href="/team-portal/login" className="mt-5 inline-block font-black text-orange-300">Return to login</Link></div></main>;
 
   return (
-    <main className="min-h-screen bg-[#030b1a] text-white" style={portalStyle}>
-      <header className="relative overflow-hidden border-b border-white/15">
-        {team.cover_image_url ? <img src={team.cover_image_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-35" /> : null}
-        <div className="absolute inset-0" style={{ background: `linear-gradient(90deg, ${primaryColor} 4%, ${primaryColor}ed 52%, #030b1ae8 100%)` }} />
+    <main className="min-h-screen text-white" style={portalStyle}>
+      <header className="relative overflow-hidden border-b border-white/15 bg-[#030b1a]">
+        {team.cover_image_url ? <img src={team.cover_image_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" /> : null}
+        <div className="absolute inset-0" style={{ background: `linear-gradient(100deg,#030914f7 5%,${withAlpha(themePrimary, "dc")} 55%,#030914ee 100%)` }} />
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg,${themeAccent},${themePrimary},transparent)` }} />
         <div className="relative mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div className="flex items-center gap-4">
-              <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/20 bg-white/10 shadow-2xl">{team.logo_url ? <img src={team.logo_url} alt="" className="h-full w-full object-contain p-1" /> : <span className="text-2xl font-black" style={{ color: accentColor }}>{String(team.short_name || team.name).slice(0, 2).toUpperCase()}</span>}</div>
-              <div><p className="text-[9px] font-black uppercase tracking-[.22em]" style={{ color: accentColor }}>FACKTS Club Intelligence</p><h1 className="mt-2 text-4xl font-black uppercase leading-none sm:text-5xl">{team.name}</h1><p className="mt-2 text-sm text-slate-300">Registered club workspace · {data.portal.membership.role} access</p></div>
+              <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/20 bg-white/10 shadow-2xl">{team.logo_url ? <img src={team.logo_url} alt="" className="h-full w-full object-contain p-1" /> : <span className="text-2xl font-black" style={{ color: themeAccent }}>{String(team.short_name || team.name).slice(0, 2).toUpperCase()}</span>}</div>
+              <div><p className="text-[9px] font-black uppercase tracking-[.22em]" style={{ color: themeAccent }}>FACKTS Club Intelligence</p><h1 className="mt-2 text-4xl font-black uppercase leading-none sm:text-5xl">{team.name}</h1><p className="mt-2 text-sm text-slate-300">Registered club workspace · {roleLabel} access</p></div>
             </div>
-            <div className="flex flex-wrap gap-2"><Link href={`/teams/${team.slug}`} className="rounded-xl border border-white/10 px-4 py-3 text-xs font-black">Public profile</Link><button onClick={logout} className="rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-xs font-black text-red-200">Logout</button></div>
+            <div className="flex flex-wrap items-center gap-2"><label className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"><span className="mr-2 text-[8px] font-black uppercase text-slate-400">Theme</span><select value={theme} onChange={(event) => changeTheme(event.target.value as PortalTheme)} className="bg-transparent text-xs font-black text-white outline-none"><option value="club" className="bg-slate-950">Club</option><option value="midnight" className="bg-slate-950">Midnight</option><option value="arena" className="bg-slate-950">Arena</option></select></label><Link href={`/teams/${team.slug}`} className="rounded-xl border border-white/10 px-4 py-3 text-xs font-black">Public profile</Link><button onClick={logout} className="rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-xs font-black text-red-200">Logout</button></div>
           </div>
-          <div className="mt-7 flex gap-2 overflow-x-auto pb-1">{tabs.map(([key, label]) => <button key={key} onClick={() => setTab(key)} style={tab === key ? { backgroundColor: accentColor } : undefined} className={`shrink-0 rounded-xl px-4 py-2.5 text-[9px] font-black uppercase tracking-[.1em] ${tab === key ? "text-white shadow-lg" : "border border-white/10 bg-black/25 text-slate-300"}`}>{label}</button>)}</div>
+          <nav aria-label="Club workspaces" className="mt-7"><p className="mb-2 text-[8px] font-black uppercase tracking-[.16em] text-slate-500">Workspace menu</p><div className="flex gap-2 overflow-x-auto pb-1">{tabs.map(([key, label]) => <button key={key} onClick={() => setTab(key)} style={tab === key ? { backgroundColor: themeAccent, color: readableText(themeAccent) } : undefined} className={`shrink-0 rounded-xl px-4 py-2.5 text-[9px] font-black uppercase tracking-[.1em] transition ${tab === key ? "shadow-lg" : "border border-white/10 bg-black/25 text-slate-300 hover:border-white/30 hover:text-white"}`}>{label}</button>)}</div></nav>
         </div>
       </header>
 
@@ -135,6 +184,7 @@ export default function TeamPortalClient({ teamId }: { teamId: string }) {
 
       {tab === "command" ? <section className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Roster" value={data.roster.length} /><Metric label="Training" value={data.training.length} /><Metric label="Games" value={data.games.length} /><Metric label="Media gaps" value={data.media_summary.missing_posters + data.media_summary.missing_full_games} tone="orange" /><Metric label="In review" value={data.media_summary.pending + data.stat_submissions.filter((item) => item.status === "pending").length} /></div>
+        <div className="mt-6"><Panel eyebrow={`${roleLabel} access`} title="Choose a workspace"><p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">{roleDescription} Select an active workspace below to start working.</p><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{workspaces.map((workspace) => <WorkspaceCard key={`${workspace.tab}-${workspace.capability}`} workspace={workspace} active={has(workspace.capability)} onOpen={() => setTab(workspace.tab)} />)}</div></Panel></div>
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.25fr_.75fr]">
           <Panel eyebrow="Next best actions" title="What needs attention">
             {missingActions.length ? <div className="mt-5 grid gap-3">{missingActions.slice(0, 8).map((item) => <button key={`${item.game.id}-${item.role}`} onClick={() => setTab("media")} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/25 p-4 text-left"><div><p className="text-sm font-black">Add {item.label}</p><p className="mt-1 text-xs text-slate-500">{item.game.title}</p></div><span className="text-xs font-black text-orange-300">Fix →</span></button>)}</div> : <p className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-5 text-sm text-emerald-200">All linked games have posters and full-game coverage, or submissions are already in review.</p>}
@@ -144,7 +194,6 @@ export default function TeamPortalClient({ teamId }: { teamId: string }) {
             <div className="mt-5 grid gap-3">{data.leaderboard_links.map((link) => <Link key={link.href} href={link.href} className="rounded-xl border border-white/15 bg-white/[.04] p-4 text-sm font-black text-[var(--club-accent)]">{link.title} →</Link>)}</div>
           </Panel>
         </div>
-        <div className="mt-6"><Panel eyebrow="Club access" title="Workspace permissions"><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{(Object.keys(TEAM_CAPABILITY_LABELS) as TeamCapability[]).map((capability) => <div key={capability} className={`rounded-xl border p-4 ${has(capability) ? "border-emerald-400/20 bg-emerald-500/10" : "border-white/10 bg-black/20 opacity-60"}`}><p className="text-sm font-black">{TEAM_CAPABILITY_LABELS[capability]}</p><p className={`mt-2 text-[9px] font-black uppercase ${has(capability) ? "text-emerald-300" : "text-slate-500"}`}>{has(capability) ? "Active" : "Controlled upgrade or role"}</p></div>)}</div></Panel></div>
       </section> : null}
 
       {tab === "training" ? <Feature capability="training_manage" active={has("training_manage")} title="Training workspace">
@@ -177,6 +226,10 @@ export default function TeamPortalClient({ teamId }: { teamId: string }) {
 
 function Metric({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "orange" }) { return <div className="rounded-2xl border border-white/10 bg-slate-950 p-5"><p className={`text-3xl font-black ${tone === "orange" ? "text-[var(--club-accent)]" : "text-white"}`}>{value}</p><p className="mt-2 text-[8px] font-black uppercase tracking-[.14em] text-slate-600">{label}</p></div>; }
 function Panel({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) { return <section className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-5 sm:p-6"><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">{eyebrow}</p><h2 className="mt-2 text-2xl font-black uppercase">{title}</h2>{children}</section>; }
+function WorkspaceCard({ workspace, active, onOpen }: { workspace: (typeof workspaces)[number]; active: boolean; onOpen: () => void }) {
+  const content = <><span className="flex items-start justify-between gap-3"><span className="text-base font-black uppercase">{workspace.label}</span><span className={`rounded-full px-2 py-1 text-[7px] font-black uppercase ${active ? "bg-emerald-500/15 text-emerald-300" : "bg-white/[.05] text-slate-600"}`}>{active ? "Open" : "Locked"}</span></span><span className="mt-2 block text-xs leading-5 text-slate-400">{workspace.description}</span><span className={`mt-4 block text-[8px] font-black uppercase tracking-[.1em] ${active ? "text-[var(--club-accent)]" : "text-slate-600"}`}>{active ? "Enter workspace →" : "Super Admin activation required"}</span></>;
+  return active ? <button type="button" onClick={onOpen} className="rounded-xl border border-emerald-400/20 bg-emerald-500/[.07] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--club-accent)] hover:bg-white/[.06]">{content}</button> : <div className="rounded-xl border border-white/10 bg-black/20 p-4 opacity-70">{content}</div>;
+}
 function Feature({ capability, active, title, children, compact = false }: { capability: TeamCapability; active: boolean; title: string; children: React.ReactNode; compact?: boolean }) { if (!active) return <section className={compact ? "" : "mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8"}><div className="rounded-[1.5rem] border border-white/15 bg-white/[.04] p-7"><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Access unavailable</p><h2 className="mt-2 text-2xl font-black uppercase">{title}</h2><p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">{TEAM_CAPABILITY_LABELS[capability]} is not enabled for this account role or controlled upgrade. Super Admin can review the access level.</p></div></section>; return <section className={compact ? "" : "mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8"}>{children}</section>; }
 function Locked({ label }: { label: string }) { return <div className="mt-5 rounded-xl border border-dashed border-white/15 p-5 text-center text-xs font-black uppercase text-slate-500">{label} requires Super Admin activation</div>; }
 function Empty({ text }: { text: string }) { return <div className="rounded-xl border border-dashed border-white/15 p-6 text-center text-sm text-slate-500">{text}</div>; }
