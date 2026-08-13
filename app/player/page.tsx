@@ -5,7 +5,9 @@ import NotificationBell from "@/app/components/NotificationBell";
 import PlayerActivityTracker from "@/app/components/PlayerActivityTracker";
 import PushNotificationManager from "@/app/components/PushNotificationManager";
 import AnimatedNumber from "@/app/components/AnimatedNumber";
+import { buildBasketballIQ, type BasketballStatLine } from "@/lib/basketball-iq/insights";
 import { getPlayerAccess } from "@/lib/auth/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -65,6 +67,17 @@ export default async function PlayerPortalPage() {
   const notifications = notificationResult.data ?? [];
   const unreadAlerts = notifications.filter((item) => !item.is_read).length;
   const playerName = player.full_name || player.name || player.nickname || "Player";
+  const admin = createSupabaseAdminClient();
+  const rosterResult = await admin.from("team_roster_members").select("id,team_id,display_name,team_profiles(id,name,slug,primary_color,secondary_color)").eq("player_id", player.id).eq("status", "active");
+  const rosterRows = rosterResult.data ?? [];
+  const teamIds = Array.from(new Set(rosterRows.map((row) => row.team_id).filter(Boolean)));
+  const [clubLinesResult, briefingsResult] = teamIds.length ? await Promise.all([
+    admin.from("team_player_stat_lines").select("*").eq("player_id", player.id).in("team_id", teamIds).neq("status", "rejected").order("updated_at", { ascending: false }).limit(500),
+    admin.from("team_performance_briefings").select("*").in("team_id", teamIds).eq("status", "published").order("published_at", { ascending: false }).limit(100),
+  ]) : [{ data: [], error: null }, { data: [], error: null }];
+  const rosterIds = new Set(rosterRows.map((row) => row.id));
+  const clubBriefings = (briefingsResult.data ?? []).filter((briefing) => briefing.audience === "team" || briefing.player_id === player.id || rosterIds.has(briefing.roster_member_id));
+  const playerIntelligence = buildBasketballIQ((clubLinesResult.data ?? []) as BasketballStatLine[]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -153,6 +166,17 @@ export default async function PlayerPortalPage() {
       </section>
 
       <section className="mx-auto grid max-w-7xl gap-6 px-5 pb-12 sm:px-6 lg:grid-cols-2">
+        <div className="rounded-3xl border border-orange-500/25 bg-[linear-gradient(135deg,rgba(249,115,22,.12),rgba(15,23,42,.9)_42%)] p-5 lg:col-span-2 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Basketball IQ</p><h2 className="mt-2 text-3xl font-black">My Development Desk</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Private club data and coach instructions. Team-submitted numbers can guide training immediately; the public player record changes only after FACKTS verification.</p></div>
+            <div className="grid grid-cols-3 gap-2"><MiniStat label="Club games" value={String(playerIntelligence.sample_games)} /><MiniStat label="FG%" value={playerIntelligence.metrics.field_goal_percentage === null ? "—" : `${playerIntelligence.metrics.field_goal_percentage}%`} /><MiniStat label="FT%" value={playerIntelligence.metrics.free_throw_percentage === null ? "—" : `${playerIntelligence.metrics.free_throw_percentage}%`} /></div>
+          </div>
+          <div className="mt-6 grid gap-5 lg:grid-cols-[.9fr_1.1fr]">
+            <div><p className="text-[10px] font-black uppercase tracking-[.15em] text-slate-500">What to work on next</p><div className="mt-3 grid gap-3">{playerIntelligence.player_recommendations.map((item) => <article key={item.id} className="rounded-2xl border border-orange-400/20 bg-black/30 p-4"><p className="text-xs font-black uppercase text-orange-300">{item.focus}</p><h3 className="mt-2 text-lg font-black">{item.headline}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{item.evidence}</p><p className="mt-3 text-sm leading-6 text-white">{item.training}</p></article>)}{!playerIntelligence.player_recommendations.length ? <p className="rounded-2xl border border-dashed border-slate-700 p-5 text-sm leading-6 text-slate-500">No individual alert has crossed the action threshold yet. Complete player box scores will make this view smarter.</p> : null}</div></div>
+            <div><p className="text-[10px] font-black uppercase tracking-[.15em] text-slate-500">Coach briefings</p><div className="mt-3 grid gap-3">{clubBriefings.slice(0, 8).map((briefing) => <article key={briefing.id} className="rounded-2xl border border-slate-700 bg-black/30 p-4"><div className="flex items-center justify-between gap-3"><p className="font-black">{briefing.title}</p><span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[8px] font-black uppercase text-emerald-300">{briefing.audience === "team" ? "Team" : "For you"}</span></div>{briefing.focus_area ? <p className="mt-2 text-xs font-black uppercase text-orange-300">{briefing.focus_area}</p> : null}<p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-300">{briefing.body}</p></article>)}{!clubBriefings.length ? <p className="rounded-2xl border border-dashed border-slate-700 p-5 text-sm text-slate-500">No club development briefings have been published to you yet.</p> : null}</div></div>
+          </div>
+        </div>
+
         <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
             Performance

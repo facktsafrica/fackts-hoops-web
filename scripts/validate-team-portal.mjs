@@ -22,6 +22,12 @@ const requiredFiles = [
   "app/leagues/[slug]/page.tsx",
   "supabase/migrations/20260814_001_team_partner_portal.sql",
   "supabase/migrations/20260814_002_club_portals_and_leagues.sql",
+  "supabase/migrations/20260814_003_phase2_basketball_iq.sql",
+  "app/team-portal/BasketballIQWorkspace.tsx",
+  "app/api/team-portal/basketball-iq/route.ts",
+  "app/api/team-portal/basketball-iq/import/route.ts",
+  "lib/basketball-iq/insights.ts",
+  "lib/basketball-iq/documentImport.ts",
 ];
 
 const failures = [];
@@ -33,7 +39,7 @@ function source(file) {
   return fs.readFileSync(path.join(root, file), "utf8");
 }
 
-const migration = `${source("supabase/migrations/20260814_001_team_partner_portal.sql")}\n${source("supabase/migrations/20260814_002_club_portals_and_leagues.sql")}`;
+const migration = `${source("supabase/migrations/20260814_001_team_partner_portal.sql")}\n${source("supabase/migrations/20260814_002_club_portals_and_leagues.sql")}\n${source("supabase/migrations/20260814_003_phase2_basketball_iq.sql")}`;
 for (const table of [
   "team_subscriptions",
   "team_portal_memberships",
@@ -49,6 +55,18 @@ if (!migration.includes("public.leagues") || !migration.includes("public.team_le
 if (!migration.includes("Core club workspace")) failures.push("Registered-team core access is missing");
 if (!migration.includes("synthetic_team_id")) failures.push("Synthetic Eagles cleanup is missing");
 if (!migration.includes("result in ('W','L')")) failures.push("Team result constraint is not win/loss-only");
+for (const table of ["team_stat_imports", "team_stat_sessions", "team_player_stat_lines", "team_performance_briefings"]) {
+  if (!migration.includes(`public.${table}`)) failures.push(`Basketball IQ migration does not define ${table}`);
+}
+if (!migration.includes("'team-stat-imports'")) failures.push("Private stat-document storage is missing");
+
+const intelligenceSource = source("app/api/team-portal/basketball-iq/route.ts");
+if (!intelligenceSource.includes('requireTeamCapability("stats_submit"')) failures.push("Basketball IQ API is not capability-gated");
+if (!intelligenceSource.includes('submission_type: "team_stat_session"')) failures.push("Complete stat sessions do not enter the Super Admin queue");
+const importSource = source("app/api/team-portal/basketball-iq/import/route.ts");
+if (!importSource.includes('storage.from("team-stat-imports")')) failures.push("Stat documents are not stored in the private import bucket");
+const reviewSource = source("app/api/admin/team-portals/route.ts");
+if (!reviewSource.includes('text(payload.submission_type, 60) === "team_stat_session"')) failures.push("Super Admin cannot review complete club stat sessions");
 
 const cryptoSource = source("lib/team-portal/crypto.ts");
 if (!cryptoSource.includes('createCipheriv("aes-256-gcm"')) failures.push("YouTube secrets are not using AES-256-GCM");
@@ -72,6 +90,11 @@ const activeBasketballFiles = [
   "lib/hoops/teamProfiles.ts",
   "lib/hoops/leagues.ts",
   "app/leagues/[slug]/page.tsx",
+  "app/team-portal/TeamPortalClient.tsx",
+  "app/team-portal/BasketballIQWorkspace.tsx",
+  "app/player/page.tsx",
+  "app/api/team-portal/basketball-iq/route.ts",
+  "app/api/admin/team-portals/route.ts",
 ];
 const forbiddenResultWord = new RegExp(`(^|[^a-z])d${"raw"}([^a-z]|$)`, "i");
 for (const file of activeBasketballFiles) {

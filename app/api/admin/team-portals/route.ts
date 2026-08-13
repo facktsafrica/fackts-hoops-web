@@ -302,6 +302,96 @@ export async function POST(request: NextRequest) {
           }, { onConflict: "source_submission_id" });
           if (teamGame.error) throw teamGame.error;
         }
+        if (text(payload.submission_type, 60) === "team_stat_session") {
+          const sessionId = text(payload.session_id, 100);
+          const [sessionResult, linesResult] = await Promise.all([
+            admin.from("team_stat_sessions").select("*").eq("id", sessionId).eq("team_id", teamId).maybeSingle(),
+            admin.from("team_player_stat_lines").select("*").eq("session_id", sessionId).eq("team_id", teamId),
+          ]);
+          if (sessionResult.error) throw sessionResult.error;
+          if (linesResult.error) throw linesResult.error;
+          if (!sessionResult.data) return NextResponse.json({ ok: false, error: "The linked club stat session no longer exists." }, { status: 404 });
+          if (!(linesResult.data ?? []).length) return NextResponse.json({ ok: false, error: "The linked club stat session has no player rows." }, { status: 409 });
+          const now = new Date().toISOString();
+
+          if (decision === "approved") {
+            const game = await admin.from("games").select("*").eq("id", sessionResult.data.game_id).maybeSingle();
+            if (game.error) throw game.error;
+            if (!game.data || ![game.data.home_team_id, game.data.away_team_id].includes(teamId)) {
+              return NextResponse.json({ ok: false, error: "This session is not linked to a canonical game assigned to the club. Link the game before official approval." }, { status: 409 });
+            }
+            const teamSide = game.data.home_team_id === teamId ? "home" : "away";
+            const expectedScore = Number(teamSide === "home"
+              ? game.data.home_score ?? game.data.team_score
+              : game.data.away_score ?? game.data.opponent_score);
+            const recordedScore = (linesResult.data ?? []).reduce((total, line) => total + Number(line.points ?? 0), 0);
+            if (Number.isFinite(expectedScore) && expectedScore >= 0 && recordedScore !== expectedScore) {
+              return NextResponse.json({ ok: false, error: `Club player points (${recordedScore}) do not equal the recorded team score (${expectedScore}). Return the session for correction.` }, { status: 409 });
+            }
+
+            const roster = await admin.from("game_rosters").select("player_id,team_side").eq("game_id", sessionResult.data.game_id).neq("roster_status", "unavailable");
+            if (roster.error) throw roster.error;
+            const eligible = new Map((roster.data ?? []).map((row) => [String(row.player_id), row.team_side || teamSide]));
+            const officialLines = (linesResult.data ?? []).filter((line) => line.player_id && eligible.has(String(line.player_id)));
+            const officialPlayerIds = officialLines.map((line) => String(line.player_id));
+            const existing = officialPlayerIds.length
+              ? await admin.from("player_game_stats").select("id,player_id,entry_status,verification_status").eq("game_id", sessionResult.data.game_id).in("player_id", officialPlayerIds)
+              : { data: [], error: null };
+            if (existing.error) throw existing.error;
+            const existingByPlayer = new Map((existing.data ?? []).map((line) => [String(line.player_id), line]));
+            if ((existing.data ?? []).some((line) => line.entry_status === "verified" || line.verification_status === "verified")) {
+              return NextResponse.json({ ok: false, error: "At least one official stat line is already verified. Use Data Corrections instead of overwriting it." }, { status: 409 });
+            }
+            for (const line of officialLines) {
+              const canonical = {
+                game_id: sessionResult.data.game_id,
+                player_id: line.player_id,
+                points: line.points,
+                rebounds: line.rebounds,
+                offensive_rebounds: line.offensive_rebounds,
+                defensive_rebounds: line.defensive_rebounds,
+                assists: line.assists,
+                steals: line.steals,
+                blocks: line.blocks,
+                turnovers: line.turnovers,
+                fouls: line.fouls,
+                minutes: line.minutes,
+                two_made: line.two_made,
+                two_attempted: line.two_attempted,
+                three_made: line.three_made,
+                three_attempted: line.three_attempted,
+                ft_made: line.ft_made,
+                ft_attempted: line.ft_attempted,
+                three_pointers_made: line.three_made,
+                plus_minus: line.plus_minus,
+                period_values: line.period_values || {},
+                team_side: eligible.get(String(line.player_id)) || teamSide,
+                entry_status: "verified",
+                verification_status: "verified",
+                submitted_at: sessionResult.data.submitted_at || now,
+                submitted_by: sessionResult.data.created_by_user_id,
+                verified_at: now,
+                verified_by: access.user?.id,
+                last_saved_at: now,
+                updated_at: now,
+                extra_stats: { source: "club_basketball_iq", team_id: teamId, team_stat_session_id: sessionId, team_stat_submission_id: id },
+              };
+              const currentLine = existingByPlayer.get(String(line.player_id));
+              const savedCanonical = currentLine
+                ? await admin.from("player_game_stats").update(canonical).eq("id", currentLine.id)
+                : await admin.from("player_game_stats").insert({ ...canonical, created_at: now });
+              if (savedCanonical.error) throw savedCanonical.error;
+            }
+          }
+
+          const sessionStatus = decision === "approved" ? "approved" : "rejected";
+          const [sessionUpdate, lineUpdate] = await Promise.all([
+            admin.from("team_stat_sessions").update({ status: sessionStatus, reviewed_at: now, updated_at: now }).eq("id", sessionId).eq("team_id", teamId),
+            admin.from("team_player_stat_lines").update({ status: sessionStatus, updated_at: now }).eq("session_id", sessionId).eq("team_id", teamId),
+          ]);
+          if (sessionUpdate.error) throw sessionUpdate.error;
+          if (lineUpdate.error) throw lineUpdate.error;
+        }
         const saved = await admin.from("team_stat_submissions").update(review).eq("id", id).eq("team_id", teamId);
         if (saved.error) throw saved.error;
       } else if (queue === "profiles") {

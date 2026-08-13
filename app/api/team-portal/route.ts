@@ -136,6 +136,7 @@ export async function GET(request: NextRequest) {
       const hasLegacyHighlight = gameLegacyMedia.some((item) => roleMatches(item.media_type, ["highlight", "highlights"]));
       return {
         id,
+        official_game: canonicalIds.has(id),
         title: gameTitle(game),
         game_date: game.game_date || game.date || null,
         competition_name: text(game.competition_name || game.match_type) || "FACKTS Hoops",
