@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readBasketballReportPdf } from "@/lib/basketball-iq/browserReportOcr";
 
 type JsonRecord = Record<string, any>;
 type Mode = "live" | "box_score" | "import" | "coach";
@@ -61,6 +62,10 @@ export default function BasketballIQWorkspace({
   const [importRows, setImportRows] = useState<JsonRecord[]>([]);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState("");
+  const [reportFile, setReportFile] = useState<File | null>(null);
+  const [reportDraft, setReportDraft] = useState<JsonRecord | null>(null);
+  const [createdGames, setCreatedGames] = useState<JsonRecord[]>([]);
   const [briefing, setBriefing] = useState({ audience: "team", roster_member_id: "", title: "", focus_area: "", body: "", source_type: "coach" });
   const revision = useRef(0);
 
@@ -193,22 +198,82 @@ export default function BasketballIQWorkspace({
     if (response.ok) { await load(); startNew("live", true); }
   }
 
-  async function uploadImport(form: HTMLFormElement) {
+  async function storeImport(file: File, report: JsonRecord | null = null) {
     setImporting(true);
-    const formData = new FormData(form);
+    setImportProgress("Securing the report…");
+    const formData = new FormData();
+    formData.set("file", file);
     formData.set("team_id", teamId);
     formData.set("game_id", gameId);
-    const response = await fetch("/api/team-portal/basketball-iq/import", { method: "POST", body: formData });
-    const payload = await response.json().catch(() => ({}));
-    setImporting(false);
-    onMessage(payload.message || payload.error || "Import finished.");
-    if (response.ok) {
-      setImportRows(payload.rows || []);
-      setImportWarnings(payload.warnings || []);
-      setSourceImportId(payload.import?.id || "");
-      form.reset();
-      await load();
+    if (!gameId && report?.match) {
+      formData.set("create_game", "true");
+      for (const key of ["home_team_name", "away_team_name", "game_date", "home_score", "away_score", "team_side"] as const) formData.set(key, String(report.match[key] ?? ""));
+      formData.set("period_scores", JSON.stringify(report.match.period_scores || []));
     }
+    if (report?.rows?.length) formData.set("ocr_rows", JSON.stringify(report.rows));
+    if (report?.warnings?.length) formData.set("ocr_warnings", JSON.stringify(report.warnings));
+    try {
+      const response = await fetch("/api/team-portal/basketball-iq/import", { method: "POST", body: formData });
+      const payload = await response.json().catch(() => ({}));
+      onMessage(payload.message || payload.error || "Import finished.");
+      if (response.ok) {
+        setImportRows(payload.rows || []);
+        setImportWarnings(payload.warnings || []);
+        setSourceImportId(payload.import?.id || "");
+        if (payload.game_id) setGameId(payload.game_id);
+        if (payload.game) setCreatedGames((current) => [payload.game, ...current.filter((game) => game.id !== payload.game.id)]);
+        setReportDraft(null);
+        setReportFile(null);
+        await load();
+      }
+    } finally {
+      setImporting(false);
+      setImportProgress("");
+    }
+  }
+
+  async function uploadImport(form: HTMLFormElement) {
+    const file = new FormData(form).get("file");
+    if (!(file instanceof File) || !file.size) { onMessage("Choose a stat report first."); return; }
+    if (!roster.length) { onMessage("Add the team players before importing their box score."); return; }
+    const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+    if (!isPdf) {
+      if (!gameId) { onMessage("For Excel, CSV and Word imports, choose an existing game. PDF game reports can create a missing match automatically."); return; }
+      await storeImport(file);
+      form.reset();
+      return;
+    }
+    setImporting(true);
+    setImportProgress("Opening the report…");
+    try {
+      const report = await readBasketballReportPdf(file, roster, setImportProgress);
+      setImportWarnings(report.warnings);
+      if (!report.match) {
+        onMessage("The report pages were read, but the game header needs manual confirmation. Nothing has been saved yet.");
+        setReportFile(file);
+        setReportDraft({ match: { home_team_name: "", away_team_name: "", game_date: "", home_score: 0, away_score: 0, team_side: "home", period_scores: [] }, rows: report.rows, warnings: report.warnings });
+      } else if (!gameId) {
+        setReportFile(file);
+        setReportDraft(report);
+        onMessage(`${report.match.home_team_name} ${report.match.home_score}–${report.match.away_score} ${report.match.away_team_name} detected. Confirm it below before the private game is created.`);
+      } else {
+        await storeImport(file, report);
+      }
+      form.reset();
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "The image-based PDF could not be read.");
+    } finally {
+      setImporting(false);
+      setImportProgress("");
+    }
+  }
+
+  function updateMatch(field: string, value: string | number) {
+    setReportDraft((current) => current ? {
+      ...current,
+      rows: field === "team_side" ? (value === "away" ? current.away_rows : current.home_rows) || current.rows : current.rows,
+      match: { ...current.match, [field]: value },
+    } : current);
   }
 
   function loadImport() {
@@ -239,6 +304,7 @@ export default function BasketballIQWorkspace({
 
   const intelligence = data?.intelligence || { metrics: {}, recommendations: [], player_recommendations: [], sample_games: 0 };
   const activeSessions = data?.sessions?.filter((session: JsonRecord) => session.status !== "draft").slice(0, 5) || [];
+  const availableGames = [...createdGames, ...games.filter((game) => !createdGames.some((created) => created.id === game.id))];
 
   return (
     <div className="grid gap-6">
@@ -256,10 +322,10 @@ export default function BasketballIQWorkspace({
 
       <section className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-4 sm:p-6">
         <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-end">
-          <label><span className="mb-2 block text-[9px] font-black uppercase tracking-[.14em] text-slate-500">Game being worked</span><select value={gameId} onChange={(event) => changeGame(event.target.value)} className={input}><option value="">Choose a linked game</option>{games.map((game) => <option key={game.id} value={game.id}>{game.title}{game.official_game === false ? " · club intelligence only" : ""}</option>)}</select></label>
+          <label><span className="mb-2 block text-[9px] font-black uppercase tracking-[.14em] text-slate-500">Game being worked</span><select value={gameId} onChange={(event) => changeGame(event.target.value)} className={input}><option value="">Choose a linked game—or create one from a PDF report</option>{availableGames.map((game) => <option key={game.id} value={game.id}>{game.title || game.game_title}{game.verification_status === "unverified" || game.official_game === false ? " · awaiting verification" : ""}</option>)}</select></label>
           <div className="flex flex-wrap gap-2"><button type="button" onClick={() => startNew("live")} className={secondary}>New game session</button><button type="button" disabled={!includedRows.length || saving} onClick={() => void submitSession()} className={primary}>Submit complete game</button></div>
         </div>
-        {!games.length ? <div className="mt-5 rounded-xl border border-dashed border-orange-400/25 bg-orange-500/[.05] p-5 text-sm text-orange-100">No game is linked to this team yet. Super Admin must create or assign the game before official player stats can be captured.</div> : null}
+        {!availableGames.length ? <div className="mt-5 rounded-xl border border-dashed border-orange-400/25 bg-orange-500/[.05] p-5 text-sm text-orange-100">No game is linked yet. Open Import and upload the PDF report—the portal will read the match and let you create it privately for Super Admin verification.</div> : null}
         {!roster.length ? <div className="mt-5 rounded-xl border border-dashed border-orange-400/25 bg-orange-500/[.05] p-5 text-sm text-orange-100">Add players under Team &amp; Players before opening a stat session.</div> : null}
         <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{modes.map(([key, label, hint]) => <button key={key} onClick={() => setMode(key)} className={`rounded-xl border p-4 text-left transition ${mode === key ? "border-[var(--club-accent)] bg-white/[.08]" : "border-white/10 bg-black/20 hover:border-white/25"}`}><span className="block text-xs font-black uppercase">{label}</span><span className="mt-1 block text-[10px] text-slate-500">{hint}</span></button>)}</div>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-[9px] font-black uppercase tracking-[.1em]"><span className={saving ? "text-orange-300" : dirty ? "text-yellow-300" : "text-emerald-300"}>{saving ? "Autosaving…" : dirty ? "Unsaved changes" : lastSaved ? `Saved ${new Date(lastSaved).toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" })}` : "Ready"}</span><span className="text-slate-700">·</span><span className="text-slate-500">{includedRows.length} participating players</span><span className="text-slate-700">·</span><span className="text-slate-500">Team points {teamScore}</span></div>
@@ -280,8 +346,35 @@ export default function BasketballIQWorkspace({
       {mode === "box_score" ? <BoxScore rows={rows} onToggle={(id, included) => { setRows((current) => current.map((row) => row.roster_member_id === id ? { ...row, included } : row)); revision.current += 1; setDirty(true); }} onChange={updateRow} /> : null}
 
       {mode === "import" ? <section className="grid gap-6 lg:grid-cols-[.72fr_1.28fr]">
-        <div className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6"><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Private source evidence</p><h3 className="mt-2 text-2xl font-black uppercase">Upload stat sheet</h3><p className="mt-3 text-sm leading-6 text-slate-400">CSV and modern Excel are strongest. Text-based PDF and Word tables are extracted when possible. Nothing becomes official without your review and Super Admin approval.</p><form onSubmit={(event) => { event.preventDefault(); void uploadImport(event.currentTarget); }} className="mt-5 grid gap-3"><input name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.pdf,.docx,.doc" required className="rounded-xl border border-dashed border-white/15 bg-black/25 p-5 text-xs text-slate-400"/><button disabled={!gameId || importing} className={primary}>{importing ? "Reading document…" : "Upload and extract rows"}</button></form>{importWarnings.length ? <div className="mt-5 grid gap-2">{importWarnings.map((warning) => <p key={warning} className="rounded-lg border border-yellow-400/15 bg-yellow-500/[.06] p-3 text-xs leading-5 text-yellow-100">{warning}</p>)}</div> : null}<div className="mt-6"><p className="text-[9px] font-black uppercase text-slate-500">Recent imports</p><div className="mt-3 grid gap-2">{(data?.imports || []).slice(0, 5).map((item: JsonRecord) => <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3"><p className="truncate text-xs font-black">{item.file_name}</p><p className="mt-1 text-[9px] uppercase text-slate-600">{item.extraction_status}</p></div>)}</div></div></div>
-        <div className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6"><div className="flex items-end justify-between gap-4"><div><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Human review required</p><h3 className="mt-2 text-2xl font-black uppercase">Match extracted players</h3></div><button disabled={!importRows.length} onClick={loadImport} className={primary}>Load review grid</button></div><div className="mt-5 grid gap-3">{importRows.map((row, index) => <div key={`${row.player_name}-${index}`} className="grid gap-3 rounded-xl border border-white/10 bg-black/25 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-center"><div><p className="font-black">{row.player_name}</p><p className="mt-1 text-[9px] text-slate-500">PTS {row.points} · REB {row.rebounds} · AST {row.assists}</p></div><select value={row.roster_member_id || ""} onChange={(event) => setImportRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, roster_member_id: event.target.value || null } : item))} className={input}><option value="">Choose roster player</option>{roster.map((member) => <option key={member.id} value={member.id}>{member.display_name}{member.jersey_number ? ` · #${member.jersey_number}` : ""}</option>)}</select><span className={`rounded-full px-2.5 py-1 text-[8px] font-black uppercase ${row.roster_member_id ? "bg-emerald-500/15 text-emerald-300" : "bg-yellow-500/15 text-yellow-200"}`}>{row.roster_member_id ? "Matched" : "Check"}</span></div>)}{!importRows.length ? <p className="rounded-xl border border-dashed border-white/15 p-8 text-center text-sm text-slate-500">Upload a stat sheet to begin the review.</p> : null}</div></div>
+        <div className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6">
+          <p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Private source evidence</p>
+          <h3 className="mt-2 text-2xl font-black uppercase">Upload stat report</h3>
+          <p className="mt-3 text-sm leading-6 text-slate-400">Upload the report even when the game is missing. Image-based Basketball Stats Assistant PDFs are read securely in this browser, then you confirm the detected match before an unverified game is created.</p>
+          <form onSubmit={(event) => { event.preventDefault(); void uploadImport(event.currentTarget); }} className="mt-5 grid gap-3">
+            <input name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.pdf,.docx,.doc" required className="rounded-xl border border-dashed border-white/15 bg-black/25 p-5 text-xs text-slate-400"/>
+            <button disabled={importing || !roster.length} className={primary}>{importing ? importProgress || "Reading document…" : gameId ? "Upload and extract rows" : "Read report and create missing game"}</button>
+          </form>
+
+          {reportDraft?.match && reportFile ? <div className="mt-5 rounded-2xl border border-[var(--club-accent)]/35 bg-[var(--club-accent)]/[.06] p-4">
+            <div className="flex items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[.16em] text-[var(--club-accent)]">Confirm detected match</p><p className="mt-1 text-xs text-slate-400">Nothing is public. The new game will wait for Super Admin verification.</p></div><span className="rounded-full bg-black/30 px-2.5 py-1 text-[8px] font-black uppercase text-slate-300">{reportDraft.rows?.length || 0} player rows</span></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label><span className="mb-1.5 block text-[8px] font-black uppercase text-slate-500">Home team</span><input value={reportDraft.match.home_team_name} onChange={(event) => updateMatch("home_team_name", event.target.value)} className={input}/></label>
+              <label><span className="mb-1.5 block text-[8px] font-black uppercase text-slate-500">Away team</span><input value={reportDraft.match.away_team_name} onChange={(event) => updateMatch("away_team_name", event.target.value)} className={input}/></label>
+              <label><span className="mb-1.5 block text-[8px] font-black uppercase text-slate-500">Game date</span><input type="date" value={reportDraft.match.game_date} onChange={(event) => updateMatch("game_date", event.target.value)} className={input}/></label>
+              <label><span className="mb-1.5 block text-[8px] font-black uppercase text-slate-500">Your team side</span><select value={reportDraft.match.team_side} onChange={(event) => updateMatch("team_side", event.target.value)} className={input}><option value="home">Home</option><option value="away">Away</option></select></label>
+              <label><span className="mb-1.5 block text-[8px] font-black uppercase text-slate-500">Home score</span><input type="number" min="0" value={reportDraft.match.home_score} onChange={(event) => updateMatch("home_score", Number(event.target.value))} className={input}/></label>
+              <label><span className="mb-1.5 block text-[8px] font-black uppercase text-slate-500">Away score</span><input type="number" min="0" value={reportDraft.match.away_score} onChange={(event) => updateMatch("away_score", Number(event.target.value))} className={input}/></label>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={importing} onClick={() => void storeImport(reportFile, reportDraft)} className={primary}>{importing ? importProgress || "Saving…" : "Confirm, create game and continue"}</button><button type="button" disabled={importing} onClick={() => { setReportDraft(null); setReportFile(null); }} className={secondary}>Cancel</button></div>
+          </div> : null}
+
+          {importWarnings.length ? <div className="mt-5 grid gap-2">{importWarnings.map((warning) => <p key={warning} className="rounded-lg border border-yellow-400/15 bg-yellow-500/[.06] p-3 text-xs leading-5 text-yellow-100">{warning}</p>)}</div> : null}
+          <div className="mt-6"><p className="text-[9px] font-black uppercase text-slate-500">Recent imports</p><div className="mt-3 grid gap-2">{(data?.imports || []).slice(0, 5).map((item: JsonRecord) => <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3"><p className="truncate text-xs font-black">{item.file_name}</p><p className="mt-1 text-[9px] uppercase text-slate-600">{item.extraction_status}</p></div>)}</div></div>
+        </div>
+        <div className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6">
+          <div className="flex items-end justify-between gap-4"><div><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Human review required</p><h3 className="mt-2 text-2xl font-black uppercase">Match extracted players</h3></div><button disabled={!importRows.length} onClick={loadImport} className={primary}>Load review grid</button></div>
+          <div className="mt-5 grid gap-3">{importRows.map((row, index) => <div key={`${row.player_name}-${index}`} className="grid gap-3 rounded-xl border border-white/10 bg-black/25 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-center"><div><p className="font-black">{row.player_name}</p><p className="mt-1 text-[9px] text-slate-500">PTS {row.points} · REB {row.rebounds} · AST {row.assists}</p></div><select value={row.roster_member_id || ""} onChange={(event) => setImportRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, roster_member_id: event.target.value || null } : item))} className={input}><option value="">Choose roster player</option>{roster.map((member) => <option key={member.id} value={member.id}>{member.display_name}{member.jersey_number ? ` · #${member.jersey_number}` : ""}</option>)}</select><span className={`rounded-full px-2.5 py-1 text-[8px] font-black uppercase ${row.roster_member_id ? "bg-emerald-500/15 text-emerald-300" : "bg-yellow-500/15 text-yellow-200"}`}>{row.roster_member_id ? "Matched" : "Check"}</span></div>)}{!importRows.length ? <p className="rounded-xl border border-dashed border-white/15 p-8 text-center text-sm text-slate-500">Upload a stat report to begin the review.</p> : null}</div>
+        </div>
       </section> : null}
 
       {mode === "coach" ? <section className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
@@ -289,7 +382,7 @@ export default function BasketballIQWorkspace({
         <div className="grid gap-6"><div className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6"><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Player-by-player alerts</p><h3 className="mt-2 text-2xl font-black uppercase">Individual development</h3><div className="mt-5 grid gap-3 sm:grid-cols-2">{(intelligence.player_recommendations || []).map((item: JsonRecord) => <Recommendation key={item.id} item={item} onUse={() => applyRecommendation(item)} />)}{!(intelligence.player_recommendations || []).length ? <p className="rounded-xl border border-dashed border-white/15 p-6 text-sm text-slate-500 sm:col-span-2">No individual alert has crossed the action threshold yet. More complete player box scores will improve the view.</p> : null}</div></div><div className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6"><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Published</p><h3 className="mt-2 text-2xl font-black uppercase">Briefing history</h3><div className="mt-5 grid gap-3">{(data?.briefings || []).map((item: JsonRecord) => <article key={item.id} className="rounded-xl border border-white/10 bg-black/25 p-4"><div className="flex items-center justify-between gap-3"><p className="font-black">{item.title}</p><span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[8px] font-black uppercase text-emerald-300">{item.audience}</span></div><p className="mt-2 whitespace-pre-line text-xs leading-5 text-slate-400">{item.body}</p></article>)}{!(data?.briefings || []).length ? <p className="text-sm text-slate-500">No coach briefings published yet.</p> : null}</div></div></div>
       </section> : null}
 
-      {activeSessions.length ? <section className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6"><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Governed history</p><h3 className="mt-2 text-2xl font-black uppercase">Recent complete games</h3><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{activeSessions.map((session: JsonRecord) => <article key={session.id} className="rounded-xl border border-white/10 bg-black/25 p-4"><p className="text-xs font-black uppercase">{games.find((game) => game.id === session.game_id)?.title || "Linked game"}</p><p className="mt-2 text-[9px] uppercase text-slate-500">{session.mode.replaceAll("_", " ")} · {session.status}</p></article>)}</div></section> : null}
+      {activeSessions.length ? <section className="rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6"><p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">Governed history</p><h3 className="mt-2 text-2xl font-black uppercase">Recent complete games</h3><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{activeSessions.map((session: JsonRecord) => <article key={session.id} className="rounded-xl border border-white/10 bg-black/25 p-4"><p className="text-xs font-black uppercase">{availableGames.find((game) => game.id === session.game_id)?.title || "Linked game"}</p><p className="mt-2 text-[9px] uppercase text-slate-500">{session.mode.replaceAll("_", " ")} · {session.status}</p></article>)}</div></section> : null}
     </div>
   );
 }
