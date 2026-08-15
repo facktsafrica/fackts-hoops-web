@@ -211,9 +211,10 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = await parseStatDocument(buffer, file.name, mimeType);
+    const browserOcr = text(form.get("browser_ocr"), 10) === "true";
     const ocrRows = clientRows(text(form.get("ocr_rows"), 250000));
-    const sourceRows = ocrRows.length ? ocrRows : parsed.rows;
+    const parsed = browserOcr ? { rows: [] as ImportedStatRow[], warnings: [] as string[] } : await parseStatDocument(buffer, file.name, mimeType);
+    const sourceRows = browserOcr ? ocrRows : parsed.rows;
     const rosterRows = roster.data ?? [];
     const matchedRows = sourceRows.map((row) => {
       const rowName = identity(row.player_name);
@@ -224,7 +225,7 @@ export async function POST(request: NextRequest) {
       return { ...row, roster_member_id: match?.id || null, player_id: match?.player_id || null };
     });
     const unmatched = matchedRows.filter((row) => !row.roster_member_id).length;
-    const warnings = Array.from(new Set([...(ocrRows.length ? stringList(text(form.get("ocr_warnings"), 20000)) : parsed.warnings)]));
+    const warnings = Array.from(new Set([...(browserOcr ? stringList(text(form.get("ocr_warnings"), 20000)) : parsed.warnings)]));
     if (unmatched) warnings.push(`${unmatched} extracted row${unmatched === 1 ? "" : "s"} could not be matched automatically. Choose the correct roster player before saving.`);
     const objectPath = `${teamId}/${new Date().getUTCFullYear()}/${crypto.randomUUID()}-${safeFilename(file.name)}`;
     const uploaded = await admin.storage.from("team-stat-imports").upload(objectPath, buffer, { contentType: mimeType, upsert: false });

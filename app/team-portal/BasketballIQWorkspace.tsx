@@ -205,6 +205,7 @@ export default function BasketballIQWorkspace({
     formData.set("file", file);
     formData.set("team_id", teamId);
     formData.set("game_id", gameId);
+    if (report) formData.set("browser_ocr", "true");
     if (!gameId && report?.match) {
       formData.set("create_game", "true");
       for (const key of ["home_team_name", "away_team_name", "game_date", "home_score", "away_score", "team_side"] as const) formData.set(key, String(report.match[key] ?? ""));

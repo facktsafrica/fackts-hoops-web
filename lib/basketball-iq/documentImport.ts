@@ -184,7 +184,11 @@ function docxText(buffer: Buffer) {
 }
 
 async function pdfText(buffer: Buffer) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const [pdfjs, pdfWorker] = await Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    import("pdfjs-dist/legacy/build/pdf.worker.mjs"),
+  ]);
+  (globalThis as typeof globalThis & { pdfjsWorker?: unknown }).pdfjsWorker ||= pdfWorker;
   const document = await pdfjs.getDocument({
     data: new Uint8Array(buffer),
     isEvalSupported: false,

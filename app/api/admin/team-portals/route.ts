@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { recordAdminAuditEvent } from "@/lib/admin/audit";
 import { isSuperAdmin } from "@/lib/admin/permissions";
@@ -72,7 +73,7 @@ export async function GET() {
       roster_members: rosterMembers.data ?? [],
     });
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Team portals could not be loaded." }, { status: 500 });
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Club Portals could not be loaded." }, { status: 500 });
   }
 }
 
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
       if (!email.includes("@")) return NextResponse.json({ ok: false, error: "Enter a valid team account email." }, { status: 400 });
       const users = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
       if (users.error) throw users.error;
-      let authUser = users.data.users.find((user) => user.email?.toLowerCase() === email) || null;
+      let authUser = users.data.users.find((user: { id: string; email?: string | null }) => user.email?.toLowerCase() === email) || null;
       const resetPassword = body.reset_password === true;
       let temporaryPassword: string | null = null;
       let accountCreated = false;
@@ -210,7 +211,7 @@ export async function POST(request: NextRequest) {
       const membershipId = text(body.membership_id, 100);
       const result = await admin.from("team_portal_memberships").update({ status: "revoked", updated_at: new Date().toISOString() }).eq("id", membershipId).eq("team_id", teamId).select("*").maybeSingle();
       if (result.error) throw result.error;
-      return NextResponse.json({ ok: true, message: "Team portal membership revoked." });
+      return NextResponse.json({ ok: true, message: "Club Portal membership revoked." });
     }
 
     if (action === "review_submission") {
@@ -323,6 +324,7 @@ export async function POST(request: NextRequest) {
           if (linesResult.error) throw linesResult.error;
           if (!sessionResult.data) return NextResponse.json({ ok: false, error: "The linked club stat session no longer exists." }, { status: 404 });
           if (!(linesResult.data ?? []).length) return NextResponse.json({ ok: false, error: "The linked club stat session has no player rows." }, { status: 409 });
+          const submittedLines = (linesResult.data ?? []) as JsonRecord[];
           const now = new Date().toISOString();
 
           if (decision === "approved") {
@@ -335,22 +337,35 @@ export async function POST(request: NextRequest) {
             const expectedScore = Number(teamSide === "home"
               ? game.data.home_score ?? game.data.team_score
               : game.data.away_score ?? game.data.opponent_score);
-            const recordedScore = (linesResult.data ?? []).reduce((total, line) => total + Number(line.points ?? 0), 0);
+            const recordedScore = submittedLines.reduce((total, line) => total + Number(line.points ?? 0), 0);
             if (Number.isFinite(expectedScore) && expectedScore >= 0 && recordedScore !== expectedScore) {
               return NextResponse.json({ ok: false, error: `Club player points (${recordedScore}) do not equal the recorded team score (${expectedScore}). Return the session for correction.` }, { status: 409 });
             }
 
-            const roster = await admin.from("game_rosters").select("player_id,team_side").eq("game_id", sessionResult.data.game_id).neq("roster_status", "unavailable");
+            const roster = await admin.from("team_roster_members").select("player_id").eq("team_id", teamId).eq("status", "active").not("player_id", "is", null);
             if (roster.error) throw roster.error;
-            const eligible = new Map((roster.data ?? []).map((row) => [String(row.player_id), row.team_side || teamSide]));
-            const officialLines = (linesResult.data ?? []).filter((line) => line.player_id && eligible.has(String(line.player_id)));
+            const eligible = new Map(((roster.data ?? []) as JsonRecord[]).map((row) => [String(row.player_id), teamSide]));
+            const officialLines = submittedLines.filter((line) => line.player_id && eligible.has(String(line.player_id)));
+            if (officialLines.length !== submittedLines.length) {
+              const missing = submittedLines.length - officialLines.length;
+              return NextResponse.json({ ok: false, error: `${missing} player row${missing === 1 ? " is" : "s are"} not linked to an official player profile. Link every club roster member before approval so the public box score is complete.` }, { status: 409 });
+            }
             const officialPlayerIds = officialLines.map((line) => String(line.player_id));
+            const gameRoster = await admin.from("game_rosters").upsert(officialPlayerIds.map((playerId) => ({
+              game_id: sessionResult.data.game_id,
+              player_id: playerId,
+              roster_status: "confirmed",
+              roster_role: "bench",
+              notes: "Synced from a Super Admin-approved club box score.",
+            })), { onConflict: "game_id,player_id" });
+            if (gameRoster.error) throw gameRoster.error;
             const existing = officialPlayerIds.length
               ? await admin.from("player_game_stats").select("id,player_id,entry_status,verification_status").eq("game_id", sessionResult.data.game_id).in("player_id", officialPlayerIds)
               : { data: [], error: null };
             if (existing.error) throw existing.error;
-            const existingByPlayer = new Map((existing.data ?? []).map((line) => [String(line.player_id), line]));
-            if ((existing.data ?? []).some((line) => line.entry_status === "verified" || line.verification_status === "verified")) {
+            const existingLines = (existing.data ?? []) as JsonRecord[];
+            const existingByPlayer = new Map(existingLines.map((line) => [String(line.player_id), line]));
+            if (existingLines.some((line) => line.entry_status === "verified" || line.verification_status === "verified")) {
               return NextResponse.json({ ok: false, error: "At least one official stat line is already verified. Use Data Corrections instead of overwriting it." }, { status: 409 });
             }
             for (const line of officialLines) {
@@ -393,6 +408,17 @@ export async function POST(request: NextRequest) {
                 : await admin.from("player_game_stats").insert({ ...canonical, created_at: now });
               if (savedCanonical.error) throw savedCanonical.error;
             }
+            const publishedGame = await admin.from("games").update({
+              status: "completed",
+              is_public: true,
+              verification_status: "verified",
+              updated_at: now,
+            }).eq("id", sessionResult.data.game_id).select("id").single();
+            if (publishedGame.error) throw publishedGame.error;
+            const publicTeam = await admin.from("team_profiles").select("slug").eq("id", teamId).maybeSingle();
+            if (publicTeam.error) throw publicTeam.error;
+            if (publicTeam.data?.slug) revalidatePath(`/teams/${publicTeam.data.slug}`);
+            revalidatePath("/teams");
           }
 
           const sessionStatus = decision === "approved" ? "approved" : "rejected";
@@ -426,6 +452,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: false, error: "Unsupported Super Admin action." }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Team portal administration failed." }, { status: 500 });
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Club Portal administration failed." }, { status: 500 });
   }
 }
