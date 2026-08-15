@@ -67,6 +67,7 @@ export default async function TeamProfilePage({
     competitionRecords,
     leagueMemberships,
     performance,
+    verifiedStats,
     canClaim,
   } = bundle;
   const requestedTab = String(query.tab || "overview") as TeamTab;
@@ -228,7 +229,8 @@ export default async function TeamProfilePage({
             <PerformanceMetric value={`${performance.pointDifference > 0 ? "+" : ""}${performance.pointDifference}`} label="Point difference" tone={performance.pointDifference >= 0 ? "green" : "red"} />
             <div className="rounded-2xl border border-white/10 bg-slate-950/85 p-5"><p className="text-[9px] font-black uppercase tracking-[.13em] text-zinc-600">Last five</p><div className="mt-4 flex flex-wrap gap-1.5">{performance.lastFive.length ? performance.lastFive.map((result, index) => <ResultPill key={`${result}-${index}`} result={result} />) : <span className="text-2xl font-black text-zinc-600">—</span>}</div></div>
           </div>
-          {!performance.played ? <EmptyState title="Statistics need final scores" body="Link completed Match Centres or record verified team results to activate this dashboard." /> : null}
+          {verifiedStats.gamesWithStats ? <div className="mt-12"><SectionHeading eyebrow="Verified player box scores" title="Team stat leaders" text="Only Super Admin-approved player lines are included. Team totals and averages update from the same canonical Match Centre data."/><div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"><PerformanceMetric value={verifiedStats.gamesWithStats} label="Games with stats"/><PerformanceMetric value={verifiedStats.playerLines} label="Player lines"/><PerformanceMetric value={verifiedStats.points} label="Points" tone="orange"/><PerformanceMetric value={verifiedStats.rebounds} label="Rebounds"/><PerformanceMetric value={verifiedStats.assists} label="Assists" tone="blue"/><PerformanceMetric value={verifiedStats.steals + verifiedStats.blocks} label="Stocks" tone="green"/></div><div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/85"><table className="w-full min-w-[680px] text-left"><thead className="border-b border-white/10 text-[8px] font-black uppercase tracking-[.12em] text-zinc-600"><tr><th className="p-4">Player</th><th className="p-4">GP</th><th className="p-4">PPG</th><th className="p-4">RPG</th><th className="p-4">APG</th><th className="p-4">STL</th><th className="p-4">BLK</th></tr></thead><tbody>{verifiedStats.leaders.map((leader) => <tr key={leader.playerId} className="border-b border-white/[.06] text-sm"><td className="p-4 font-black">{leader.profileHref ? <Link href={leader.profileHref} className="text-orange-300 hover:text-orange-200">{leader.name}</Link> : leader.name}</td><td className="p-4">{leader.gamesPlayed}</td><td className="p-4 font-black">{leader.pointsPerGame.toFixed(1)}</td><td className="p-4">{leader.reboundsPerGame.toFixed(1)}</td><td className="p-4">{leader.assistsPerGame.toFixed(1)}</td><td className="p-4">{leader.steals}</td><td className="p-4">{leader.blocks}</td></tr>)}</tbody></table></div></div> : null}
+          {!performance.played && !verifiedStats.gamesWithStats ? <EmptyState title="Verified statistics coming soon" body="Link completed Match Centres and approve player box scores to activate the team statistics dashboard." /> : null}
         </section>
       ) : null}
 

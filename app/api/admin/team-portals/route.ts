@@ -35,7 +35,7 @@ export async function GET() {
   if (!access.allowed) return NextResponse.json({ ok: false, error: "Super Admin access required." }, { status: 403 });
   try {
     const admin = createSupabaseAdminClient();
-    const [teams, subscriptions, memberships, branding, media, stats, profiles, training, channels, leagues, leagueMemberships] = await Promise.all([
+    const [teams, subscriptions, memberships, branding, media, stats, profiles, training, channels, leagues, leagueMemberships, games, rosterMembers] = await Promise.all([
       admin.from("team_profiles").select("id,slug,name,short_name,logo_url,cover_image_url,primary_color,secondary_color,verification_status,is_public").order("name"),
       admin.from("team_subscriptions").select("*").order("updated_at", { ascending: false }),
       admin.from("team_portal_memberships").select("*").order("created_at", { ascending: false }),
@@ -47,8 +47,10 @@ export async function GET() {
       admin.from("team_broadcast_channels").select("id,team_id,provider,channel_id,channel_title,status,connected_at,last_verified_at").order("connected_at", { ascending: false }),
       admin.from("leagues").select("*").order("display_order").order("name"),
       admin.from("team_league_memberships").select("*,leagues(id,slug,name,short_name)").order("created_at", { ascending: false }),
+      admin.from("games").select("id,title,game_title,game_date,status,home_team_id,away_team_id,home_team_name,away_team_name").order("game_date", { ascending: false }).limit(1000),
+      admin.from("team_roster_members").select("id,team_id,player_id,display_name,nickname,jersey_number,status").eq("status", "active").order("display_name").limit(5000),
     ]);
-    for (const result of [teams, subscriptions, memberships, branding, media, stats, profiles, training, channels, leagues, leagueMemberships]) {
+    for (const result of [teams, subscriptions, memberships, branding, media, stats, profiles, training, channels, leagues, leagueMemberships, games, rosterMembers]) {
       if (result.error) throw result.error;
     }
     return NextResponse.json({
@@ -66,6 +68,8 @@ export async function GET() {
       channels: channels.data ?? [],
       leagues: leagues.data ?? [],
       league_memberships: leagueMemberships.data ?? [],
+      games: games.data ?? [],
+      roster_members: rosterMembers.data ?? [],
     });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Team portals could not be loaded." }, { status: 500 });
@@ -148,7 +152,9 @@ export async function POST(request: NextRequest) {
       const users = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
       if (users.error) throw users.error;
       let authUser = users.data.users.find((user) => user.email?.toLowerCase() === email) || null;
-      const temporaryPassword = password();
+      const resetPassword = body.reset_password === true;
+      let temporaryPassword: string | null = null;
+      let accountCreated = false;
       if (authUser) {
         const [adminProfile, player] = await Promise.all([
           admin.from("admin_profiles").select("id").eq("user_id", authUser.id).maybeSingle(),
@@ -159,21 +165,24 @@ export async function POST(request: NextRequest) {
         if (adminProfile.data || player.data) {
           return NextResponse.json({ ok: false, error: "That email already belongs to an Admin or Player account. Use a dedicated team email." }, { status: 409 });
         }
+        if (resetPassword) temporaryPassword = password();
         const updated = await admin.auth.admin.updateUserById(authUser.id, {
-          password: temporaryPassword,
+          ...(temporaryPassword ? { password: temporaryPassword } : {}),
           email_confirm: true,
-          user_metadata: { role: "team_club", team_id: teamId },
+          user_metadata: { role: "team_club" },
         });
         if (updated.error) throw updated.error;
       } else {
+        temporaryPassword = password();
         const created = await admin.auth.admin.createUser({
           email,
           password: temporaryPassword,
           email_confirm: true,
-          user_metadata: { role: "team_club", team_id: teamId },
+          user_metadata: { role: "team_club" },
         });
         if (created.error || !created.data.user) throw created.error || new Error("Team account could not be created.");
         authUser = created.data.user;
+        accountCreated = true;
       }
       const membership = await admin.from("team_portal_memberships").upsert({
         team_id: teamId,
@@ -190,8 +199,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         membership: membership.data,
-        credentials: { email, temporary_password: temporaryPassword, login_url: `${siteUrl}/team-portal/login` },
-        message: "Team account activated. Send the temporary login securely.",
+        credentials: temporaryPassword ? { email, temporary_password: temporaryPassword, login_url: `${siteUrl}/team-portal/login` } : null,
+        message: accountCreated || resetPassword
+          ? "Team access assigned. Send the temporary login securely. If this person manages another club, use the same email there and keep its password unchanged."
+          : "Existing portal account assigned to this team. Its current password was preserved, and a club selector will appear after login.",
       }, { status: 201 });
     }
 

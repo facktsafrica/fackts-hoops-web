@@ -8,7 +8,7 @@ import {
   type TeamCapability,
 } from "@/lib/team-portal/capabilities";
 
-type PortalMembership = {
+export type PortalMembership = {
   id: string;
   team_id: string;
   user_id: string;
@@ -16,6 +16,13 @@ type PortalMembership = {
   status: string;
   display_name?: string | null;
   invited_email?: string | null;
+};
+
+export type PortalTeamOption = {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
 };
 
 type PortalSubscription = {
@@ -33,6 +40,31 @@ function subscriptionIsActive(subscription: PortalSubscription | null) {
   if (subscription.starts_at && new Date(subscription.starts_at).getTime() > now) return false;
   if (subscription.ends_at && new Date(subscription.ends_at).getTime() <= now) return false;
   return true;
+}
+
+export async function getTeamPortalTeams() {
+  const user = await getAuthenticatedUser();
+  if (!user) return { user: null as User | null, teams: [] as PortalTeamOption[] };
+  const admin = createSupabaseAdminClient();
+  const memberships = await admin
+    .from("team_portal_memberships")
+    .select("team_id,role,created_at")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: true });
+  if (memberships.error) throw memberships.error;
+  const teamIds = Array.from(new Set((memberships.data ?? []).map((membership) => String(membership.team_id))));
+  if (!teamIds.length) return { user, teams: [] as PortalTeamOption[] };
+  const profiles = await admin.from("team_profiles").select("id,name,slug").in("id", teamIds);
+  if (profiles.error) throw profiles.error;
+  const profileById = new Map((profiles.data ?? []).map((team) => [String(team.id), team]));
+  return {
+    user,
+    teams: (memberships.data ?? []).flatMap((membership) => {
+      const team = profileById.get(String(membership.team_id));
+      return team ? [{ id: String(team.id), name: String(team.name || "Team"), slug: String(team.slug || ""), role: String(membership.role || "viewer") }] : [];
+    }),
+  };
 }
 
 export async function getTeamPortalAccess(teamId?: string | null) {

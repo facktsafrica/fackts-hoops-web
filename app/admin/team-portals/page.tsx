@@ -23,6 +23,8 @@ type PortalAdminData = {
   channels: JsonRecord[];
   leagues: JsonRecord[];
   league_memberships: JsonRecord[];
+  games: JsonRecord[];
+  roster_members: JsonRecord[];
 };
 
 const input = "admin-control min-h-12 w-full rounded-xl border border-blue-400/15 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition focus:border-orange-400";
@@ -46,6 +48,10 @@ export default function TeamPortalsAdminPage() {
   const [message, setMessage] = useState("");
   const [working, setWorking] = useState(false);
   const [credentials, setCredentials] = useState<JsonRecord | null>(null);
+  const [statImportId, setStatImportId] = useState("");
+  const [statGameId, setStatGameId] = useState("");
+  const [statRows, setStatRows] = useState<JsonRecord[]>([]);
+  const [statWarnings, setStatWarnings] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/admin/team-portals", { cache: "no-store" });
@@ -66,6 +72,8 @@ export default function TeamPortalsAdminPage() {
   const activeAccounts = memberships.filter((item) => item.status === "active");
   const channel = data?.channels.find((item) => item.team_id === teamId);
   const leagueMemberships = data?.league_memberships.filter((item) => item.team_id === teamId) || [];
+  const teamGames = data?.games.filter((game) => game.home_team_id === teamId || game.away_team_id === teamId) || [];
+  const teamRoster = data?.roster_members.filter((member) => member.team_id === teamId) || [];
 
   useEffect(() => {
     const selectedPlan = normalizeTeamPlan(subscription?.plan_code);
@@ -94,9 +102,46 @@ export default function TeamPortalsAdminPage() {
     });
     const payload = await response.json().catch(() => ({}));
     setMessage(payload.message || payload.error || (response.ok ? "Saved." : "Update failed."));
-    if (payload.credentials) setCredentials(payload.credentials);
+    if (body.action === "issue_account") setCredentials(payload.credentials || null);
     setWorking(false);
     if (response.ok) await load();
+  }
+
+  async function uploadTeamStats(form: HTMLFormElement) {
+    setWorking(true);
+    setMessage("");
+    const formData = new FormData(form);
+    formData.set("team_id", teamId);
+    formData.set("game_id", statGameId);
+    const response = await fetch("/api/admin/team-portals/stats/import", { method: "POST", body: formData });
+    const payload = await response.json().catch(() => ({}));
+    setMessage(payload.message || payload.error || "Import finished.");
+    setWorking(false);
+    if (response.ok) {
+      setStatImportId(payload.import?.id || "");
+      setStatRows(payload.rows || []);
+      setStatWarnings(payload.warnings || []);
+      form.reset();
+    }
+  }
+
+  async function saveTeamStats() {
+    setWorking(true);
+    setMessage("");
+    const response = await fetch("/api/admin/team-portals/stats/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ team_id: teamId, game_id: statGameId, import_id: statImportId, rows: statRows }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    setMessage(payload.message || payload.error || "Team stats update finished.");
+    setWorking(false);
+    if (response.ok) {
+      setStatImportId("");
+      setStatRows([]);
+      setStatWarnings([]);
+      await load();
+    }
   }
 
   function changePlan(value: TeamPlanCode) {
@@ -133,7 +178,7 @@ export default function TeamPortalsAdminPage() {
           <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
             <label className="block">
               <span className="text-[9px] font-black uppercase tracking-[.15em] text-slate-500">Registered team record</span>
-              <select value={teamId} onChange={(event) => { setTeamId(event.target.value); setCredentials(null); }} className={`${input} mt-3`}>
+              <select value={teamId} onChange={(event) => { setTeamId(event.target.value); setCredentials(null); setStatGameId(""); setStatImportId(""); setStatRows([]); setStatWarnings([]); }} className={`${input} mt-3`}>
                 {data.teams.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.verification_status}</option>)}
               </select>
             </label>
@@ -183,13 +228,14 @@ export default function TeamPortalsAdminPage() {
 
             <section className="admin-panel p-5 sm:p-6">
               <p className="admin-eyebrow">Team identity</p>
-              <h2 className="mt-2 text-2xl font-black">Issue or reset team login</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-400">Use the official club representative’s email. This grants access only to the selected team—not to Executive Admin.</p>
-              <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); void post({ action: "issue_account", email: form.get("email"), display_name: form.get("display_name"), role: form.get("role") }); }} className="mt-5 grid gap-3">
+              <h2 className="mt-2 text-2xl font-black">Assign team access</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-400">Use the person’s existing portal email when they work for more than one club. Their current password stays unchanged and the portal adds a club selector.</p>
+              <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); void post({ action: "issue_account", email: form.get("email"), display_name: form.get("display_name"), role: form.get("role"), reset_password: form.get("reset_password") === "on" }); }} className="mt-5 grid gap-3">
                 <input name="display_name" required placeholder="Account holder name" className={input} />
                 <input name="email" type="email" required placeholder="Official team email" className={input} />
                 <select name="role" defaultValue="manager" className={input}><option value="owner">Club owner</option><option value="manager">Team manager</option><option value="coach">Coach</option><option value="statistician">Statistician</option><option value="media">Media team</option><option value="viewer">Viewer</option></select>
-                <button disabled={working} className={primaryButton}>Create or reset team login</button>
+                <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-4 text-xs text-slate-300"><input name="reset_password" type="checkbox" className="h-4 w-4 accent-orange-500"/><span>Reset this person’s password and show new temporary credentials</span></label>
+                <button disabled={working} className={primaryButton}>Assign team access</button>
               </form>
 
               {credentials ? <div className="mt-5 rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-4"><p className="text-xs font-black uppercase text-emerald-200">Copy these details now</p><p className="mt-3 break-all text-sm">Email: {credentials.email}</p><p className="mt-2 break-all text-sm">Temporary password: {credentials.temporary_password}</p><p className="mt-2 break-all text-sm">Login: {credentials.login_url}</p></div> : null}
@@ -233,6 +279,12 @@ export default function TeamPortalsAdminPage() {
             <p className="admin-eyebrow">Governance queues</p>
             <h2 className="mt-2 text-2xl font-black">Review club submissions</h2>
             <p className="mt-3 text-sm text-slate-400">Team submissions remain unverified and private until Super Admin approves them.</p>
+            <div className="mt-6 rounded-2xl border border-orange-400/20 bg-orange-500/[.05] p-5">
+              <div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]">
+                <div><p className="admin-eyebrow">Super Admin upload</p><h3 className="mt-2 text-xl font-black">Add a team box score</h3><p className="mt-3 text-sm leading-6 text-slate-400">Upload CSV, Excel, a text-based PDF or Word scorer sheet for the selected club. Extracted rows remain in the governed review queue until approved.</p><form onSubmit={(event) => { event.preventDefault(); void uploadTeamStats(event.currentTarget); }} className="mt-5 grid gap-3"><select value={statGameId} onChange={(event) => { setStatGameId(event.target.value); setStatImportId(""); setStatRows([]); }} required className={input}><option value="">Choose assigned game</option>{teamGames.map((game) => <option key={game.id} value={game.id}>{game.game_title || game.title || `${game.home_team_name} vs ${game.away_team_name}`}</option>)}</select><input name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.pdf,.docx,.doc" required className="rounded-xl border border-white/10 bg-slate-950 p-3 text-xs text-slate-300"/><button disabled={working || !statGameId} className={primaryButton}>Extract team stats</button></form>{!teamGames.length ? <p className="mt-3 text-xs text-red-200">This club has no canonical assigned games yet.</p> : null}</div>
+                <div><div className="flex items-center justify-between gap-3"><div><p className="admin-eyebrow">Review grid</p><h3 className="mt-2 text-xl font-black">{statRows.length} extracted player rows</h3></div>{statRows.length ? <button disabled={working || statRows.some((row) => !row.roster_member_id)} onClick={() => void saveTeamStats()} className={primaryButton}>Save to review queue</button> : null}</div>{statWarnings.length ? <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">{statWarnings.join(" ")}</div> : null}<div className="mt-4 grid max-h-[26rem] gap-2 overflow-y-auto">{statRows.map((row, index) => <div key={`${row.player_name}-${index}`} className="grid gap-2 rounded-xl border border-white/10 bg-black/25 p-3 sm:grid-cols-[1.3fr_.7fr_1fr]"><div><p className="text-xs font-black">{row.player_name || "Imported player"}</p><p className="mt-1 text-[9px] text-slate-500">PTS {row.points || 0} · REB {row.rebounds || 0} · AST {row.assists || 0}</p></div><select value={row.roster_member_id || ""} onChange={(event) => setStatRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, roster_member_id: event.target.value, player_id: teamRoster.find((member) => member.id === event.target.value)?.player_id || null } : item))} className={input}><option value="">Match roster player</option>{teamRoster.map((member) => <option key={member.id} value={member.id}>{member.display_name}{member.jersey_number ? ` · #${member.jersey_number}` : ""}</option>)}</select><div className="grid grid-cols-3 gap-1">{[["points", "PTS"], ["rebounds", "REB"], ["assists", "AST"]].map(([field, label]) => <label key={field}><span className="text-[7px] font-black text-slate-500">{label}</span><input type="number" min="0" value={row[field] || 0} onChange={(event) => setStatRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, [field]: Number(event.target.value) } : item))} className={`${input} min-h-9 px-2 py-1`}/></label>)}</div></div>)}{!statRows.length ? <p className="rounded-xl border border-dashed border-white/10 p-6 text-center text-xs text-slate-600">Upload a scorer sheet to review its player rows here.</p> : null}</div></div>
+              </div>
+            </div>
             <div className="mt-6 grid gap-6 lg:grid-cols-2">
               {Object.entries(teamQueues).map(([queue, rows]) => <div key={queue} className="rounded-2xl border border-white/10 bg-black/20 p-4"><div className="flex items-center justify-between"><h3 className="font-black uppercase">{queue}</h3><span className="rounded-full bg-orange-500/15 px-2.5 py-1 text-[9px] font-black text-orange-200">{rows.length}</span></div><div className="mt-4 grid gap-3">{rows.map((item) => <ReviewRow key={item.id} queue={queue} item={item} working={working} onDecision={(decision, noPeople = false) => void post({ action: "review_submission", queue, id: item.id, decision, no_identifiable_people_confirmed: noPeople })} />)}{!rows.length ? <p className="rounded-xl border border-dashed border-white/10 p-4 text-center text-xs text-slate-600">Queue clear</p> : null}</div></div>)}
             </div>

@@ -83,7 +83,7 @@ export const TEAM_ROLE_DESCRIPTIONS: Record<string, string> = {
   owner: "Full club operations, subject to the club's approved premium upgrades.",
   manager: "Full club operations, subject to the club's approved premium upgrades.",
   coach: "Training, roster, team branding, media and verified statistics submissions.",
-  statistician: "Statistics and result submissions only. FACKTS still verifies every entry.",
+  statistician: "Game capture, document imports, Basketball IQ and data-led briefings. FACKTS still verifies every public entry.",
   media: "Club branding and media submissions, plus Live Studio when approved.",
   viewer: "Read-only access to the club workspace.",
 };

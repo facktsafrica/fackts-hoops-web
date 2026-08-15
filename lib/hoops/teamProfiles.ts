@@ -163,6 +163,32 @@ export type TeamPerformance = {
   lastFive: Array<"W" | "L">;
 };
 
+export type TeamStatLeader = {
+  playerId: string;
+  name: string;
+  profileHref?: string | null;
+  gamesPlayed: number;
+  points: number;
+  rebounds: number;
+  assists: number;
+  steals: number;
+  blocks: number;
+  pointsPerGame: number;
+  reboundsPerGame: number;
+  assistsPerGame: number;
+};
+
+export type TeamVerifiedStats = {
+  gamesWithStats: number;
+  playerLines: number;
+  points: number;
+  rebounds: number;
+  assists: number;
+  steals: number;
+  blocks: number;
+  leaders: TeamStatLeader[];
+};
+
 export type TeamProfileBundle = {
   profile: TeamProfile;
   roster: TeamMember[];
@@ -173,6 +199,7 @@ export type TeamProfileBundle = {
   competitionRecords: TeamCompetitionRecord[];
   leagueMemberships: TeamLeagueMembership[];
   performance: TeamPerformance;
+  verifiedStats: TeamVerifiedStats;
   canClaim: boolean;
 };
 
@@ -364,6 +391,73 @@ function mergeGames(stored: TeamGame[], direct: TeamGame[]) {
   return [...merged.values()].sort(
     (left, right) => timeValue(right.game_date) - timeValue(left.game_date)
   );
+}
+
+function emptyVerifiedStats(): TeamVerifiedStats {
+  return { gamesWithStats: 0, playerLines: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, leaders: [] };
+}
+
+async function loadVerifiedTeamStats(games: TeamGame[], roster: TeamMember[]): Promise<TeamVerifiedStats> {
+  const gameIds = Array.from(new Set(games.map((game) => game.game_id).filter((value): value is string => Boolean(value))));
+  if (!gameIds.length) return emptyVerifiedStats();
+  const result = await supabase.from("player_game_stats").select("*").in("game_id", gameIds);
+  if (result.error) return emptyVerifiedStats();
+  const sideByGame = new Map(games.filter((game) => game.game_id).map((game) => [String(game.game_id), game.home_away || null]));
+  const rosterByPlayer = new Map(roster.filter((member) => member.player_id).map((member) => [String(member.player_id), member]));
+  const seen = new Set<string>();
+  const lines = ((result.data || []) as Array<Record<string, unknown>>).filter((line) => {
+    const verified = line.entry_status === "verified" || line.verification_status === "verified";
+    if (!verified) return false;
+    const playerId = String(line.player_id || "");
+    const gameId = String(line.game_id || "");
+    const expectedSide = sideByGame.get(gameId);
+    const belongsToTeam = Boolean(playerId && rosterByPlayer.has(playerId)) || Boolean(expectedSide && line.team_side === expectedSide);
+    const key = `${gameId}:${playerId}`;
+    if (!belongsToTeam || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!lines.length) return emptyVerifiedStats();
+
+  const totals = { points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0 };
+  const byPlayer = new Map<string, TeamStatLeader>();
+  for (const line of lines) {
+    const playerId = String(line.player_id || "");
+    const rosterMember = rosterByPlayer.get(playerId);
+    const current = byPlayer.get(playerId) || {
+      playerId,
+      name: rosterMember?.display_name || String(line.player_name || line.display_name || "Player"),
+      profileHref: rosterMember?.profile_href || (playerId ? `/players/${playerId}` : null),
+      gamesPlayed: 0,
+      points: 0,
+      rebounds: 0,
+      assists: 0,
+      steals: 0,
+      blocks: 0,
+      pointsPerGame: 0,
+      reboundsPerGame: 0,
+      assistsPerGame: 0,
+    };
+    current.gamesPlayed += 1;
+    for (const field of ["points", "rebounds", "assists", "steals", "blocks"] as const) {
+      const value = Number(line[field] || 0);
+      current[field] += value;
+      totals[field] += value;
+    }
+    byPlayer.set(playerId, current);
+  }
+  const leaders = Array.from(byPlayer.values()).map((leader) => ({
+    ...leader,
+    pointsPerGame: leader.gamesPlayed ? leader.points / leader.gamesPlayed : 0,
+    reboundsPerGame: leader.gamesPlayed ? leader.rebounds / leader.gamesPlayed : 0,
+    assistsPerGame: leader.gamesPlayed ? leader.assists / leader.gamesPlayed : 0,
+  })).sort((left, right) => right.pointsPerGame - left.pointsPerGame || right.reboundsPerGame - left.reboundsPerGame || left.name.localeCompare(right.name));
+  return {
+    gamesWithStats: new Set(lines.map((line) => String(line.game_id))).size,
+    playerLines: lines.length,
+    ...totals,
+    leaders,
+  };
 }
 
 export function calculateTeamPerformance(games: TeamGame[]): TeamPerformance {
@@ -735,6 +829,7 @@ export async function loadTeamProfileBundle(
     .map((game) => gameFromPublicRecord(game, profile))
     .filter((game): game is TeamGame => Boolean(game));
   const games = mergeGames(storedGames, directGames);
+  const verifiedStats = await loadVerifiedTeamStats(games, roster);
   const eventLinks = eventLinksResult.error
     ? []
     : ((eventLinksResult.data || []) as TeamEventLinkRow[]);
@@ -774,6 +869,7 @@ export async function loadTeamProfileBundle(
     competitionRecords,
     leagueMemberships,
     performance: calculateTeamPerformance(games),
+    verifiedStats,
     canClaim: hasDatabaseProfile,
   };
 }

@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     const canonicalOwned = canonical.data && [canonical.data.home_team_id, canonical.data.away_team_id].includes(teamId);
     if (!canonicalOwned && !attached.data) return NextResponse.json({ ok: false, error: "That game is not assigned to this team." }, { status: 403 });
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = parseStatDocument(buffer, file.name, mimeType);
+    const parsed = await parseStatDocument(buffer, file.name, mimeType);
     const rosterRows = roster.data ?? [];
     const matchedRows = parsed.rows.map((row) => {
       const rowName = identity(row.player_name);

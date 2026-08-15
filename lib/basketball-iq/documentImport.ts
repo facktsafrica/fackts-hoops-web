@@ -1,4 +1,4 @@
-import { inflateRawSync, inflateSync } from "node:zlib";
+import { inflateRawSync } from "node:zlib";
 
 export type ImportedStatRow = {
   player_name: string;
@@ -183,34 +183,42 @@ function docxText(buffer: Buffer) {
   ).filter(Boolean).join("\n");
 }
 
-function pdfLiteralText(input: string) {
-  const values: string[] = [];
-  for (const match of input.matchAll(/\(((?:\\.|[^\\)])*)\)\s*(?:Tj|'|")/g)) {
-    values.push(match[1]
-      .replace(/\\([nrtbf()\\])/g, (_, escaped: string) => ({ n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", "(": "(", ")": ")", "\\": "\\" }[escaped] || escaped))
-      .replace(/\\([0-7]{1,3})/g, (_, octal: string) => String.fromCharCode(Number.parseInt(octal, 8))));
-  }
-  for (const array of input.matchAll(/\[([\s\S]*?)\]\s*TJ/g)) {
-    const pieces = Array.from(array[1].matchAll(/\(((?:\\.|[^\\)])*)\)/g)).map((item) => item[1]);
-    if (pieces.length) values.push(pieces.join(""));
-  }
-  return values.join("\n");
-}
+async function pdfText(buffer: Buffer) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const document = await pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    isEvalSupported: false,
+    useSystemFonts: true,
+  }).promise;
+  const pages: string[] = [];
 
-function pdfText(buffer: Buffer) {
-  const source = buffer.toString("latin1");
-  const chunks = [pdfLiteralText(source)];
-  for (const match of source.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
-    const raw = Buffer.from(match[1], "latin1");
-    const prefix = source.slice(Math.max(0, match.index - 250), match.index);
-    try {
-      const decoded = /\/FlateDecode/.test(prefix) ? inflateSync(raw).toString("latin1") : raw.toString("latin1");
-      chunks.push(pdfLiteralText(decoded));
-    } catch {
-      // A PDF can contain image or predictor streams that are not stat text.
+  try {
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const lines = new Map<number, Array<{ x: number; right: number; text: string }>>();
+      for (const item of content.items) {
+        if (!("str" in item) || !item.str.trim()) continue;
+        const y = Math.round(Number(item.transform?.[5] || 0) / 2) * 2;
+        const current = lines.get(y) || [];
+        const x = Number(item.transform?.[4] || 0);
+        current.push({ x, right: x + Number(item.width || 0), text: item.str.trim() });
+        lines.set(y, current);
+      }
+      pages.push(Array.from(lines.entries())
+        .sort(([left], [right]) => right - left)
+        .map(([, items]) => items.sort((left, right) => left.x - right.x).reduce((line, item, index, sorted) => {
+          if (!index) return item.text;
+          const gap = item.x - sorted[index - 1].right;
+          return `${line}${gap > 12 ? "\t" : " "}${item.text}`;
+        }, ""))
+        .join("\n"));
     }
+  } finally {
+    await document.destroy();
   }
-  return chunks.filter(Boolean).join("\n");
+
+  return pages.filter(Boolean).join("\n");
 }
 
 function normalizeHeader(value: string) {
@@ -307,7 +315,7 @@ function parseRows(text: string) {
   return output;
 }
 
-export function parseStatDocument(buffer: Buffer, fileName: string, mimeType: string) {
+export async function parseStatDocument(buffer: Buffer, fileName: string, mimeType: string) {
   const extension = fileName.toLowerCase().split(".").pop() || "";
   const warnings: string[] = [];
   let extracted = "";
@@ -315,8 +323,9 @@ export function parseStatDocument(buffer: Buffer, fileName: string, mimeType: st
   else if (extension === "xlsx") extracted = xlsxText(buffer);
   else if (extension === "docx") extracted = docxText(buffer);
   else if (extension === "pdf") {
-    extracted = pdfText(buffer);
-    warnings.push("PDF text extraction depends on the scorer sheet containing selectable text. Confirm every row before saving.");
+    extracted = await pdfText(buffer);
+    if (extracted.trim()) warnings.push("PDF text was extracted using its embedded font mapping. Confirm every player and value before saving.");
+    else warnings.push("This PDF is image-only, scanned, or contains no readable text. Upload CSV/XLSX for automatic rows, or enter the attached scorer sheet in the review grid.");
   } else if (["xls", "doc"].includes(extension)) {
     warnings.push(`Legacy .${extension} files are stored as evidence but cannot be extracted safely. Save as .${extension === "xls" ? "xlsx" : "docx"} or CSV for automatic rows.`);
   } else {
@@ -324,7 +333,7 @@ export function parseStatDocument(buffer: Buffer, fileName: string, mimeType: st
   }
 
   const rows = extracted ? parseRows(extracted) : [];
-  if (!rows.length) warnings.push("No structured player rows were found. Use the review grid to enter the box score; the original file remains attached as evidence.");
+  if (!rows.length && extracted.trim()) warnings.push("Readable text was found, but no structured player table matched. Include Player plus at least two stat columns such as PTS, REB and AST; the original file remains attached as evidence.");
   return {
     rows,
     warnings,

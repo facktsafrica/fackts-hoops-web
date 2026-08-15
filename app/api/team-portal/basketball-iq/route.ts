@@ -13,6 +13,7 @@ const STAT_FIELDS = [
   "steals", "blocks", "turnovers", "fouls", "minutes", "two_made",
   "two_attempted", "three_made", "three_attempted", "ft_made", "ft_attempted",
 ] as const;
+const BRIEFING_ROLES = new Set(["owner", "manager", "coach", "statistician"]);
 
 function text(value: unknown, max = 2000) {
   return String(value ?? "").trim().slice(0, max);
@@ -90,7 +91,8 @@ export async function GET(request: NextRequest) {
       imports: imports.data ?? [],
       briefings: briefings.data ?? [],
       intelligence,
-      can_publish_briefings: ["owner", "manager", "coach"].includes(access.membership.role),
+      can_publish_briefings: BRIEFING_ROLES.has(access.membership.role),
+      membership_role: access.membership.role,
     });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Basketball IQ could not be loaded." }, { status: 500 });
@@ -184,7 +186,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "publish_briefing") {
-      if (!["owner", "manager", "coach"].includes(access.membership.role)) return NextResponse.json({ ok: false, error: "Only the club owner, manager or coach can publish player briefings." }, { status: 403 });
+      if (!BRIEFING_ROLES.has(access.membership.role)) return NextResponse.json({ ok: false, error: "This team role cannot publish performance briefings." }, { status: 403 });
       const audience = text(body.audience, 30) === "player" ? "player" : "team";
       const rosterMemberId = audience === "player" ? text(body.roster_member_id, 100) : "";
       let roster: JsonRecord | null = null;
@@ -207,7 +209,7 @@ export async function POST(request: NextRequest) {
         title,
         focus_area: text(body.focus_area, 180) || null,
         body: briefingBody,
-        source_type: text(body.source_type, 30) === "data_led" ? "data_led" : "coach",
+        source_type: access.membership.role === "statistician" || text(body.source_type, 30) === "data_led" ? "data_led" : "coach",
         linked_session_id: text(body.linked_session_id, 100) || null,
         status: "published",
         published_at: new Date().toISOString(),
@@ -217,7 +219,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "archive_briefing") {
-      if (!["owner", "manager", "coach"].includes(access.membership.role)) return NextResponse.json({ ok: false, error: "Only the club owner, manager or coach can archive briefings." }, { status: 403 });
+      if (!BRIEFING_ROLES.has(access.membership.role)) return NextResponse.json({ ok: false, error: "This team role cannot archive performance briefings." }, { status: 403 });
       const result = await admin.from("team_performance_briefings").update({ status: "archived", updated_at: new Date().toISOString() }).eq("id", text(body.briefing_id, 100)).eq("team_id", teamId).select("id").maybeSingle();
       if (result.error) throw result.error;
       if (!result.data) return NextResponse.json({ ok: false, error: "Briefing not found." }, { status: 404 });

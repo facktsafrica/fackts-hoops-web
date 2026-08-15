@@ -163,6 +163,11 @@ export async function GET(request: NextRequest) {
       missing_highlights: games.filter((game) => !game.highlights.ready && !game.highlights.pending).length,
       pending: pendingMedia.filter((submission) => submission.status === "pending").length,
     };
+    const capabilities = new Set(access.capabilities);
+    const canUseGames = capabilities.has("stats_submit") || capabilities.has("media_submit") || capabilities.has("broadcast_manage");
+    const canUseRoster = capabilities.has("roster_manage") || capabilities.has("stats_submit");
+    const canUseTraining = capabilities.has("training_manage") || capabilities.has("broadcast_manage");
+    const leagueMemberships = capabilities.has("stats_submit") ? (leagueMembershipsResult.data ?? []) : [];
 
     return NextResponse.json({
       ok: true,
@@ -172,19 +177,19 @@ export async function GET(request: NextRequest) {
         subscription: access.subscription,
         capabilities: access.capabilities,
       },
-      roster: rosterResult.data ?? [],
-      training: trainingResult.data ?? [],
-      games,
-      media_summary: mediaSummary,
-      branding_submissions: brandingResult.data ?? [],
-      media_submissions: mediaSubmissionsResult.data ?? [],
-      stat_submissions: statsResult.data ?? [],
-      profile_requests: profileRequestsResult.data ?? [],
-      broadcast_channel: channelResult.data ?? null,
-      broadcasts: broadcastsResult.data ?? [],
-      league_memberships: leagueMembershipsResult.data ?? [],
-      leaderboard_links: (leagueMembershipsResult.data ?? []).length
-        ? (leagueMembershipsResult.data ?? []).map((membership: JsonRecord) => {
+      roster: canUseRoster ? (rosterResult.data ?? []) : [],
+      training: canUseTraining ? (trainingResult.data ?? []) : [],
+      games: canUseGames ? games : [],
+      media_summary: capabilities.has("media_submit") ? mediaSummary : { games: 0, missing_posters: 0, missing_full_games: 0, missing_highlights: 0, pending: 0 },
+      branding_submissions: capabilities.has("branding_submit") ? (brandingResult.data ?? []) : [],
+      media_submissions: capabilities.has("media_submit") ? (mediaSubmissionsResult.data ?? []) : [],
+      stat_submissions: capabilities.has("stats_submit") ? (statsResult.data ?? []) : [],
+      profile_requests: capabilities.has("player_profile_request") ? (profileRequestsResult.data ?? []) : [],
+      broadcast_channel: capabilities.has("broadcast_manage") ? (channelResult.data ?? null) : null,
+      broadcasts: capabilities.has("broadcast_manage") ? (broadcastsResult.data ?? []) : [],
+      league_memberships: leagueMemberships,
+      leaderboard_links: leagueMemberships.length
+        ? leagueMemberships.map((membership: JsonRecord) => {
             const league = membership.leagues && typeof membership.leagues === "object" ? membership.leagues as JsonRecord : {};
             const parameters = new URLSearchParams();
             if (text(membership.division)) parameters.set("division", text(membership.division));
@@ -196,7 +201,7 @@ export async function GET(request: NextRequest) {
               season_label: membership.season_label,
             };
           })
-        : [{ title: "Explore public league tables", href: "/leagues", record_type: "league" }],
+        : capabilities.has("stats_submit") ? [{ title: "Explore public league tables", href: "/leagues", record_type: "league" }] : [],
     });
   } catch (error) {
     return NextResponse.json(

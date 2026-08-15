@@ -13,6 +13,7 @@ const requiredFiles = [
   "app/api/team-portal/youtube/callback/route.ts",
   "app/api/team-portal/youtube/broadcast/route.ts",
   "app/api/admin/team-portals/route.ts",
+  "app/api/admin/team-portals/stats/import/route.ts",
   "lib/team-portal/access.ts",
   "lib/team-portal/capabilities.ts",
   "lib/team-portal/crypto.ts",
@@ -65,8 +66,23 @@ if (!intelligenceSource.includes('requireTeamCapability("stats_submit"')) failur
 if (!intelligenceSource.includes('submission_type: "team_stat_session"')) failures.push("Complete stat sessions do not enter the Super Admin queue");
 const importSource = source("app/api/team-portal/basketball-iq/import/route.ts");
 if (!importSource.includes('storage.from("team-stat-imports")')) failures.push("Stat documents are not stored in the private import bucket");
+if (!importSource.includes("await parseStatDocument")) failures.push("Team stat imports are not awaiting document extraction");
+const documentImportSource = source("lib/basketball-iq/documentImport.ts");
+if (!documentImportSource.includes('pdfjs-dist/legacy/build/pdf.mjs')) failures.push("PDF imports are not using an embedded-font-aware text engine");
+if (!documentImportSource.includes("image-only, scanned")) failures.push("Scanned PDFs do not receive a clear review warning");
 const reviewSource = source("app/api/admin/team-portals/route.ts");
 if (!reviewSource.includes('text(payload.submission_type, 60) === "team_stat_session"')) failures.push("Super Admin cannot review complete club stat sessions");
+const adminImportSource = source("app/api/admin/team-portals/stats/import/route.ts");
+if (!adminImportSource.includes("parseStatDocument") || !adminImportSource.includes('submission_type: "team_stat_session"')) failures.push("Super Admin team-stat upload is incomplete");
+if (!intelligenceSource.includes('"statistician"')) failures.push("Statistician briefing publication is not enabled");
+const accessSource = source("lib/team-portal/access.ts");
+if (!accessSource.includes("getTeamPortalTeams")) failures.push("One account cannot discover multiple assigned clubs");
+const portalSource = source("app/team-portal/TeamPortalClient.tsx");
+for (const forbidden of ["Access unavailable", "Official profiling locked", "Super Admin activation required"]) {
+  if (portalSource.includes(forbidden)) failures.push(`Role-hidden portal still exposes: ${forbidden}`);
+}
+const publicTeamSource = source("lib/hoops/teamProfiles.ts");
+if (!publicTeamSource.includes("loadVerifiedTeamStats") || !publicTeamSource.includes('from("player_game_stats")')) failures.push("Public team profiles do not aggregate verified player statistics");
 
 const cryptoSource = source("lib/team-portal/crypto.ts");
 if (!cryptoSource.includes('createCipheriv("aes-256-gcm"')) failures.push("YouTube secrets are not using AES-256-GCM");
