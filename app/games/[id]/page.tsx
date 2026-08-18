@@ -73,10 +73,65 @@ type StatRow = {
   is_homepage_pog?: boolean | null;
   is_player_of_the_game?: boolean | null;
 };
+type GameBoxScoreRow = {
+  id: string;
+  game_id: string;
 
+  team_side: "home" | "away";
+  team_name: string;
+
+  team_id?: string | null;
+  roster_member_id?: string | null;
+  player_id?: string | null;
+
+  identity_type?:
+    | "canonical_player"
+    | "team_roster"
+    | "game_only"
+    | "guest"
+    | null;
+
+  display_name: string;
+  jersey_number?: string | null;
+  position?: string | null;
+
+  minutes?: number | string | null;
+
+  points?: number | string | null;
+
+  field_goals_made?: number | string | null;
+  field_goals_attempted?: number | string | null;
+
+  two_made?: number | string | null;
+  two_attempted?: number | string | null;
+
+  three_made?: number | string | null;
+  three_attempted?: number | string | null;
+
+  ft_made?: number | string | null;
+  ft_attempted?: number | string | null;
+
+  offensive_rebounds?: number | string | null;
+  defensive_rebounds?: number | string | null;
+  rebounds?: number | string | null;
+
+  assists?: number | string | null;
+  steals?: number | string | null;
+  blocks?: number | string | null;
+  turnovers?: number | string | null;
+  fouls?: number | string | null;
+
+  plus_minus?: number | string | null;
+
+  efficiency?: number | string | null;
+  pir?: number | string | null;
+
+  player_of_game?: boolean | null;
+};
 type RosterRow = {
   id: string;
   player_id?: string | null;
+  team_side?: string | null;
   roster_role?: string | null;
   roster_status?: string | null;
   notes?: string | null;
@@ -104,7 +159,11 @@ type DisplayStat = {
   initials: string;
   jersey: string;
   position: string;
-  relationship: "FACKTS player" | "Guest hooper";
+  relationship:
+  | "FACKTS player"
+  | "Team roster"
+  | "Game participant"
+  | "Guest hooper";
   profileHref: string;
   photoUrl: string;
   photoPosition: string;
@@ -156,39 +215,209 @@ function side(value?: string | null): "home" | "away" {
   return (value || "").toLowerCase() === "away" ? "away" : "home";
 }
 
-function displayStat(row: StatRow, player: PlayerRow | null, guest: GuestRow | null): DisplayStat {
+function displayStat(
+  row: StatRow,
+  player: PlayerRow | null,
+  guest: GuestRow | null,
+): DisplayStat {
   const isGuest = Boolean(guest);
-  const name = isGuest ? guestName(guest) : playerName(player);
+
+  const name = isGuest
+    ? guestName(guest)
+    : playerName(player);
 
   return {
     id: row.id,
+
     name,
+
     initials: initials(name),
-    jersey: String(player?.jersey_number ?? "–"),
-    position: player?.position || guest?.position || player?.role || "Player",
-    relationship: isGuest ? "Guest hooper" : "FACKTS player",
-    profileHref: isGuest && guest ? `/players/guest-${guest.id}` : player ? `/players/${player.id}` : "#",
-    photoUrl: player?.photo_url || guest?.photo_url || "",
-    photoPosition: player?.photo_position || guest?.photo_position || "center center",
+
+    jersey: String(
+      player?.jersey_number ?? "–",
+    ),
+
+    position:
+      player?.position ||
+      guest?.position ||
+      player?.role ||
+      "Player",
+
+    relationship: isGuest
+      ? "Guest hooper"
+      : "FACKTS player",
+
+    profileHref:
+      isGuest && guest
+        ? `/players/guest-${guest.id}`
+        : player
+          ? `/players/${player.id}`
+          : "#",
+
+    photoUrl:
+      player?.photo_url ||
+      guest?.photo_url ||
+      "",
+
+    photoPosition:
+      player?.photo_position ||
+      guest?.photo_position ||
+      "center center",
+
     side: side(row.team_side),
-    points: statNumber(row.points),
-    threePointers: statNumber(row.three_pointers_made),
-    rebounds: statNumber(row.rebounds),
-    assists: statNumber(row.assists),
-    steals: statNumber(row.steals),
-    blocks: statNumber(row.blocks),
-    turnovers: statNumber(row.turnovers),
-    fouls: statNumber(row.fouls),
-    plusMinus: statNumber(row.plus_minus),
-    minutes: row.minutes !== null && row.minutes !== undefined
-      ? statNumber(row.minutes)
-      : row.minutes_played !== null && row.minutes_played !== undefined
-        ? statNumber(row.minutes_played)
-        : null,
-    playerOfGame: Boolean(row.player_of_game || row.is_homepage_pog || row.is_player_of_the_game),
+
+    points:
+      statNumber(row.points),
+
+    threePointers:
+      statNumber(
+        row.three_pointers_made,
+      ),
+
+    rebounds:
+      statNumber(row.rebounds),
+
+    assists:
+      statNumber(row.assists),
+
+    steals:
+      statNumber(row.steals),
+
+    blocks:
+      statNumber(row.blocks),
+
+    turnovers:
+      statNumber(row.turnovers),
+
+    fouls:
+      statNumber(row.fouls),
+
+    plusMinus:
+      statNumber(row.plus_minus),
+
+    minutes:
+      row.minutes !== null &&
+      row.minutes !== undefined
+        ? statNumber(row.minutes)
+        : row.minutes_played !== null &&
+            row.minutes_played !== undefined
+          ? statNumber(
+              row.minutes_played,
+            )
+          : null,
+
+    playerOfGame: Boolean(
+      row.player_of_game ||
+        row.is_homepage_pog ||
+        row.is_player_of_the_game,
+    ),
   };
 }
 
+function displayCanonicalStat(
+  row: GameBoxScoreRow,
+  playerMap: Map<string, PlayerRow>,
+): DisplayStat {
+  const player = row.player_id
+    ? playerMap.get(row.player_id) ||
+      null
+    : null;
+
+  const name =
+    row.display_name ||
+    playerName(player);
+
+  let relationship: DisplayStat["relationship"] =
+    "Game participant";
+
+  if (row.player_id) {
+    relationship =
+      "FACKTS player";
+  } else if (
+    row.identity_type === "team_roster"
+  ) {
+    relationship =
+      "Team roster";
+  } else if (
+    row.identity_type === "guest"
+  ) {
+    relationship =
+      "Guest hooper";
+  }
+
+  return {
+    id: row.id,
+
+    name,
+
+    initials: initials(name),
+
+    jersey: String(
+      row.jersey_number ??
+        player?.jersey_number ??
+        "–",
+    ),
+
+    position:
+      row.position ||
+      player?.position ||
+      player?.role ||
+      "Player",
+
+    relationship,
+
+    profileHref: player
+      ? `/players/${player.id}`
+      : "#",
+
+    photoUrl:
+      player?.photo_url || "",
+
+    photoPosition:
+      player?.photo_position ||
+      "center center",
+
+    side: side(row.team_side),
+
+    points:
+      statNumber(row.points),
+
+    threePointers:
+      statNumber(row.three_made),
+
+    rebounds:
+      statNumber(row.rebounds),
+
+    assists:
+      statNumber(row.assists),
+
+    steals:
+      statNumber(row.steals),
+
+    blocks:
+      statNumber(row.blocks),
+
+    turnovers:
+      statNumber(row.turnovers),
+
+    fouls:
+      statNumber(row.fouls),
+
+    plusMinus:
+      statNumber(row.plus_minus),
+
+    minutes:
+      row.minutes !== null &&
+      row.minutes !== undefined
+        ? statNumber(row.minutes)
+        : null,
+
+    playerOfGame:
+      Boolean(
+        row.player_of_game,
+      ),
+  };
+}
 function totals(rows: DisplayStat[]): TeamTotals {
   return rows.reduce(
     (result, row) => ({
@@ -211,56 +440,274 @@ function contribution(row: DisplayStat) {
 
 async function loadGame(gameId: string) {
   const supabase = getSupabase();
-  const gameResult = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
-  if (gameResult.error || !gameResult.data) return null;
 
-  const game = gameResult.data as GameRecord;
-  if (game.is_public === false) return null;
+  const gameResult = await supabase
+    .from("games")
+    .select("*")
+    .eq("id", gameId)
+    .maybeSingle();
 
-  const [playerStatsResult, guestStatsResult, rosterResult, mediaResult] = await Promise.all([
-    supabase.from("player_game_stats").select("*").eq("game_id", gameId),
-    supabase.from("guest_game_stats").select("*").eq("game_id", gameId),
-    supabase.from("game_rosters").select("*").eq("game_id", gameId),
-    supabase.from("game_media").select("*").eq("game_id", gameId).eq("is_public", true).order("display_order"),
+  if (
+    gameResult.error ||
+    !gameResult.data
+  ) {
+    return null;
+  }
+
+  const game =
+    gameResult.data as GameRecord;
+
+  if (game.is_public === false) {
+    return null;
+  }
+
+  /*
+   * game_box_score_lines is now the preferred source.
+   *
+   * Old player_game_stats / guest_game_stats remain as
+   * fallbacks for legacy games that have not yet migrated.
+   */
+  const [
+    canonicalBoxScoreResult,
+    playerStatsResult,
+    guestStatsResult,
+    rosterResult,
+    mediaResult,
+  ] = await Promise.all([
+    supabase
+      .from("game_box_score_lines")
+      .select("*")
+      .eq("game_id", gameId)
+      .eq(
+        "verification_status",
+        "verified",
+      )
+      .eq("is_public", true),
+
+    supabase
+      .from("player_game_stats")
+      .select("*")
+      .eq("game_id", gameId),
+
+    supabase
+      .from("guest_game_stats")
+      .select("*")
+      .eq("game_id", gameId),
+
+    supabase
+      .from("game_rosters")
+      .select("*")
+      .eq("game_id", gameId),
+
+    supabase
+      .from("game_media")
+      .select("*")
+      .eq("game_id", gameId)
+      .eq("is_public", true)
+      .order("display_order"),
   ]);
 
-  const playerStats = (playerStatsResult.data || []) as StatRow[];
-  const guestStats = (guestStatsResult.data || []) as StatRow[];
-  const roster = (rosterResult.data || []) as RosterRow[];
-  const playerIds = [...new Set([...playerStats.map((row) => row.player_id), ...roster.map((row) => row.player_id)].filter(Boolean))] as string[];
-  const guestIds = [...new Set(guestStats.map((row) => row.guest_hooper_id).filter(Boolean))] as string[];
+  const canonicalBoxScore =
+    (canonicalBoxScoreResult.data ||
+      []) as GameBoxScoreRow[];
 
-  const [playersResult, guestsResult, eventResult] = await Promise.all([
-    playerIds.length ? supabase.from("players").select("*").in("id", playerIds) : Promise.resolve({ data: [] }),
-    guestIds.length ? supabase.from("guest_hoopers").select("*").in("id", guestIds) : Promise.resolve({ data: [] }),
+  const playerStats =
+    (playerStatsResult.data ||
+      []) as StatRow[];
+
+  const guestStats =
+    (guestStatsResult.data ||
+      []) as StatRow[];
+
+  const roster =
+    (rosterResult.data ||
+      []) as RosterRow[];
+
+  /*
+   * Permanent players are used only for richer identity,
+   * photos and full-profile links.
+   *
+   * Roster-only and game-only participants do not require
+   * a permanent player_id.
+   */
+  const playerIds = [
+    ...new Set(
+      [
+        ...canonicalBoxScore.map(
+          (row) => row.player_id,
+        ),
+
+        ...playerStats.map(
+          (row) => row.player_id,
+        ),
+
+        ...roster.map(
+          (row) => row.player_id,
+        ),
+      ].filter(Boolean),
+    ),
+  ] as string[];
+
+  const guestIds = [
+    ...new Set(
+      guestStats
+        .map(
+          (row) =>
+            row.guest_hooper_id,
+        )
+        .filter(Boolean),
+    ),
+  ] as string[];
+
+  const [
+    playersResult,
+    guestsResult,
+    eventResult,
+  ] = await Promise.all([
+    playerIds.length
+      ? supabase
+          .from("players")
+          .select("*")
+          .in("id", playerIds)
+      : Promise.resolve({
+          data: [],
+        }),
+
+    guestIds.length
+      ? supabase
+          .from("guest_hoopers")
+          .select("*")
+          .in("id", guestIds)
+      : Promise.resolve({
+          data: [],
+        }),
+
     game.event_id
-      ? supabase.from("event_case_studies").select("event_id,slug,title").eq("event_id", game.event_id).eq("is_public", true).maybeSingle()
-      : Promise.resolve({ data: null }),
+      ? supabase
+          .from(
+            "event_case_studies",
+          )
+          .select(
+            "event_id,slug,title",
+          )
+          .eq(
+            "event_id",
+            game.event_id,
+          )
+          .eq("is_public", true)
+          .maybeSingle()
+      : Promise.resolve({
+          data: null,
+        }),
   ]);
 
-  const players = (playersResult.data || []) as PlayerRow[];
-  const guests = (guestsResult.data || []) as GuestRow[];
-  const playerMap = new Map(players.map((player) => [player.id, player]));
-  const guestMap = new Map(guests.map((guest) => [guest.id, guest]));
+  const players =
+    (playersResult.data ||
+      []) as PlayerRow[];
 
-  const stats = [
-    ...playerStats.map((row) => displayStat(row, row.player_id ? playerMap.get(row.player_id) || null : null, null)),
-    ...guestStats.map((row) => displayStat(row, null, row.guest_hooper_id ? guestMap.get(row.guest_hooper_id) || null : null)),
-  ].sort((a, b) => contribution(b) - contribution(a));
+  const guests =
+    (guestsResult.data ||
+      []) as GuestRow[];
 
+  const playerMap = new Map(
+    players.map((player) => [
+      player.id,
+      player,
+    ]),
+  );
+
+  const guestMap = new Map(
+    guests.map((guest) => [
+      guest.id,
+      guest,
+    ]),
+  );
+
+  /*
+   * IMPORTANT:
+   *
+   * If canonical game box-score data exists, use it by
+   * itself. Do NOT also append player_game_stats because
+   * permanent players could otherwise appear twice.
+   */
+  const stats: DisplayStat[] =
+    canonicalBoxScore.length
+      ? canonicalBoxScore.map(
+          (row) =>
+            displayCanonicalStat(
+              row,
+              playerMap,
+            ),
+        )
+      : [
+          ...playerStats.map(
+            (row) =>
+              displayStat(
+                row,
+                row.player_id
+                  ? playerMap.get(
+                      row.player_id,
+                    ) || null
+                  : null,
+                null,
+              ),
+          ),
+
+          ...guestStats.map(
+            (row) =>
+              displayStat(
+                row,
+                null,
+                row.guest_hooper_id
+                  ? guestMap.get(
+                      row.guest_hooper_id,
+                    ) || null
+                  : null,
+              ),
+          ),
+        ];
+
+  stats.sort(
+    (a, b) =>
+      contribution(b) -
+      contribution(a),
+  );
+
+  /*
+   * Keep the older game_rosters system available as
+   * fallback for legacy games.
+   */
   const rosterPlayers = roster
-    .filter((row) => row.roster_status !== "unavailable")
+    .filter(
+      (row) =>
+        row.roster_status !==
+        "unavailable",
+    )
     .map((row) => ({
       ...row,
-      player: row.player_id ? playerMap.get(row.player_id) || null : null,
+
+      player:
+        row.player_id
+          ? playerMap.get(
+              row.player_id,
+            ) || null
+          : null,
     }));
 
   return {
     game,
+
     stats,
+
     roster: rosterPlayers,
-    event: (eventResult.data || null) as EventRow | null,
-    media: (mediaResult.data || []) as MediaRow[],
+
+    event:
+      (eventResult.data ||
+        null) as EventRow | null,
+
+    media:
+      (mediaResult.data ||
+        []) as MediaRow[],
   };
 }
 
@@ -281,22 +728,133 @@ export default async function GameDetailsPage({ params }: { params: Promise<{ id
   const awayStats = stats.filter((row) => row.side === "away");
   const homeTotals = totals(homeStats);
   const awayTotals = totals(awayStats);
-  const playerOfGame = stats.find((row) => row.playerOfGame) || stats[0] || null;
-  const periods = parsePeriodScores(game.period_scores);
-  const savedHomeRoster = parseLineList(game.home_roster);
-  const savedAwayRoster = parseLineList(game.away_roster);
-  const officialRoster = roster.map((row) => ({
-    name: playerName(row.player),
-    detail: [row.roster_role, row.roster_status].filter(Boolean).join(" · ") || "Rostered",
-    href: row.player ? `/players/${row.player.id}` : "#",
-  }));
-  const homeRoster = savedHomeRoster.length
-    ? savedHomeRoster.map((name) => ({ name, detail: "Published lineup", href: "#" }))
-    : homeTeam.toLowerCase().includes("fackts")
-      ? officialRoster
-      : [];
-  const awayRoster = savedAwayRoster.map((name) => ({ name, detail: "Published lineup", href: "#" }));
+  /*
+ * Game leaders are calculated automatically.
+ *
+ * Player of the Game is NOT guessed.
+ * It appears only when Admin explicitly marks someone.
+ */
+const playerOfGame =
+  stats.find(
+    (row) => row.playerOfGame,
+  ) || null;
 
+const periods = parsePeriodScores(
+  game.period_scores,
+);
+
+const savedHomeRoster =
+  parseLineList(game.home_roster);
+
+const savedAwayRoster =
+  parseLineList(game.away_roster);
+
+/*
+ * Canonical box-score lines are also valid evidence of who
+ * actually participated in the game.
+ */
+function rosterFromStats(
+  rows: DisplayStat[],
+) {
+  return rows.map((row) => ({
+    name: row.name,
+
+    detail: [
+      row.jersey !== "–"
+        ? `#${row.jersey}`
+        : null,
+
+      row.position,
+
+      row.relationship,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+
+    href: row.profileHref,
+  }));
+}
+
+/*
+ * Older game_rosters remain available for legacy matches.
+ */
+const officialHomeRoster = roster
+  .filter(
+    (row) =>
+      side(row.team_side) ===
+      "home",
+  )
+  .map((row) => ({
+    name: playerName(row.player),
+
+    detail:
+      [
+        row.roster_role,
+        row.roster_status,
+      ]
+        .filter(Boolean)
+        .join(" · ") ||
+      "Rostered",
+
+    href: row.player
+      ? `/players/${row.player.id}`
+      : "#",
+  }));
+
+const officialAwayRoster = roster
+  .filter(
+    (row) =>
+      side(row.team_side) ===
+      "away",
+  )
+  .map((row) => ({
+    name: playerName(row.player),
+
+    detail:
+      [
+        row.roster_role,
+        row.roster_status,
+      ]
+        .filter(Boolean)
+        .join(" · ") ||
+      "Rostered",
+
+    href: row.player
+      ? `/players/${row.player.id}`
+      : "#",
+  }));
+
+const homeRoster =
+  savedHomeRoster.length
+    ? savedHomeRoster.map(
+        (name) => ({
+          name,
+          detail:
+            "Published lineup",
+          href: "#",
+        }),
+      )
+    : homeStats.length
+      ? rosterFromStats(
+          homeStats,
+        )
+      : officialHomeRoster;
+
+const awayRoster =
+  savedAwayRoster.length
+    ? savedAwayRoster.map(
+        (name) => ({
+          name,
+          detail:
+            "Published lineup",
+          href: "#",
+        }),
+      )
+    : awayStats.length
+      ? rosterFromStats(
+          awayStats,
+        )
+      : officialAwayRoster;
   const builtInMedia: GameMediaItem[] = [];
   const fullVideo = game.video_url || game.game_video_url || "";
   if (fullVideo) builtInMedia.push({ id: "full-game", title: `${homeTeam} vs ${awayTeam} — full game`, mediaType: "Full game", url: fullVideo, thumbnailUrl: getPosterUrl(game) });

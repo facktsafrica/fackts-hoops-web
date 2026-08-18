@@ -11,6 +11,7 @@ import {
   type TeamCapability,
   type TeamPlanCode,
 } from "@/lib/team-portal/capabilities";
+import StatImportReview from "./StatImportReview";
 
 type JsonRecord = Record<string, any>;
 type AdminTab = "access" | "leagues" | "reviews" | "broadcast";
@@ -279,6 +280,11 @@ export default function TeamPortalsAdminPage() {
             <p className="admin-eyebrow">Governance queues</p>
             <h2 className="mt-2 text-2xl font-black">Review club submissions</h2>
             <p className="mt-3 text-sm text-slate-400">Team submissions remain unverified and private until Super Admin approves them.</p>
+            <StatImportReview
+  teamId={teamId}
+  roster={teamRoster}
+  onQueued={load}
+/>
             <div className="mt-6 rounded-2xl border border-orange-400/20 bg-orange-500/[.05] p-5">
               <div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]">
                 <div><p className="admin-eyebrow">Super Admin upload</p><h3 className="mt-2 text-xl font-black">Add a team box score</h3><p className="mt-3 text-sm leading-6 text-slate-400">Upload CSV, Excel, a text-based PDF or Word scorer sheet for the selected club. Extracted rows remain in the governed review queue until approved.</p><form onSubmit={(event) => { event.preventDefault(); void uploadTeamStats(event.currentTarget); }} className="mt-5 grid gap-3"><select value={statGameId} onChange={(event) => { setStatGameId(event.target.value); setStatImportId(""); setStatRows([]); }} required className={input}><option value="">Choose assigned game</option>{teamGames.map((game) => <option key={game.id} value={game.id}>{game.game_title || game.title || `${game.home_team_name} vs ${game.away_team_name}`}</option>)}</select><input name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.pdf,.docx,.doc" required className="rounded-xl border border-white/10 bg-slate-950 p-3 text-xs text-slate-300"/><button disabled={working || !statGameId} className={primaryButton}>Extract team stats</button></form>{!teamGames.length ? <p className="mt-3 text-xs text-red-200">This club has no canonical assigned games yet.</p> : null}</div>

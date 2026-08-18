@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import TeamActions from "./TeamActions";
@@ -128,10 +128,10 @@ function score(
     game.team_score == null ||
     game.opponent_score == null
   ) {
-    return "â€“";
+    return "–";
   }
 
-  return `${game.team_score}â€“${game.opponent_score}`;
+  return `${game.team_score}–${game.opponent_score}`;
 }
 
 function normalizeTitle(
@@ -566,30 +566,62 @@ export default async function TeamProfilePage({
    * we keep the older verified player stats
    * visible as a fallback.
    */
-  /*
-   * One statistics authority.
-   *
-   * publicTeamIntelligence already reconciles:
-   * - player_game_stats
-   * - guest_game_stats
-   * - game_box_score_lines
-   *
-   * The page must not rebuild a smaller legacy version
-   * of a player stat record because that would drop the
-   * richer Court Takeover statistics.
-   */
-  /*
-   * ONE statistics authority.
-   *
-   * publicTeamIntelligence already reconciles:
-   * - player_game_stats
-   * - guest_game_stats
-   * - game_box_score_lines
-   *
-   * Do not rebuild a smaller legacy player object here.
-   */
-  const playerRankings: PublicPlayerRanking[] =
-    intelligence?.players ?? [];
+  const playerRankings:
+    PublicPlayerRanking[] =
+    intelligence?.players
+      .length
+      ? intelligence.players
+      : verifiedStats.leaders.map(
+          (
+            leader,
+          ) => ({
+            key:
+              `legacy-${leader.playerId}`,
+
+            playerId:
+              leader.playerId,
+
+            rosterMemberId:
+              null,
+
+            name:
+              leader.name,
+
+            profileHref:
+              leader.profileHref,
+
+            gamesPlayed:
+              leader.gamesPlayed,
+
+            points:
+              leader.points,
+
+            rebounds:
+              leader.rebounds,
+
+            assists:
+              leader.assists,
+
+            steals:
+              leader.steals,
+
+            blocks:
+              leader.blocks,
+
+            turnovers: 0,
+
+            threePointers: 0,
+
+            pointsPerGame:
+              leader.pointsPerGame,
+
+            reboundsPerGame:
+              leader.reboundsPerGame,
+
+            assistsPerGame:
+              leader.assistsPerGame,
+          }),
+        );
 
   const summary =
     intelligence?.summary;
@@ -698,7 +730,7 @@ export default async function TeamProfilePage({
             href="/teams"
             className="inline-flex w-fit rounded-xl border border-white/15 bg-black/45 px-4 py-2.5 text-[9px] font-black uppercase tracking-[.13em] backdrop-blur transition hover:border-orange-400/60"
           >
-            â† All teams
+            ← All teams
           </Link>
 
           <div className="pb-2">
@@ -738,7 +770,7 @@ export default async function TeamProfilePage({
                       }`}
                     >
                       {verified
-                        ? "âœ“ Verified team"
+                        ? "✓ Verified team"
                         : "Team profile"}
                     </span>
 
@@ -776,11 +808,11 @@ export default async function TeamProfilePage({
                       "Location not listed"}
 
                     {profile.founded_year
-                      ? ` Â· Founded ${profile.founded_year}`
+                      ? ` · Founded ${profile.founded_year}`
                       : ""}
 
                     {leagueMemberships.length
-                      ? ` Â· ${leagueMemberships
+                      ? ` · ${leagueMemberships
                           .map(
                             (
                               membership,
@@ -793,10 +825,10 @@ export default async function TeamProfilePage({
                                 .name,
                           )
                           .join(
-                            " Â· ",
+                            " · ",
                           )}`
                       : profile.current_competition
-                        ? ` Â· ${profile.current_competition}`
+                        ? ` · ${profile.current_competition}`
                         : ""}
                   </p>
                 </div>
@@ -1092,7 +1124,7 @@ export default async function TeamProfilePage({
                                 membership
                                   .league
                                   .name
-                              } Â· ${
+                              } · ${
                                 membership.division
                               }`,
                           )
@@ -1107,7 +1139,7 @@ export default async function TeamProfilePage({
                             Boolean,
                           )
                           .join(
-                            " Â· ",
+                            " · ",
                           ) ||
                         "Not listed"
                   }
@@ -1153,7 +1185,7 @@ export default async function TeamProfilePage({
                   )}
                   className="shrink-0 text-[9px] font-black uppercase tracking-[.12em] text-orange-300"
                 >
-                  Full record â†’
+                  Full record →
                 </Link>
               </div>
 
@@ -1196,7 +1228,7 @@ export default async function TeamProfilePage({
                 )}
                 className="shrink-0 text-[9px] font-black uppercase tracking-[.12em] text-orange-300"
               >
-                All results â†’
+                All results →
               </Link>
             </div>
 
@@ -1247,7 +1279,7 @@ export default async function TeamProfilePage({
                     )}
                     className="shrink-0 text-[9px] font-black uppercase text-orange-300"
                   >
-                    Full roster â†’
+                    Full roster →
                   </Link>
                 </div>
 
@@ -1295,7 +1327,7 @@ export default async function TeamProfilePage({
                     )}
                     className="shrink-0 text-[9px] font-black uppercase text-orange-300"
                   >
-                    All competitions â†’
+                    All competitions →
                   </Link>
                 </div>
 
@@ -1608,7 +1640,7 @@ export default async function TeamProfilePage({
                   )
                 ) : (
                   <span className="text-2xl font-black text-zinc-600">
-                    â€”
+                    —
                   </span>
                 )}
               </div>
@@ -1811,7 +1843,7 @@ export default async function TeamProfilePage({
                 text="Player production stays separated by league, competition, event and takeover programme instead of being mixed into one unexplained total."
               />
 
-              <div className="mt-7 space-y-8">
+              <div className="mt-7 grid gap-5 lg:grid-cols-2">
                 {activities
                   .filter(
                     (
@@ -2176,7 +2208,7 @@ export default async function TeamProfilePage({
 
             <h2 className="mt-2 text-2xl font-black uppercase sm:text-4xl">
               Players, games and
-              historyâ€”connected.
+              history—connected.
             </h2>
           </div>
 
@@ -2436,11 +2468,11 @@ function MemberCard({
 
         {member.nickname ? (
           <p className="mt-1 text-sm font-bold text-orange-300">
-            â€œ
+            “
             {
               member.nickname
             }
-            â€
+            ”
           </p>
         ) : null}
 
@@ -2529,7 +2561,7 @@ function GameCard({
             )}
 
             {game.venue
-              ? ` Â· ${game.venue}`
+              ? ` · ${game.venue}`
               : ""}
           </p>
         </div>
@@ -2551,7 +2583,7 @@ function GameCard({
 
       {game.game_id ? (
         <div className="px-5 py-3 text-[9px] font-black uppercase tracking-[.12em] text-orange-300">
-          Open Match Centre â†’
+          Open Match Centre →
         </div>
       ) : (
         <div className="px-5 py-3 text-[9px] font-black uppercase tracking-[.12em] text-zinc-500">
@@ -2662,11 +2694,11 @@ function ActivityRow({
           )}
 
           {activity.division
-            ? ` Â· ${activity.division}`
+            ? ` · ${activity.division}`
             : ""}
 
           {activity.seasonLabel
-            ? ` Â· ${activity.seasonLabel}`
+            ? ` · ${activity.seasonLabel}`
             : ""}
         </p>
       </div>
@@ -2770,7 +2802,7 @@ function ActivityCard({
                 {
                   activity.pointsFor
                 }{" "}
-                â€“{" "}
+                –{" "}
                 {
                   activity.pointsAgainst
                 }
@@ -2844,7 +2876,7 @@ function ActivityCard({
 
         {activity.href ? (
           <p className="mt-5 text-[9px] font-black uppercase tracking-[.12em] text-orange-300">
-            Open record â†’
+            Open record →
           </p>
         ) : null}
       </div>
@@ -2868,245 +2900,104 @@ function ActivityCard({
 function CompetitionStatsCard({
   activity,
 }: {
-  activity: PublicActivityRecord;
+  activity:
+    PublicActivityRecord;
 }) {
-  const boards: Array<{
-    title: string;
-    label: string;
-    players: PublicPlayerRanking[];
-    value: (player: PublicPlayerRanking) => number;
-    decimal?: boolean;
-  }> = [
-    {
-      title: "Points Per Game",
-      label: "PPG",
-      players: activity.leaderboards.pointsPerGame,
-      value: (player) => player.pointsPerGame,
-      decimal: true,
-    },
-    {
-      title: "Total Points Leaders",
-      label: "PTS",
-      players: activity.leaderboards.totalPoints,
-      value: (player) => player.points,
-    },
-    {
-      title: "Assists Per Game",
-      label: "APG",
-      players: activity.leaderboards.assistsPerGame,
-      value: (player) => player.assistsPerGame,
-      decimal: true,
-    },
-    {
-      title: "Rebounds Per Game",
-      label: "RPG",
-      players: activity.leaderboards.reboundsPerGame,
-      value: (player) => player.reboundsPerGame,
-      decimal: true,
-    },
-    {
-      title: "Steals Per Game",
-      label: "SPG",
-      players: activity.leaderboards.stealsPerGame,
-      value: (player) => player.stealsPerGame,
-      decimal: true,
-    },
-    {
-      title: "Blocks Per Game",
-      label: "BPG",
-      players: activity.leaderboards.blocksPerGame,
-      value: (player) => player.blocksPerGame,
-      decimal: true,
-    },
-    {
-      title: "3-Point Leaders",
-      label: "3PM",
-      players: activity.leaderboards.threePointersMade,
-      value: (player) => player.threeMade,
-    },
-    {
-      title: "Games Played",
-      label: "GP",
-      players: activity.leaderboards.gamesPlayed,
-      value: (player) => player.gamesPlayed,
-    },
-  ];
-
   return (
-    <article className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950/90">
-      <div className="border-b border-white/[.07] bg-[#07162b]/90 p-5 sm:p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-[.16em] text-orange-300">
-              {activityLabel(activity)}
-            </p>
+    <article className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/90">
+      <div className="flex flex-col gap-3 border-b border-white/[.07] bg-[#07162b]/80 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[8px] font-black uppercase tracking-[.14em] text-orange-300">
+            {activityLabel(
+              activity,
+            )}
+          </p>
 
-            <h3 className="mt-2 text-2xl font-black uppercase sm:text-4xl">
-              {activity.title}
-            </h3>
-
-            <p className="mt-2 text-xs leading-5 text-zinc-400">
-              Leaderboards are calculated only from games belonging to this
-              competition. Court Takeover statistics do not mix with FACKTS
-              Kings or unrelated games.
-            </p>
-          </div>
-
-          <div className="grid shrink-0 grid-cols-3 gap-2">
-            <MiniMetric
-              value={activity.gameCount}
-              label="Games"
-            />
-
-            <MiniMetric
-              value={activity.leaders.length}
-              label="Players"
-            />
-
-            <MiniMetric
-              value={activity.completedGames}
-              label="Finals"
-            />
-          </div>
+          <h3 className="mt-1 text-xl font-black uppercase">
+            {
+              activity.title
+            }
+          </h3>
         </div>
-      </div>
 
-      <div className="p-4 sm:p-6">
-        {activity.leaders.length ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {boards.map((board) => (
-              <StatLeaderboardCard
-                key={`${activity.key}-${board.label}`}
-                title={board.title}
-                label={board.label}
-                players={board.players}
-                value={board.value}
-                decimal={board.decimal}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-white/15 bg-black/30 px-5 py-8 text-center">
-            <p className="text-sm font-black uppercase text-zinc-200">
-              No statistics linked yet
-            </p>
-
-            <p className="mt-2 text-xs text-zinc-500">
-              Games are recorded for this competition, but no usable player
-              statistics were resolved for those games.
-            </p>
-          </div>
-        )}
-
-        {activity.href ? (
-          <Link
-            href={activity.href}
-            className="mt-6 inline-flex min-h-11 items-center rounded-xl border border-orange-400/30 bg-orange-500/10 px-5 text-[9px] font-black uppercase tracking-[.13em] text-orange-300 transition hover:border-orange-300 hover:bg-orange-500/15"
-          >
-            Open {activity.title} →
-          </Link>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-function StatLeaderboardCard({
-  title,
-  label,
-  players,
-  value,
-  decimal = false,
-}: {
-  title: string;
-  label: string;
-  players: PublicPlayerRanking[];
-  value: (player: PublicPlayerRanking) => number;
-  decimal?: boolean;
-}) {
-  /*
-   * The historical FACKTS leaderboard cards displayed
-   * the top seven. We preserve that behaviour here.
-   *
-   * The complete player table above still retains every
-   * resolved player record.
-   */
-  const topPlayers = players.slice(0, 7);
-
-  return (
-    <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#08111f] shadow-lg shadow-black/20">
-      <div className="border-b border-white/[.07] bg-black/30 px-4 py-3">
-        <p className="text-[8px] font-black uppercase tracking-[.18em] text-orange-300">
-          {label}
+        <p className="text-[9px] font-black uppercase text-zinc-400">
+          {
+            activity.gameCount
+          }{" "}
+          games
         </p>
-
-        <h4 className="mt-1 text-sm font-black uppercase leading-tight text-white">
-          {title}
-        </h4>
       </div>
 
       <div className="divide-y divide-white/[.06]">
-        {topPlayers.length ? (
-          topPlayers.map((player, index) => {
-            const statValue = value(player);
-
-            const content = (
-              <>
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-black/40 text-[10px] font-black text-orange-300 ring-1 ring-white/[.07]">
-                  {index + 1}
+        {activity.leaders
+          .slice(
+            0,
+            5,
+          )
+          .map(
+            (
+              leader,
+              index,
+            ) => (
+              <div
+                key={
+                  leader.key
+                }
+                className="grid grid-cols-[32px_1fr_repeat(3,48px)] items-center gap-2 px-4 py-3 text-xs"
+              >
+                <span className="font-black text-zinc-500">
+                  {index +
+                    1}
                 </span>
 
-                <div className="min-w-0">
-                  <p className="truncate text-[11px] font-black text-white">
-                    {player.name}
-                  </p>
+                <span className="min-w-0 truncate font-black">
+                  {
+                    leader.name
+                  }
+                </span>
 
-                  <p className="mt-0.5 text-[8px] font-bold uppercase tracking-[.08em] text-zinc-600">
-                    {player.gamesPlayed} GP
-                  </p>
-                </div>
+                <span className="text-center font-black text-orange-300">
+                  {leader.pointsPerGame.toFixed(
+                    1,
+                  )}
+                </span>
 
-                <div className="shrink-0 text-right">
-                  <p className="text-base font-black leading-none text-orange-300">
-                    {decimal
-                      ? statValue.toFixed(1)
-                      : Math.round(statValue)}
-                  </p>
+                <span className="text-center text-zinc-300">
+                  {leader.reboundsPerGame.toFixed(
+                    1,
+                  )}
+                </span>
 
-                  <p className="mt-1 text-[7px] font-black uppercase text-zinc-600">
-                    {label}
-                  </p>
-                </div>
-              </>
-            );
-
-            const rowClasses =
-              "grid grid-cols-[28px_minmax(0,1fr)_48px] items-center gap-2 px-3 py-2.5 transition hover:bg-white/[.035]";
-
-            return player.profileHref ? (
-              <Link
-                key={player.key}
-                href={player.profileHref}
-                className={rowClasses}
-              >
-                {content}
-              </Link>
-            ) : (
-              <div
-                key={player.key}
-                className={rowClasses}
-              >
-                {content}
+                <span className="text-center text-zinc-300">
+                  {leader.assistsPerGame.toFixed(
+                    1,
+                  )}
+                </span>
               </div>
-            );
-          })
-        ) : (
-          <div className="px-4 py-7 text-center text-[10px] font-bold uppercase text-zinc-600">
-            No data
-          </div>
-        )}
+            ),
+          )}
       </div>
-    </section>
+
+      <div className="grid grid-cols-[32px_1fr_repeat(3,48px)] gap-2 border-t border-white/[.07] px-4 py-2 text-[7px] font-black uppercase text-zinc-600">
+        <span />
+
+        <span>
+          Player
+        </span>
+
+        <span className="text-center">
+          PPG
+        </span>
+
+        <span className="text-center">
+          RPG
+        </span>
+
+        <span className="text-center">
+          APG
+        </span>
+      </div>
+    </article>
   );
 }
 
@@ -3165,7 +3056,7 @@ function CompetitionRow({
       </div>
 
       <span className="shrink-0 text-[9px] font-black text-orange-300">
-        Open â†’
+        Open →
       </span>
     </Link>
   );
@@ -3314,4 +3205,3 @@ function TrainingCard({
     </article>
   );
 }
-

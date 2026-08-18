@@ -1,4 +1,4 @@
-export type OcrRosterMember = {
+﻿export type OcrRosterMember = {
   id?: string;
   display_name?: string;
   nickname?: string | null;
@@ -42,6 +42,7 @@ export type BasketballReportOcrResult = {
   rows: OcrStatRow[];
   home_rows: OcrStatRow[];
   away_rows: OcrStatRow[];
+  officials?: string[];
   warnings: string[];
 };
 
@@ -67,7 +68,7 @@ function cleanNumberText(value: string) {
     .replace(/[()]/g, " ")
     .replace(/(\d)\s*&\s*(\d)/g, "$1$2")
     .replace(/\b[oO]\b/g, "0")
-    .replace(/\b[e¢]\b/g, "0")
+    .replace(/\b[eÂ¢]\b/g, "0")
     .replace(/\bi\b/g, "1")
     .replace(/[|]/g, "1")
     .replace(/,/g, ".");
@@ -78,9 +79,9 @@ function parseRosterPage(pageText: string) {
   for (const rawLine of pageText.split(/\r?\n/)) {
     const line = rawLine.replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, " ").trim();
     if (!line || /^total\b/i.test(line)) continue;
-    const rowMatch = line.match(/^\s*(\S{1,3})\)?\s+(?:[*•]\s*)?([A-Za-z][A-Za-z .'-]{2,70}?)\s+((?:[0-5]?\d[:.][0-5]\d)|(?:[0-5]\d{3}\d?))\s+(.+)$/);
+    const rowMatch = line.match(/^\s*(\S{1,3})\)?\s+(?:[*â€¢]\s*)?([A-Za-z][A-Za-z .'-]{2,70}?)\s+((?:[0-5]?\d[:.][0-5]\d)|(?:[0-5]\d{3}\d?))\s+(.+)$/);
     if (!rowMatch) continue;
-    const playerName = rowMatch[2].replace(/^[*•]\s*/, "").replace(/\s+/g, " ").trim();
+    const playerName = rowMatch[2].replace(/^[*â€¢]\s*/, "").replace(/\s+/g, " ").trim();
     if (!playerName || /^(player|team|total)$/i.test(playerName)) continue;
 
     const tokens = cleanNumberText(rowMatch[4]).match(/[-+]?\d+(?:\.\d+)?%?/g) || [];
@@ -298,3 +299,4 @@ export function parseBasketballReportOcr(
     warnings,
   };
 }
+

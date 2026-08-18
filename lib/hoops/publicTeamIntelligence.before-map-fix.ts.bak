@@ -1,0 +1,1947 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import {
+  supabase,
+} from "@/lib/supabase";
+
+export type PublicActivityKind =
+  | "league"
+  | "event"
+  | "one_on_one"
+  | "community_takeover"
+  | "high_school_takeover"
+  | "university_takeover"
+  | "competition"
+  | "friendly"
+  | "other";
+
+export type PublicTeamIdentity = {
+  id?: string | null;
+
+  slug: string;
+
+  name: string;
+
+  shortName?:
+    | string
+    | null;
+
+  aliases?:
+    | string[]
+    | null;
+};
+
+export type PublicPlayerRanking = {
+  key: string;
+
+  playerId?:
+    | string
+    | null;
+
+  rosterMemberId?:
+    | string
+    | null;
+
+  name: string;
+
+  profileHref?:
+    | string
+    | null;
+
+  gamesPlayed: number;
+
+  points: number;
+
+  rebounds: number;
+
+  assists: number;
+
+  steals: number;
+
+  blocks: number;
+
+  turnovers: number;
+
+  threePointers: number;
+
+  pointsPerGame: number;
+
+  reboundsPerGame: number;
+
+  assistsPerGame: number;
+};
+
+export type PublicActivityRecord = {
+  key: string;
+
+  kind:
+    PublicActivityKind;
+
+  title: string;
+
+  href?:
+    | string
+    | null;
+
+  seasonLabel?:
+    | string
+    | null;
+
+  division?:
+    | string
+    | null;
+
+  gameCount: number;
+
+  completedGames: number;
+
+  wins: number;
+
+  losses: number;
+
+  pointsFor: number;
+
+  pointsAgainst: number;
+
+  leaders:
+    PublicPlayerRanking[];
+};
+
+export type PublicTeamIntelligence = {
+  summary: {
+    totalGames: number;
+
+    completedGames: number;
+
+    leagues: number;
+
+    events: number;
+
+    competitions: number;
+
+    communityTakeovers: number;
+
+    highSchoolTakeovers: number;
+
+    universityTakeovers: number;
+
+    oneOnOneCompetitions: number;
+
+    friendlies: number;
+  };
+
+  performance: {
+    played: number;
+
+    wins: number;
+
+    losses: number;
+
+    pointsFor: number;
+
+    pointsAgainst: number;
+
+    pointDifference: number;
+
+    winPercentage: number;
+  };
+
+  players:
+    PublicPlayerRanking[];
+
+  activities:
+    PublicActivityRecord[];
+};
+
+type GameRow = {
+  id: string;
+
+  event_id?:
+    | string
+    | null;
+
+  league_id?:
+    | string
+    | null;
+
+  home_team_id?:
+    | string
+    | null;
+
+  away_team_id?:
+    | string
+    | null;
+
+  home_team_name?:
+    | string
+    | null;
+
+  away_team_name?:
+    | string
+    | null;
+
+  title?:
+    | string
+    | null;
+
+  game_title?:
+    | string
+    | null;
+
+  competition_name?:
+    | string
+    | null;
+
+  season_label?:
+    | string
+    | null;
+
+  division?:
+    | string
+    | null;
+
+  match_type?:
+    | string
+    | null;
+
+  game_format?:
+    | string
+    | null;
+
+  game_stage?:
+    | string
+    | null;
+
+  game_date?:
+    | string
+    | null;
+
+  status?:
+    | string
+    | null;
+
+  verification_status?:
+    | string
+    | null;
+
+  is_public?:
+    | boolean
+    | null;
+
+  home_score?:
+    | number
+    | null;
+
+  away_score?:
+    | number
+    | null;
+};
+
+type BoxLine = {
+  id: string;
+
+  game_id: string;
+
+  team_side:
+    | "home"
+    | "away";
+
+  team_id?:
+    | string
+    | null;
+
+  roster_member_id?:
+    | string
+    | null;
+
+  player_id?:
+    | string
+    | null;
+
+  display_name?:
+    | string
+    | null;
+
+  points?:
+    | number
+    | null;
+
+  rebounds?:
+    | number
+    | null;
+
+  assists?:
+    | number
+    | null;
+
+  steals?:
+    | number
+    | null;
+
+  blocks?:
+    | number
+    | null;
+
+  turnovers?:
+    | number
+    | null;
+
+  three_made?:
+    | number
+    | null;
+};
+
+type LeagueRow = {
+  id: string;
+
+  slug?: string | null;
+
+  name?: string | null;
+
+  short_name?:
+    | string
+    | null;
+};
+
+type EventRow = {
+  event_id: string;
+
+  slug?: string | null;
+
+  title?: string | null;
+};
+
+function normalize(
+  value: unknown,
+) {
+  return String(
+    value || "",
+  )
+    .trim()
+    .toLowerCase()
+    .replace(
+      /&/g,
+      "and",
+    )
+    .replace(
+      /[^a-z0-9]+/g,
+      " ",
+    )
+    .trim();
+}
+
+function keyText(
+  value: unknown,
+) {
+  return normalize(
+    value,
+  ).replace(
+    /\s+/g,
+    "-",
+  );
+}
+
+function numberValue(
+  value: unknown,
+) {
+  const parsed =
+    Number(
+      value ?? 0,
+    );
+
+  return Number.isFinite(
+    parsed,
+  )
+    ? parsed
+    : 0;
+}
+
+function aliasesForTeam(
+  team:
+    PublicTeamIdentity,
+) {
+  return new Set(
+    [
+      team.name,
+
+      team.shortName,
+
+      ...(team.aliases ||
+        []),
+    ]
+      .map(
+        normalize,
+      )
+      .filter(
+        Boolean,
+      ),
+  );
+}
+
+function gameText(
+  game: GameRow,
+) {
+  return normalize(
+    [
+      game.title,
+      game.game_title,
+      game.competition_name,
+      game.match_type,
+      game.game_format,
+      game.game_stage,
+      game.home_team_name,
+      game.away_team_name,
+    ]
+      .filter(
+        Boolean,
+      )
+      .join(" "),
+  );
+}
+
+function activityKind(
+  game: GameRow,
+): PublicActivityKind {
+  const text =
+    gameText(
+      game,
+    );
+
+  if (
+    /high school/.test(
+      text,
+    ) &&
+    /takeover/.test(
+      text,
+    )
+  ) {
+    return "high_school_takeover";
+  }
+
+  if (
+    /university/.test(
+      text,
+    ) &&
+    /takeover/.test(
+      text,
+    )
+  ) {
+    return "university_takeover";
+  }
+
+  if (
+    /court takeover/.test(
+      text,
+    ) ||
+    /community takeover/.test(
+      text,
+    )
+  ) {
+    return "community_takeover";
+  }
+
+  if (
+    /fackts kings/.test(
+      text,
+    ) ||
+    /\b1v1\b/.test(
+      text,
+    ) ||
+    /one on one/.test(
+      text,
+    )
+  ) {
+    return "one_on_one";
+  }
+
+  if (
+    game.league_id
+  ) {
+    return "league";
+  }
+
+  if (
+    game.event_id
+  ) {
+    return "event";
+  }
+
+  if (
+    /\bfriendly\b/.test(
+      text,
+    ) ||
+    /\bscrimmage\b/.test(
+      text,
+    )
+  ) {
+    return "friendly";
+  }
+
+  if (
+    game.competition_name &&
+    !/^fackts hoops$/i.test(
+      game.competition_name.trim(),
+    )
+  ) {
+    return "competition";
+  }
+
+  return "other";
+}
+
+function gameSide(
+  game: GameRow,
+  team:
+    PublicTeamIdentity,
+) {
+  if (
+    team.id &&
+    game.home_team_id ===
+      team.id
+  ) {
+    return "home" as const;
+  }
+
+  if (
+    team.id &&
+    game.away_team_id ===
+      team.id
+  ) {
+    return "away" as const;
+  }
+
+  const aliases =
+    aliasesForTeam(
+      team,
+    );
+
+  if (
+    aliases.has(
+      normalize(
+        game.home_team_name,
+      ),
+    )
+  ) {
+    return "home" as const;
+  }
+
+  if (
+    aliases.has(
+      normalize(
+        game.away_team_name,
+      ),
+    )
+  ) {
+    return "away" as const;
+  }
+
+  return null;
+}
+
+function isFacktsOrganization(
+  team:
+    PublicTeamIdentity,
+) {
+  if (
+    team.slug ===
+    "fackts-africa"
+  ) {
+    return true;
+  }
+
+  return aliasesForTeam(
+    team,
+  ).has(
+    "fackts",
+  );
+}
+
+function isFacktsActivity(
+  game: GameRow,
+) {
+  const kind =
+    activityKind(
+      game,
+    );
+
+  const text =
+    gameText(
+      game,
+    );
+
+  return (
+    text.includes(
+      "fackts",
+    ) ||
+    [
+      "one_on_one",
+      "community_takeover",
+      "high_school_takeover",
+      "university_takeover",
+    ].includes(
+      kind,
+    )
+  );
+}
+
+function activityKey(
+  game: GameRow,
+) {
+  const kind =
+    activityKind(
+      game,
+    );
+
+  if (
+    kind ===
+      "league" &&
+    game.league_id
+  ) {
+    return `league:${game.league_id}:${keyText(
+      game.season_label ||
+        "season",
+    )}:${keyText(
+      game.division ||
+        "division",
+    )}`;
+  }
+
+  if (
+    kind ===
+      "event" &&
+    game.event_id
+  ) {
+    return `event:${game.event_id}`;
+  }
+
+  if (
+    kind ===
+    "one_on_one"
+  ) {
+    return "competition:fackts-kings";
+  }
+
+  if (
+    kind ===
+    "community_takeover"
+  ) {
+    return "competition:community-court-takeovers";
+  }
+
+  if (
+    kind ===
+    "high_school_takeover"
+  ) {
+    return `high-school:${keyText(
+      game.competition_name ||
+        game.title ||
+        "high-school-takeover",
+    )}`;
+  }
+
+  if (
+    kind ===
+    "university_takeover"
+  ) {
+    return `university:${keyText(
+      game.competition_name ||
+        game.title ||
+        "university-takeover",
+    )}`;
+  }
+
+  if (
+    kind ===
+      "competition" &&
+    game.competition_name
+  ) {
+    return `competition:${keyText(
+      game.competition_name,
+    )}`;
+  }
+
+  if (
+    kind ===
+    "friendly"
+  ) {
+    return "friendly";
+  }
+
+  return `other:${keyText(
+    game.competition_name ||
+      game.match_type ||
+      "games",
+  )}`;
+}
+
+function activityTitle(
+  game: GameRow,
+  leagues:
+    Map<string, LeagueRow>,
+  events:
+    Map<string, EventRow>,
+) {
+  const kind =
+    activityKind(
+      game,
+    );
+
+  if (
+    kind ===
+      "league" &&
+    game.league_id
+  ) {
+    const league =
+      leagues.get(
+        game.league_id,
+      );
+
+    return (
+      league?.short_name ||
+      league?.name ||
+      game.competition_name ||
+      "League"
+    );
+  }
+
+  if (
+    kind ===
+      "event" &&
+    game.event_id
+  ) {
+    return (
+      events.get(
+        game.event_id,
+      )?.title ||
+      game.competition_name ||
+      game.title ||
+      "Basketball Event"
+    );
+  }
+
+  if (
+    kind ===
+    "one_on_one"
+  ) {
+    return "FACKTS Kings";
+  }
+
+  if (
+    kind ===
+    "community_takeover"
+  ) {
+    return "Community Court Takeovers";
+  }
+
+  if (
+    kind ===
+    "high_school_takeover"
+  ) {
+    return (
+      game.competition_name ||
+      game.title ||
+      "High School Takeover"
+    );
+  }
+
+  if (
+    kind ===
+    "university_takeover"
+  ) {
+    return (
+      game.competition_name ||
+      game.title ||
+      "University Takeover"
+    );
+  }
+
+  if (
+    kind ===
+    "friendly"
+  ) {
+    return "Friendlies";
+  }
+
+  return (
+    game.competition_name ||
+    game.title ||
+    "Basketball Record"
+  );
+}
+
+function activityHref(
+  game: GameRow,
+  leagues:
+    Map<string, LeagueRow>,
+  events:
+    Map<string, EventRow>,
+) {
+  const kind =
+    activityKind(
+      game,
+    );
+
+  if (
+    kind ===
+      "league" &&
+    game.league_id
+  ) {
+    const slug =
+      leagues.get(
+        game.league_id,
+      )?.slug;
+
+    return slug
+      ? `/leagues/${slug}`
+      : null;
+  }
+
+  if (
+    kind ===
+      "event" &&
+    game.event_id
+  ) {
+    const slug =
+      events.get(
+        game.event_id,
+      )?.slug;
+
+    return slug
+      ? `/events/${slug}`
+      : "/events";
+  }
+
+  if (
+    kind ===
+    "one_on_one"
+  ) {
+    return "/competitions/fackts-kings";
+  }
+
+  if (
+    kind ===
+      "community_takeover" ||
+    kind ===
+      "high_school_takeover" ||
+    kind ===
+      "university_takeover"
+  ) {
+    return "/court-takeover";
+  }
+
+  return null;
+}
+
+function lineBelongsToTeam(
+  line: BoxLine,
+  game: GameRow,
+  team:
+    PublicTeamIdentity,
+) {
+  if (
+    team.id &&
+    line.team_id ===
+      team.id
+  ) {
+    return true;
+  }
+
+  const side =
+    gameSide(
+      game,
+      team,
+    );
+
+  return Boolean(
+    side &&
+      line.team_side ===
+        side,
+  );
+}
+
+function aggregatePlayers(
+  lines: BoxLine[],
+) {
+  type WorkingPlayer = {
+    key: string;
+
+    playerId?:
+      | string
+      | null;
+
+    rosterMemberId?:
+      | string
+      | null;
+
+    name: string;
+
+    games:
+      Set<string>;
+
+    points: number;
+
+    rebounds: number;
+
+    assists: number;
+
+    steals: number;
+
+    blocks: number;
+
+    turnovers: number;
+
+    threePointers: number;
+  };
+
+  const players =
+    new Map<
+      string,
+      WorkingPlayer
+    >();
+
+  for (
+    const line of
+    lines
+  ) {
+    const name =
+      String(
+        line.display_name ||
+          "Player",
+      ).trim();
+
+    const key =
+      line.player_id
+        ? `player:${line.player_id}`
+        : line.roster_member_id
+          ? `roster:${line.roster_member_id}`
+          : `name:${keyText(
+              name,
+            )}`;
+
+    const current =
+      players.get(
+        key,
+      ) || {
+        key,
+
+        playerId:
+          line.player_id ||
+          null,
+
+        rosterMemberId:
+          line.roster_member_id ||
+          null,
+
+        name,
+
+        games:
+          new Set<string>(),
+
+        points: 0,
+
+        rebounds: 0,
+
+        assists: 0,
+
+        steals: 0,
+
+        blocks: 0,
+
+        turnovers: 0,
+
+        threePointers: 0,
+      };
+
+    current.games.add(
+      line.game_id,
+    );
+
+    current.points +=
+      numberValue(
+        line.points,
+      );
+
+    current.rebounds +=
+      numberValue(
+        line.rebounds,
+      );
+
+    current.assists +=
+      numberValue(
+        line.assists,
+      );
+
+    current.steals +=
+      numberValue(
+        line.steals,
+      );
+
+    current.blocks +=
+      numberValue(
+        line.blocks,
+      );
+
+    current.turnovers +=
+      numberValue(
+        line.turnovers,
+      );
+
+    current.threePointers +=
+      numberValue(
+        line.three_made,
+      );
+
+    players.set(
+      key,
+      current,
+    );
+  }
+
+  return Array.from(
+    players.values(),
+  )
+    .map(
+      (
+        player,
+      ): PublicPlayerRanking => {
+        const gamesPlayed =
+          player.games.size;
+
+        return {
+          key:
+            player.key,
+
+          playerId:
+            player.playerId,
+
+          rosterMemberId:
+            player.rosterMemberId,
+
+          name:
+            player.name,
+
+          profileHref:
+            player.playerId
+              ? `/players/${player.playerId}`
+              : null,
+
+          gamesPlayed,
+
+          points:
+            player.points,
+
+          rebounds:
+            player.rebounds,
+
+          assists:
+            player.assists,
+
+          steals:
+            player.steals,
+
+          blocks:
+            player.blocks,
+
+          turnovers:
+            player.turnovers,
+
+          threePointers:
+            player.threePointers,
+
+          pointsPerGame:
+            gamesPlayed
+              ? player.points /
+                gamesPlayed
+              : 0,
+
+          reboundsPerGame:
+            gamesPlayed
+              ? player.rebounds /
+                gamesPlayed
+              : 0,
+
+          assistsPerGame:
+            gamesPlayed
+              ? player.assists /
+                gamesPlayed
+              : 0,
+        };
+      },
+    )
+    .sort(
+      (
+        left,
+        right,
+      ) =>
+        right.pointsPerGame -
+          left.pointsPerGame ||
+        right.reboundsPerGame -
+          left.reboundsPerGame ||
+        right.assistsPerGame -
+          left.assistsPerGame ||
+        left.name.localeCompare(
+          right.name,
+        ),
+    );
+}
+
+export async function loadPublicTeamIntelligence(
+  team:
+    PublicTeamIdentity,
+): Promise<PublicTeamIntelligence> {
+  /*
+   * The canonical box-score migration is newer than
+   * some generated Supabase types in this project.
+   */
+  const db =
+    supabase as any;
+
+  const gamesResult =
+    await db
+      .from(
+        "games",
+      )
+      .select(
+        "id,event_id,league_id,home_team_id,away_team_id,home_team_name,away_team_name,title,game_title,competition_name,season_label,division,match_type,game_format,game_stage,game_date,status,verification_status,is_public,home_score,away_score",
+      )
+      .neq(
+        "is_public",
+        false,
+      )
+      .order(
+        "game_date",
+        {
+          ascending:
+            false,
+        },
+      )
+      .limit(
+        1000,
+      );
+
+  if (
+    gamesResult.error
+  ) {
+    throw gamesResult.error;
+  }
+
+  const allGames =
+    (
+      gamesResult.data ||
+      []
+    ) as GameRow[];
+
+  const fackts =
+    isFacktsOrganization(
+      team,
+    );
+
+  /*
+   * TEAM GAMES:
+   * actual games involving this team.
+   *
+   * ACTIVITY GAMES:
+   * broader organisation record. For FACKTS this also
+   * includes FACKTS-owned competitions, events and takeovers.
+   */
+  const teamGames =
+    allGames.filter(
+      (
+        game,
+      ) =>
+        Boolean(
+          gameSide(
+            game,
+            team,
+          ),
+        ),
+    );
+
+  const activityGames =
+    fackts
+      ? allGames.filter(
+          (
+            game,
+          ) =>
+            Boolean(
+              gameSide(
+                game,
+                team,
+              ),
+            ) ||
+            isFacktsActivity(
+              game,
+            ),
+        )
+      : teamGames;
+
+  const activityGameIds =
+    Array.from(
+      new Set(
+        activityGames.map(
+          (
+            game,
+          ) =>
+            game.id,
+        ),
+      ),
+    );
+
+  const leagueIds =
+    Array.from(
+      new Set(
+        activityGames
+          .map(
+            (
+              game,
+            ) =>
+              game.league_id,
+          )
+          .filter(
+            (
+              value,
+            ): value is string =>
+              Boolean(value),
+          ),
+      ),
+    );
+
+  const eventIds =
+    Array.from(
+      new Set(
+        activityGames
+          .map(
+            (
+              game,
+            ) =>
+              game.event_id,
+          )
+          .filter(
+            (
+              value,
+            ): value is string =>
+              Boolean(value),
+          ),
+      ),
+    );
+
+  const [
+    linesResult,
+    leaguesResult,
+    eventsResult,
+  ] =
+    await Promise.all([
+      activityGameIds.length
+        ? db
+            .from(
+              "game_box_score_lines",
+            )
+            .select(
+              "id,game_id,team_side,team_id,roster_member_id,player_id,display_name,points,rebounds,assists,steals,blocks,turnovers,three_made",
+            )
+            .in(
+              "game_id",
+              activityGameIds,
+            )
+            .eq(
+              "verification_status",
+              "verified",
+            )
+            .eq(
+              "is_public",
+              true,
+            )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          }),
+
+      leagueIds.length
+        ? db
+            .from(
+              "leagues",
+            )
+            .select(
+              "id,slug,name,short_name",
+            )
+            .in(
+              "id",
+              leagueIds,
+            )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          }),
+
+      eventIds.length
+        ? db
+            .from(
+              "event_case_studies",
+            )
+            .select(
+              "event_id,slug,title",
+            )
+            .in(
+              "event_id",
+              eventIds,
+            )
+            .eq(
+              "is_public",
+              true,
+            )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          }),
+    ]);
+
+  for (
+    const result of [
+      linesResult,
+      leaguesResult,
+      eventsResult,
+    ]
+  ) {
+    if (
+      result.error
+    ) {
+      throw result.error;
+    }
+  }
+
+  const lines =
+    (
+      linesResult.data ||
+      []
+    ) as BoxLine[];
+
+  const gamesById =
+    new Map(
+      activityGames.map(
+        (
+          game,
+        ) => [
+          game.id,
+          game,
+        ],
+      ),
+    );
+
+  const leagues =
+  new Map<string, LeagueRow>(
+    (
+      (leaguesResult.data ||
+        []) as LeagueRow[]
+    ).map(
+      (
+        league,
+      ): [
+        string,
+        LeagueRow,
+      ] => [
+        league.id,
+        league,
+      ],
+    ),
+  );
+
+const events =
+  new Map<string, EventRow>(
+    (
+      (eventsResult.data ||
+        []) as EventRow[]
+    ).map(
+      (
+        event,
+      ): [
+        string,
+        EventRow,
+      ] => [
+        event.event_id,
+        event,
+      ],
+    ),
+  );
+
+  const events =
+    new Map(
+      (
+        eventsResult.data ||
+        []
+      ).map(
+        (
+          event:
+            EventRow,
+        ) => [
+          event.event_id,
+          event,
+        ],
+      ),
+    );
+
+  /*
+   * Overall player rankings.
+   *
+   * Registered teams only receive their own side's lines.
+   *
+   * For FACKTS-owned activity where FACKTS is the organiser
+   * rather than a literal team side, we include all verified
+   * participant lines so competitions such as FACKTS Kings
+   * can still generate public ranking data.
+   */
+  const overallPlayerLines =
+    lines.filter(
+      (
+        line,
+      ) => {
+        const game =
+          gamesById.get(
+            line.game_id,
+          );
+
+        if (!game) {
+          return false;
+        }
+
+        if (
+          lineBelongsToTeam(
+            line,
+            game,
+            team,
+          )
+        ) {
+          return true;
+        }
+
+        return (
+          fackts &&
+          !gameSide(
+            game,
+            team,
+          ) &&
+          isFacktsActivity(
+            game,
+          )
+        );
+      },
+    );
+
+  const players =
+    aggregatePlayers(
+      overallPlayerLines,
+    );
+
+  const activityMap =
+    new Map<
+      string,
+      {
+        key: string;
+
+        kind:
+          PublicActivityKind;
+
+        title: string;
+
+        href?:
+          | string
+          | null;
+
+        seasonLabel?:
+          | string
+          | null;
+
+        division?:
+          | string
+          | null;
+
+        games:
+          GameRow[];
+      }
+    >();
+
+  for (
+    const game of
+    activityGames
+  ) {
+    const key =
+      activityKey(
+        game,
+      );
+
+    const current =
+      activityMap.get(
+        key,
+      ) || {
+        key,
+
+        kind:
+          activityKind(
+            game,
+          ),
+
+        title:
+          activityTitle(
+            game,
+            leagues,
+            events,
+          ),
+
+        href:
+          activityHref(
+            game,
+            leagues,
+            events,
+          ),
+
+        seasonLabel:
+          game.season_label ||
+          null,
+
+        division:
+          game.division ||
+          null,
+
+        games: [],
+      };
+
+    current.games.push(
+      game,
+    );
+
+    activityMap.set(
+      key,
+      current,
+    );
+  }
+
+  const activities:
+    PublicActivityRecord[] =
+    Array.from(
+      activityMap.values(),
+    )
+      .map(
+        (
+          activity,
+        ) => {
+          let wins = 0;
+
+          let losses = 0;
+
+          let pointsFor = 0;
+
+          let pointsAgainst = 0;
+
+          let completedGames =
+            0;
+
+          for (
+            const game of
+            activity.games
+          ) {
+            const side =
+              gameSide(
+                game,
+                team,
+              );
+
+            if (!side) {
+              continue;
+            }
+
+            const teamScore =
+              side ===
+              "home"
+                ? game.home_score
+                : game.away_score;
+
+            const opponentScore =
+              side ===
+              "home"
+                ? game.away_score
+                : game.home_score;
+
+            if (
+              teamScore ===
+                null ||
+              teamScore ===
+                undefined ||
+              opponentScore ===
+                null ||
+              opponentScore ===
+                undefined ||
+              teamScore ===
+                opponentScore
+            ) {
+              continue;
+            }
+
+            completedGames +=
+              1;
+
+            pointsFor +=
+              Number(
+                teamScore,
+              );
+
+            pointsAgainst +=
+              Number(
+                opponentScore,
+              );
+
+            if (
+              teamScore >
+              opponentScore
+            ) {
+              wins += 1;
+            } else {
+              losses +=
+                1;
+            }
+          }
+
+          const groupGameIds =
+            new Set(
+              activity.games.map(
+                (
+                  game,
+                ) =>
+                  game.id,
+              ),
+            );
+
+          const groupLines =
+            lines.filter(
+              (
+                line,
+              ) => {
+                if (
+                  !groupGameIds.has(
+                    line.game_id,
+                  )
+                ) {
+                  return false;
+                }
+
+                const game =
+                  gamesById.get(
+                    line.game_id,
+                  );
+
+                if (!game) {
+                  return false;
+                }
+
+                if (
+                  lineBelongsToTeam(
+                    line,
+                    game,
+                    team,
+                  )
+                ) {
+                  return true;
+                }
+
+                return (
+                  fackts &&
+                  !gameSide(
+                    game,
+                    team,
+                  ) &&
+                  isFacktsActivity(
+                    game,
+                  )
+                );
+              },
+            );
+
+          return {
+            key:
+              activity.key,
+
+            kind:
+              activity.kind,
+
+            title:
+              activity.title,
+
+            href:
+              activity.href,
+
+            seasonLabel:
+              activity.seasonLabel,
+
+            division:
+              activity.division,
+
+            gameCount:
+              activity.games
+                .length,
+
+            completedGames,
+
+            wins,
+
+            losses,
+
+            pointsFor,
+
+            pointsAgainst,
+
+            leaders:
+              aggregatePlayers(
+                groupLines,
+              ).slice(
+                0,
+                10,
+              ),
+          };
+        },
+      )
+      .sort(
+        (
+          left,
+          right,
+        ) => {
+          const order:
+            Record<
+              PublicActivityKind,
+              number
+            > = {
+            league: 1,
+
+            event: 2,
+
+            one_on_one: 3,
+
+            community_takeover: 4,
+
+            high_school_takeover: 5,
+
+            university_takeover: 6,
+
+            competition: 7,
+
+            friendly: 8,
+
+            other: 9,
+          };
+
+          return (
+            order[
+              left.kind
+            ] -
+              order[
+                right.kind
+              ] ||
+            left.title.localeCompare(
+              right.title,
+            )
+          );
+        },
+      );
+
+  const uniqueKindCount = (
+    kinds:
+      PublicActivityKind[],
+  ) =>
+    new Set(
+      activities
+        .filter(
+          (
+            activity,
+          ) =>
+            kinds.includes(
+              activity.kind,
+            ),
+        )
+        .map(
+          (
+            activity,
+          ) =>
+            activity.key,
+        ),
+    ).size;
+
+  /*
+   * FACKTS "competitions" deliberately counts:
+   *
+   * - FACKTS Kings
+   * - Community Court Takeovers
+   * - any other competition series
+   *
+   * High School and University Takeovers remain separate
+   * public programme categories as requested.
+   */
+  const competitions =
+    uniqueKindCount([
+      "one_on_one",
+      "community_takeover",
+      "competition",
+    ]);
+
+  let teamPlayed = 0;
+
+  let teamWins = 0;
+
+  let teamLosses = 0;
+
+  let teamPointsFor =
+    0;
+
+  let teamPointsAgainst =
+    0;
+
+  for (
+    const game of
+    teamGames
+  ) {
+    const side =
+      gameSide(
+        game,
+        team,
+      );
+
+    if (!side) {
+      continue;
+    }
+
+    const teamScore =
+      side === "home"
+        ? game.home_score
+        : game.away_score;
+
+    const opponentScore =
+      side === "home"
+        ? game.away_score
+        : game.home_score;
+
+    if (
+      teamScore === null ||
+      teamScore ===
+        undefined ||
+      opponentScore ===
+        null ||
+      opponentScore ===
+        undefined ||
+      teamScore ===
+        opponentScore
+    ) {
+      continue;
+    }
+
+    teamPlayed += 1;
+
+    teamPointsFor +=
+      Number(
+        teamScore,
+      );
+
+    teamPointsAgainst +=
+      Number(
+        opponentScore,
+      );
+
+    if (
+      teamScore >
+      opponentScore
+    ) {
+      teamWins += 1;
+    } else {
+      teamLosses +=
+        1;
+    }
+  }
+
+  return {
+    summary: {
+      totalGames:
+        activityGames.length,
+
+      completedGames:
+        activityGames.filter(
+          (
+            game,
+          ) =>
+            game.status ===
+              "completed" ||
+            (game.home_score !==
+              null &&
+              game.home_score !==
+                undefined &&
+              game.away_score !==
+                null &&
+              game.away_score !==
+                undefined),
+        ).length,
+
+      leagues:
+        uniqueKindCount([
+          "league",
+        ]),
+
+      events:
+        uniqueKindCount([
+          "event",
+        ]),
+
+      competitions,
+
+      communityTakeovers:
+        uniqueKindCount([
+          "community_takeover",
+        ]),
+
+      highSchoolTakeovers:
+        uniqueKindCount([
+          "high_school_takeover",
+        ]),
+
+      universityTakeovers:
+        uniqueKindCount([
+          "university_takeover",
+        ]),
+
+      oneOnOneCompetitions:
+        uniqueKindCount([
+          "one_on_one",
+        ]),
+
+      friendlies:
+        uniqueKindCount([
+          "friendly",
+        ]),
+    },
+
+    performance: {
+      played:
+        teamPlayed,
+
+      wins:
+        teamWins,
+
+      losses:
+        teamLosses,
+
+      pointsFor:
+        teamPointsFor,
+
+      pointsAgainst:
+        teamPointsAgainst,
+
+      pointDifference:
+        teamPointsFor -
+        teamPointsAgainst,
+
+      winPercentage:
+        teamPlayed
+          ? (teamWins /
+              teamPlayed) *
+            100
+          : 0,
+    },
+
+    players,
+
+    activities,
+  };
+}

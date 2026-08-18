@@ -342,72 +342,435 @@ export async function POST(request: NextRequest) {
               return NextResponse.json({ ok: false, error: `Club player points (${recordedScore}) do not equal the recorded team score (${expectedScore}). Return the session for correction.` }, { status: 409 });
             }
 
-            const roster = await admin.from("team_roster_members").select("player_id").eq("team_id", teamId).eq("status", "active").not("player_id", "is", null);
-            if (roster.error) throw roster.error;
-            const eligible = new Map(((roster.data ?? []) as JsonRecord[]).map((row) => [String(row.player_id), teamSide]));
-            const officialLines = submittedLines.filter((line) => line.player_id && eligible.has(String(line.player_id)));
-            if (officialLines.length !== submittedLines.length) {
-              const missing = submittedLines.length - officialLines.length;
-              return NextResponse.json({ ok: false, error: `${missing} player row${missing === 1 ? " is" : "s are"} not linked to an official player profile. Link every club roster member before approval so the public box score is complete.` }, { status: 409 });
-            }
-            const officialPlayerIds = officialLines.map((line) => String(line.player_id));
-            const gameRoster = await admin.from("game_rosters").upsert(officialPlayerIds.map((playerId) => ({
-              game_id: sessionResult.data.game_id,
-              player_id: playerId,
-              roster_status: "confirmed",
-              roster_role: "bench",
-              notes: "Synced from a Super Admin-approved club box score.",
-            })), { onConflict: "game_id,player_id" });
-            if (gameRoster.error) throw gameRoster.error;
-            const existing = officialPlayerIds.length
-              ? await admin.from("player_game_stats").select("id,player_id,entry_status,verification_status").eq("game_id", sessionResult.data.game_id).in("player_id", officialPlayerIds)
-              : { data: [], error: null };
-            if (existing.error) throw existing.error;
-            const existingLines = (existing.data ?? []) as JsonRecord[];
-            const existingByPlayer = new Map(existingLines.map((line) => [String(line.player_id), line]));
-            if (existingLines.some((line) => line.entry_status === "verified" || line.verification_status === "verified")) {
-              return NextResponse.json({ ok: false, error: "At least one official stat line is already verified. Use Data Corrections instead of overwriting it." }, { status: 409 });
-            }
-            for (const line of officialLines) {
-              const canonical = {
-                game_id: sessionResult.data.game_id,
-                player_id: line.player_id,
-                points: line.points,
-                rebounds: line.rebounds,
-                offensive_rebounds: line.offensive_rebounds,
-                defensive_rebounds: line.defensive_rebounds,
-                assists: line.assists,
-                steals: line.steals,
-                blocks: line.blocks,
-                turnovers: line.turnovers,
-                fouls: line.fouls,
-                minutes: line.minutes,
-                two_made: line.two_made,
-                two_attempted: line.two_attempted,
-                three_made: line.three_made,
-                three_attempted: line.three_attempted,
-                ft_made: line.ft_made,
-                ft_attempted: line.ft_attempted,
-                three_pointers_made: line.three_made,
-                plus_minus: line.plus_minus,
-                period_values: line.period_values || {},
-                team_side: eligible.get(String(line.player_id)) || teamSide,
-                entry_status: "verified",
-                verification_status: "verified",
-                submitted_at: sessionResult.data.submitted_at || now,
-                submitted_by: sessionResult.data.created_by_user_id,
-                verified_at: now,
-                verified_by: access.user?.id,
-                last_saved_at: now,
-                updated_at: now,
-                extra_stats: { source: "club_basketball_iq", team_id: teamId, team_stat_session_id: sessionId, team_stat_submission_id: id },
-              };
-              const currentLine = existingByPlayer.get(String(line.player_id));
-              const savedCanonical = currentLine
-                ? await admin.from("player_game_stats").update(canonical).eq("id", currentLine.id)
-                : await admin.from("player_game_stats").insert({ ...canonical, created_at: now });
-              if (savedCanonical.error) throw savedCanonical.error;
-            }
+const roster = await admin
+  .from("team_roster_members")
+  .select("id,player_id,display_name")
+  .eq("team_id", teamId)
+  .eq("status", "active");
+
+if (roster.error) throw roster.error;
+
+const activeRosterById = new Map(
+  ((roster.data ?? []) as JsonRecord[]).map((row) => [
+    String(row.id),
+    row,
+  ]),
+);
+
+/*
+ * A player does NOT need a permanent FACKTS player profile
+ * in order to have verified club statistics.
+ *
+ * The minimum identity requirement is an active,
+ * verified club roster membership.
+ */
+const rosterLinkedLines = submittedLines.filter(
+  (line) =>
+    line.roster_member_id &&
+    activeRosterById.has(String(line.roster_member_id)),
+);
+
+if (rosterLinkedLines.length !== submittedLines.length) {
+  const missing = submittedLines.length - rosterLinkedLines.length;
+
+  return NextResponse.json(
+    {
+      ok: false,
+      error: `${missing} player row${
+        missing === 1 ? " is" : "s are"
+      } not linked to an active club roster member. Match every box-score row to the club roster before approval.`,
+    },
+    { status: 409 },
+  );
+}
+
+/*
+ * Some roster members may ALSO have a permanent FACKTS
+ * player identity.
+ *
+ * Those players are copied into player_game_stats so their
+ * verified statistics can follow them across clubs and into
+ * their full player profiles.
+ *
+ * Roster-only players remain valid approved team-stat lines.
+ */
+const canonicalLines = rosterLinkedLines.flatMap((line) => {
+  const member = activeRosterById.get(
+    String(line.roster_member_id),
+  );
+
+  if (!member?.player_id) return [];
+
+  return [
+    {
+      line,
+      playerId: String(member.player_id),
+    },
+  ];
+});
+
+const officialPlayerIds = Array.from(
+  new Set(canonicalLines.map((item) => item.playerId)),
+);
+
+/*
+ * game_rosters belongs to permanent player identities.
+ * Only add players that already have a canonical player_id.
+ */
+if (officialPlayerIds.length) {
+  const gameRoster = await admin
+    .from("game_rosters")
+    .upsert(
+      officialPlayerIds.map((playerId) => ({
+        game_id: sessionResult.data.game_id,
+        player_id: playerId,
+        roster_status: "confirmed",
+        roster_role: "bench",
+        notes:
+          "Synced from a Super Admin-approved club box score.",
+      })),
+      { onConflict: "game_id,player_id" },
+    );
+
+  if (gameRoster.error) throw gameRoster.error;
+}
+
+/*
+ * Check existing canonical statistics only for players who
+ * already have full permanent FACKTS identities.
+ */
+const existing = officialPlayerIds.length
+  ? await admin
+      .from("player_game_stats")
+      .select(
+        "id,player_id,entry_status,verification_status",
+      )
+      .eq("game_id", sessionResult.data.game_id)
+      .in("player_id", officialPlayerIds)
+  : { data: [], error: null };
+
+if (existing.error) throw existing.error;
+
+const existingLines = (existing.data ?? []) as JsonRecord[];
+
+const existingByPlayer = new Map(
+  existingLines.map((line) => [
+    String(line.player_id),
+    line,
+  ]),
+);
+
+if (
+  existingLines.some(
+    (line) =>
+      line.entry_status === "verified" ||
+      line.verification_status === "verified",
+  )
+) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "At least one permanent player stat line is already verified. Use Data Corrections instead of overwriting it.",
+    },
+    { status: 409 },
+  );
+}
+
+/*
+ * Canonicalize statistics ONLY for roster members that have
+ * permanent FACKTS player profiles.
+ *
+ * Roster-only players remain in team_player_stat_lines and
+ * are approved below with the rest of the team session.
+ */
+for (const item of canonicalLines) {
+  const line = item.line;
+  const playerId = item.playerId;
+
+  const canonical = {
+    game_id: sessionResult.data.game_id,
+    player_id: playerId,
+
+    points: line.points,
+    rebounds: line.rebounds,
+    offensive_rebounds: line.offensive_rebounds,
+    defensive_rebounds: line.defensive_rebounds,
+
+    assists: line.assists,
+    steals: line.steals,
+    blocks: line.blocks,
+    turnovers: line.turnovers,
+    fouls: line.fouls,
+
+    minutes: line.minutes,
+
+    two_made: line.two_made,
+    two_attempted: line.two_attempted,
+    three_made: line.three_made,
+    three_attempted: line.three_attempted,
+    ft_made: line.ft_made,
+    ft_attempted: line.ft_attempted,
+
+    three_pointers_made: line.three_made,
+    plus_minus: line.plus_minus,
+
+    period_values: line.period_values || {},
+
+    team_side: teamSide,
+
+    entry_status: "verified",
+    verification_status: "verified",
+
+    submitted_at:
+      sessionResult.data.submitted_at || now,
+    submitted_by:
+      sessionResult.data.created_by_user_id,
+
+    verified_at: now,
+    verified_by: access.user?.id,
+
+    last_saved_at: now,
+    updated_at: now,
+
+    extra_stats: {
+      source: "club_basketball_iq",
+      team_id: teamId,
+      roster_member_id: line.roster_member_id,
+      team_stat_session_id: sessionId,
+      team_stat_submission_id: id,
+    },
+  };
+
+  const currentLine = existingByPlayer.get(playerId);
+
+  const savedCanonical = currentLine
+    ? await admin
+        .from("player_game_stats")
+        .update(canonical)
+        .eq("id", currentLine.id)
+    : await admin
+        .from("player_game_stats")
+        .insert({
+          ...canonical,
+          created_at: now,
+        });
+
+  if (savedCanonical.error) {
+    throw savedCanonical.error;
+  }
+}/*
+ * ============================================================
+ * CANONICAL GAME BOX SCORE
+ *
+ * Every approved club stat line enters the per-game box score,
+ * even when the roster member does not yet own a permanent
+ * FACKTS player profile.
+ * ============================================================
+ */
+
+const teamProfileResult = await admin
+  .from("team_profiles")
+  .select("id,name,short_name")
+  .eq("id", teamId)
+  .maybeSingle();
+
+if (teamProfileResult.error) {
+  throw teamProfileResult.error;
+}
+
+const teamName =
+  teamSide === "home"
+    ? String(
+        game.data.home_team_name ||
+          teamProfileResult.data?.name ||
+          "Home team",
+      )
+    : String(
+        game.data.away_team_name ||
+          teamProfileResult.data?.name ||
+          "Away team",
+      );
+
+const activeRosterResult = await admin
+  .from("team_roster_members")
+  .select(
+    "id,player_id,display_name,nickname,jersey_number,position",
+  )
+  .eq("team_id", teamId)
+  .eq("status", "active");
+
+if (activeRosterResult.error) {
+  throw activeRosterResult.error;
+}
+
+const activeRosterMap = new Map(
+  (activeRosterResult.data ?? []).map((member) => [
+    String(member.id),
+    member,
+  ]),
+);
+
+const canonicalBoxScoreRows = submittedLines.map((line) => {
+  const rosterMember = activeRosterMap.get(
+    String(line.roster_member_id || ""),
+  );
+
+  if (!rosterMember) {
+    throw new Error(
+      `Roster member ${String(
+        line.roster_member_id || "",
+      )} could not be found while publishing the game box score.`,
+    );
+  }
+
+  const playerId =
+    line.player_id || rosterMember.player_id || null;
+
+  const twoMade = Number(line.two_made || 0);
+  const twoAttempted = Number(line.two_attempted || 0);
+
+  const threeMade = Number(line.three_made || 0);
+  const threeAttempted = Number(
+    line.three_attempted || 0,
+  );
+
+  const ftMade = Number(line.ft_made || 0);
+  const ftAttempted = Number(line.ft_attempted || 0);
+
+  const offensiveRebounds = Number(
+    line.offensive_rebounds || 0,
+  );
+
+  const defensiveRebounds = Number(
+    line.defensive_rebounds || 0,
+  );
+
+  return {
+    game_id: sessionResult.data.game_id,
+
+    team_side: teamSide,
+
+    team_name: teamName,
+
+    team_id: teamId,
+
+    roster_member_id: rosterMember.id,
+
+    player_id: playerId,
+
+    identity_type: playerId
+      ? "canonical_player"
+      : "team_roster",
+
+    display_name:
+      String(
+        line.display_name ||
+          rosterMember.display_name ||
+          rosterMember.nickname ||
+          "Player",
+      ),
+
+    jersey_number:
+      rosterMember.jersey_number || null,
+
+    position:
+      rosterMember.position || null,
+
+    minutes: Number(line.minutes || 0),
+
+    points: Number(line.points || 0),
+
+    field_goals_made:
+      twoMade + threeMade,
+
+    field_goals_attempted:
+      twoAttempted + threeAttempted,
+
+    two_made: twoMade,
+    two_attempted: twoAttempted,
+
+    three_made: threeMade,
+    three_attempted: threeAttempted,
+
+    ft_made: ftMade,
+    ft_attempted: ftAttempted,
+
+    offensive_rebounds: offensiveRebounds,
+    defensive_rebounds: defensiveRebounds,
+
+    rebounds:
+      Number(line.rebounds || 0) ||
+      offensiveRebounds + defensiveRebounds,
+
+    assists: Number(line.assists || 0),
+    turnovers: Number(line.turnovers || 0),
+    steals: Number(line.steals || 0),
+    blocks: Number(line.blocks || 0),
+    fouls: Number(line.fouls || 0),
+
+    plus_minus: Number(line.plus_minus || 0),
+
+    player_of_game:
+      Boolean(line.player_of_game),
+
+    period_values:
+      line.period_values || {},
+
+    extra_stats: {
+      source: "club_basketball_iq",
+      team_stat_session_id: sessionId,
+      team_stat_submission_id: id,
+    },
+
+    source_line_key:
+      `team:${teamId}:roster:${rosterMember.id}`,
+
+    source_type: "team_import",
+
+    source_import_id:
+      sessionResult.data.source_import_id || null,
+
+    source_session_id:
+      sessionId,
+
+    source_submission_id:
+      id,
+
+    verification_status:
+      "verified",
+
+    is_public:
+      true,
+
+    verified_at:
+      now,
+
+    verified_by:
+      access.user?.id || null,
+
+    updated_at:
+      now,
+  };
+});
+
+/*
+ * Upsert makes approval safe if Admin retries after a partial
+ * network failure. The game/source key uniquely identifies the
+ * player's line for this specific game.
+ */
+const canonicalBoxScoreResult = await admin
+  .from("game_box_score_lines")
+  .upsert(
+    canonicalBoxScoreRows,
+    {
+      onConflict: "game_id,source_line_key",
+    },
+  );
+
+if (canonicalBoxScoreResult.error) {
+  throw canonicalBoxScoreResult.error;
+}
             const publishedGame = await admin.from("games").update({
               status: "completed",
               is_public: true,
