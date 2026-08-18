@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { buildBasketballIQ, type BasketballStatLine } from "@/lib/basketball-iq/insights";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireTeamCapability } from "@/lib/team-portal/access";
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     const [sessions, lines, imports, briefings] = await Promise.all([
       admin.from("team_stat_sessions").select("*").eq("team_id", teamId).neq("status", "archived").order("updated_at", { ascending: false }).limit(80),
       admin.from("team_player_stat_lines").select("*").eq("team_id", teamId).neq("status", "rejected").order("updated_at", { ascending: false }).limit(5000),
-      admin.from("team_stat_imports").select("id,team_id,game_id,file_name,mime_type,file_size,extraction_status,warnings,created_at").eq("team_id", teamId).order("created_at", { ascending: false }).limit(40),
+      admin.from("team_stat_imports").select("id,team_id,game_id,file_name,mime_type,file_size,extraction_status,extracted_rows,warnings,created_at").eq("team_id", teamId).order("created_at", { ascending: false }).limit(40),
       admin.from("team_performance_briefings").select("*").eq("team_id", teamId).neq("status", "archived").order("published_at", { ascending: false }).limit(100),
     ]);
     for (const result of [sessions, lines, imports, briefings]) if (result.error) throw result.error;
@@ -231,3 +231,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Basketball IQ update failed." }, { status: 500 });
   }
 }
+

@@ -630,6 +630,25 @@ function distance(
   ];
 }
 
+function nameTokenKey(
+  value: unknown,
+) {
+  return String(
+    value || "",
+  )
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(
+      /[^a-z0-9]+/g,
+      " ",
+    )
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join("");
+}
+
 function namesMatch(
   left: unknown,
   right: unknown,
@@ -640,11 +659,22 @@ function namesMatch(
   const second =
     identity(right);
 
+  const firstTokens =
+    nameTokenKey(left);
+
+  const secondTokens =
+    nameTokenKey(right);
+
   return Boolean(
     first &&
       second &&
-      (first ===
-        second ||
+      (
+        first === second ||
+        (
+          firstTokens &&
+          firstTokens ===
+            secondTokens
+        ) ||
         first.includes(
           second,
         ) ||
@@ -654,7 +684,8 @@ function namesMatch(
         distance(
           first,
           second,
-        ) <= 2),
+        ) <= 2
+      ),
   );
 }
 
@@ -662,11 +693,6 @@ function matchRosterMember(
   row: NormalizedStatRow,
   rosterRows: any[],
 ) {
-  const rowName =
-    identity(
-      row.player_name,
-    );
-
   const jersey =
     identity(
       row.jersey_number,
@@ -686,12 +712,10 @@ function matchRosterMember(
           member.display_name,
           member.nickname,
         ].some(
-          (
-            name,
-          ) =>
+          (name) =>
             namesMatch(
               name,
-              rowName,
+              row.player_name,
             ),
         ),
     );
@@ -708,18 +732,42 @@ function matchRosterMember(
           ) =>
             identity(
               member.jersey_number,
-            ) ===
-            jersey,
+            ) === jersey,
         )
       : [];
 
-  return byName.length ===
+  if (
+    byName.length === 1
+  ) {
+    return byName[0];
+  }
+
+  if (
+    byJersey.length === 1
+  ) {
+    return byJersey[0];
+  }
+
+  const byNameAndJersey =
+    jersey
+      ? byName.filter(
+          (
+            member: {
+              jersey_number?:
+                | string
+                | null;
+            },
+          ) =>
+            identity(
+              member.jersey_number,
+            ) === jersey,
+        )
+      : [];
+
+  return byNameAndJersey.length ===
     1
-    ? byName[0]
-    : byJersey.length ===
-        1
-      ? byJersey[0]
-      : null;
+    ? byNameAndJersey[0]
+    : null;
 }
 
 function sourceKeyPart(
@@ -2260,7 +2308,7 @@ export async function POST(
           error instanceof
           Error
             ? error.message
-            : "Stat sheet import failed.",
+            : JSON.stringify(error) || "Stat sheet import failed.",
       },
       {
         status: 500,

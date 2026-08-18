@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import TeamActions from "./TeamActions";
@@ -128,10 +128,10 @@ function score(
     game.team_score == null ||
     game.opponent_score == null
   ) {
-    return "â€“";
+    return "–";
   }
 
-  return `${game.team_score}â€“${game.opponent_score}`;
+  return `${game.team_score}–${game.opponent_score}`;
 }
 
 function normalizeTitle(
@@ -776,11 +776,11 @@ export default async function TeamProfilePage({
                       "Location not listed"}
 
                     {profile.founded_year
-                      ? ` Â· Founded ${profile.founded_year}`
+                      ? ` · Founded ${profile.founded_year}`
                       : ""}
 
                     {leagueMemberships.length
-                      ? ` Â· ${leagueMemberships
+                      ? ` · ${leagueMemberships
                           .map(
                             (
                               membership,
@@ -793,10 +793,10 @@ export default async function TeamProfilePage({
                                 .name,
                           )
                           .join(
-                            " Â· ",
+                            " · ",
                           )}`
                       : profile.current_competition
-                        ? ` Â· ${profile.current_competition}`
+                        ? ` · ${profile.current_competition}`
                         : ""}
                   </p>
                 </div>
@@ -1092,7 +1092,7 @@ export default async function TeamProfilePage({
                                 membership
                                   .league
                                   .name
-                              } Â· ${
+                              } · ${
                                 membership.division
                               }`,
                           )
@@ -1107,7 +1107,7 @@ export default async function TeamProfilePage({
                             Boolean,
                           )
                           .join(
-                            " Â· ",
+                            " · ",
                           ) ||
                         "Not listed"
                   }
@@ -1153,7 +1153,7 @@ export default async function TeamProfilePage({
                   )}
                   className="shrink-0 text-[9px] font-black uppercase tracking-[.12em] text-orange-300"
                 >
-                  Full record â†’
+                  Full record →
                 </Link>
               </div>
 
@@ -1196,7 +1196,7 @@ export default async function TeamProfilePage({
                 )}
                 className="shrink-0 text-[9px] font-black uppercase tracking-[.12em] text-orange-300"
               >
-                All results â†’
+                All results →
               </Link>
             </div>
 
@@ -1247,7 +1247,7 @@ export default async function TeamProfilePage({
                     )}
                     className="shrink-0 text-[9px] font-black uppercase text-orange-300"
                   >
-                    Full roster â†’
+                    Full roster →
                   </Link>
                 </div>
 
@@ -1295,7 +1295,7 @@ export default async function TeamProfilePage({
                     )}
                     className="shrink-0 text-[9px] font-black uppercase text-orange-300"
                   >
-                    All competitions â†’
+                    All competitions →
                   </Link>
                 </div>
 
@@ -1608,7 +1608,7 @@ export default async function TeamProfilePage({
                   )
                 ) : (
                   <span className="text-2xl font-black text-zinc-600">
-                    â€”
+                    —
                   </span>
                 )}
               </div>
@@ -2176,7 +2176,7 @@ export default async function TeamProfilePage({
 
             <h2 className="mt-2 text-2xl font-black uppercase sm:text-4xl">
               Players, games and
-              historyâ€”connected.
+              history—connected.
             </h2>
           </div>
 
@@ -2529,7 +2529,7 @@ function GameCard({
             )}
 
             {game.venue
-              ? ` Â· ${game.venue}`
+              ? ` · ${game.venue}`
               : ""}
           </p>
         </div>
@@ -2551,7 +2551,7 @@ function GameCard({
 
       {game.game_id ? (
         <div className="px-5 py-3 text-[9px] font-black uppercase tracking-[.12em] text-orange-300">
-          Open Match Centre â†’
+          Open Match Centre →
         </div>
       ) : (
         <div className="px-5 py-3 text-[9px] font-black uppercase tracking-[.12em] text-zinc-500">
@@ -2662,11 +2662,11 @@ function ActivityRow({
           )}
 
           {activity.division
-            ? ` Â· ${activity.division}`
+            ? ` · ${activity.division}`
             : ""}
 
           {activity.seasonLabel
-            ? ` Â· ${activity.seasonLabel}`
+            ? ` · ${activity.seasonLabel}`
             : ""}
         </p>
       </div>
@@ -2770,7 +2770,7 @@ function ActivityCard({
                 {
                   activity.pointsFor
                 }{" "}
-                â€“{" "}
+                –{" "}
                 {
                   activity.pointsAgainst
                 }
@@ -2844,7 +2844,7 @@ function ActivityCard({
 
         {activity.href ? (
           <p className="mt-5 text-[9px] font-black uppercase tracking-[.12em] text-orange-300">
-            Open record â†’
+            Open record →
           </p>
         ) : null}
       </div>
@@ -3165,7 +3165,7 @@ function CompetitionRow({
       </div>
 
       <span className="shrink-0 text-[9px] font-black text-orange-300">
-        Open â†’
+        Open →
       </span>
     </Link>
   );

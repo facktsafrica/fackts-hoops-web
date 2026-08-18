@@ -289,6 +289,29 @@ export default function BasketballIQWorkspace({
           setData(
             payload,
           );
+
+          const latestImport =
+            payload.imports?.[0];
+
+          if (
+            latestImport?.extracted_rows?.length
+          ) {
+            setImportRows((current) =>
+              current.length
+                ? current
+                : latestImport.extracted_rows,
+            );
+
+            setSourceImportId((current) =>
+              current || latestImport.id || "",
+            );
+
+            setImportWarnings((current) =>
+              current.length
+                ? current
+                : latestImport.warnings || [],
+            );
+          }
         } else {
           onMessage(
             payload.error ||
@@ -1476,16 +1499,124 @@ away_team_name:
       return;
     }
 
-    if (
-      importRows.some(
-        (
-          row,
-        ) =>
+    const nameKey = (
+      value: unknown,
+    ) =>
+      String(value || "")
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(
+          /[^a-z0-9]+/g,
+          " ",
+        )
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .sort()
+        .join("|");
+
+    const jerseyKey = (
+      value: unknown,
+    ) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(
+          /[^a-z0-9]/g,
+          "",
+        );
+
+    const resolvedRows =
+      importRows.map(
+        (row) => {
+          if (
+            row.roster_member_id
+          ) {
+            return row;
+          }
+
+          const rowName =
+            nameKey(
+              row.player_name,
+            );
+
+          const rowJersey =
+            jerseyKey(
+              row.jersey_number,
+            );
+
+          const byName =
+            roster.filter(
+              (member) =>
+                [
+                  member.display_name,
+                  member.nickname,
+                ].some(
+                  (name) =>
+                    rowName &&
+                    nameKey(name) ===
+                      rowName,
+                ),
+            );
+
+          const byJersey =
+            rowJersey
+              ? roster.filter(
+                  (member) =>
+                    jerseyKey(
+                      member.jersey_number,
+                    ) ===
+                    rowJersey,
+                )
+              : [];
+
+          const byBoth =
+            rowJersey
+              ? byName.filter(
+                  (member) =>
+                    jerseyKey(
+                      member.jersey_number,
+                    ) ===
+                    rowJersey,
+                )
+              : [];
+
+          const match =
+            byBoth.length === 1
+              ? byBoth[0]
+              : byName.length === 1
+                ? byName[0]
+                : byJersey.length === 1
+                  ? byJersey[0]
+                  : null;
+
+          return match
+            ? {
+                ...row,
+                roster_member_id:
+                  match.id,
+                player_id:
+                  match.player_id ||
+                  null,
+              }
+            : row;
+        },
+      );
+
+    setImportRows(
+      resolvedRows,
+    );
+
+    const unmatched =
+      resolvedRows.filter(
+        (row) =>
           !row.roster_member_id,
-      )
+      );
+
+    if (
+      unmatched.length
     ) {
       onMessage(
-        "Match every imported row to a team roster player first.",
+        `${unmatched.length} imported player row${unmatched.length === 1 ? "" : "s"} still need manual roster matching.`,
       );
 
       return;
@@ -1493,14 +1624,12 @@ away_team_name:
 
     if (
       new Set(
-        importRows.map(
-          (
-            row,
-          ) =>
+        resolvedRows.map(
+          (row) =>
             row.roster_member_id,
         ),
       ).size !==
-      importRows.length
+      resolvedRows.length
     ) {
       onMessage(
         "Two imported rows are matched to the same roster player. Correct the matches before loading the box score.",
@@ -1511,10 +1640,8 @@ away_team_name:
 
     const byRoster =
       new Map(
-        importRows.map(
-          (
-            row,
-          ) => [
+        resolvedRows.map(
+          (row) => [
             row.roster_member_id,
             row,
           ],
@@ -1523,9 +1650,7 @@ away_team_name:
 
     setRows(
       roster.map(
-        (
-          member,
-        ) => ({
+        (member) => ({
           ...blankRow(
             member,
           ),
@@ -1558,8 +1683,7 @@ away_team_name:
       "box_score",
     );
 
-    revision.current +=
-      1;
+    revision.current += 1;
 
     setDirty(true);
 
@@ -3848,4 +3972,7 @@ function BoxScore({
     </section>
   );
 }
+
+
+
 
