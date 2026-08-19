@@ -148,43 +148,502 @@ export async function POST(request: NextRequest) {
 
     if (action === "submit_session") {
       const sessionId = text(body.session_id, 100);
-      if (!safeRecordId(sessionId)) return NextResponse.json({ ok: false, error: "Save this stat session first." }, { status: 400 });
-      const session = await admin.from("team_stat_sessions").select("*").eq("id", sessionId).eq("team_id", teamId).maybeSingle();
-      if (session.error) throw session.error;
-      if (!session.data) return NextResponse.json({ ok: false, error: "Save this stat session first." }, { status: 404 });
-      if (session.data.source_submission_id) return NextResponse.json({ ok: true, message: "This game stat session is already in the Super Admin review queue." });
-      const canonicalGame = await admin.from("games").select("id,home_team_id,away_team_id").eq("id", session.data.game_id).maybeSingle();
-      if (canonicalGame.error) throw canonicalGame.error;
-      if (!canonicalGame.data || ![canonicalGame.data.home_team_id, canonicalGame.data.away_team_id].includes(teamId)) {
-        return NextResponse.json({ ok: false, error: "These stats are saved for club intelligence, but this club-only game must be linked to an official FACKTS game before Super Admin verification." }, { status: 409 });
-      }
-      const lines = await admin.from("team_player_stat_lines").select("id,player_id,display_name,points,rebounds,assists,steals,blocks,turnovers,fouls").eq("session_id", sessionId);
-      if (lines.error) throw lines.error;
-      if (!(lines.data ?? []).length) return NextResponse.json({ ok: false, error: "Enter at least one player stat line before submission." }, { status: 400 });
-      const submission = await admin.from("team_stat_submissions").insert({
-        team_id: teamId,
-        game_id: session.data.game_id,
-        submitted_by_user_id: access.user.id,
-        stat_payload: {
-          submission_type: "team_stat_session",
-          session_id: sessionId,
-          mode: session.data.mode,
-          player_rows: lines.data?.length || 0,
-          linked_official_players: (lines.data ?? []).filter((line) => line.player_id).length,
-          notes: text(body.notes, 2000),
-        },
-      }).select("*").single();
-      if (submission.error) throw submission.error;
-      const now = new Date().toISOString();
-      const [sessionUpdate, lineUpdate] = await Promise.all([
-        admin.from("team_stat_sessions").update({ status: "submitted", source_submission_id: submission.data.id, submitted_at: now, updated_at: now }).eq("id", sessionId),
-        admin.from("team_player_stat_lines").update({ status: "submitted", updated_at: now }).eq("session_id", sessionId),
-      ]);
-      if (sessionUpdate.error) throw sessionUpdate.error;
-      if (lineUpdate.error) throw lineUpdate.error;
-      return NextResponse.json({ ok: true, submission: submission.data, message: "Complete box score sent to Super Admin. The club can keep using its intelligence while official publication waits for verification." }, { status: 201 });
-    }
 
+      if (!safeRecordId(sessionId)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Save this stat session first.",
+          },
+          { status: 400 },
+        );
+      }
+
+      const userId = access.user.id;
+      const db = admin as any;
+
+      const session = await db
+        .from("team_stat_sessions")
+        .select("*")
+        .eq("id", sessionId)
+        .eq("team_id", teamId)
+        .maybeSingle();
+
+      if (session.error) {
+        throw session.error;
+      }
+
+      if (!session.data) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Save this stat session first.",
+          },
+          { status: 404 },
+        );
+      }
+
+      /*
+       * A team-approved session is already finished.
+       * Repeated button presses should be harmless.
+       */
+      if (session.data.status === "approved") {
+        return NextResponse.json({
+          ok: true,
+          approved: true,
+          game_id: session.data.game_id,
+          message:
+            "These game statistics are already approved and saved.",
+        });
+      }
+
+      const canonicalGame = await db
+        .from("games")
+        .select(
+          [
+            "id",
+            "home_team_id",
+            "away_team_id",
+            "home_team_name",
+            "away_team_name",
+            "home_score",
+            "away_score",
+            "verification_status",
+            "is_public",
+          ].join(","),
+        )
+        .eq("id", session.data.game_id)
+        .maybeSingle();
+
+      if (canonicalGame.error) {
+        throw canonicalGame.error;
+      }
+
+      if (!canonicalGame.data) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "This stat session is not linked to a canonical FACKTS game.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const isHome =
+        canonicalGame.data.home_team_id === teamId;
+
+      const isAway =
+        canonicalGame.data.away_team_id === teamId;
+
+      if (!isHome && !isAway) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "This game is not assigned to the current team.",
+          },
+          { status: 403 },
+        );
+      }
+
+      const teamSide =
+        isHome ? "home" : "away";
+
+      const teamName =
+        teamSide === "home"
+          ? canonicalGame.data.home_team_name || "Home team"
+          : canonicalGame.data.away_team_name || "Away team";
+
+      const lineResult = await db
+        .from("team_player_stat_lines")
+        .select("*")
+        .eq("session_id", sessionId)
+        .eq("team_id", teamId)
+        .neq("status", "rejected")
+        .order("display_name");
+
+      if (lineResult.error) {
+        throw lineResult.error;
+      }
+
+      const lines = lineResult.data ?? [];
+
+      if (!lines.length) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Enter at least one player stat line before approving the game.",
+          },
+          { status: 400 },
+        );
+      }
+
+      const now =
+        new Date().toISOString();
+
+      const teamPoints =
+        lines.reduce(
+          (
+            total: number,
+            line: any,
+          ) =>
+            total +
+            Number(
+              line.points || 0,
+            ),
+          0,
+        );
+
+      /*
+       * ==================================================
+       * TEAM APPROVAL -> CANONICAL GAME BOX SCORE
+       * ==================================================
+       *
+       * No Super Admin queue.
+       *
+       * Roster-only players are valid.
+       * A permanent player profile is optional.
+       */
+      const canonicalLines =
+        lines.map(
+          (line: any) => {
+            const twoMade =
+              Number(
+                line.two_made || 0,
+              );
+
+            const twoAttempted =
+              Number(
+                line.two_attempted || 0,
+              );
+
+            const threeMade =
+              Number(
+                line.three_made || 0,
+              );
+
+            const threeAttempted =
+              Number(
+                line.three_attempted || 0,
+              );
+
+            const playerId =
+              line.player_id || null;
+
+            return {
+              game_id:
+                canonicalGame.data.id,
+
+              team_side:
+                teamSide,
+
+              team_name:
+                teamName,
+
+              team_id:
+                teamId,
+
+              roster_member_id:
+                line.roster_member_id,
+
+              player_id:
+                playerId,
+
+              identity_type:
+                playerId
+                  ? "canonical_player"
+                  : "team_roster",
+
+              display_name:
+                line.display_name || "Player",
+
+              minutes:
+                Number(
+                  line.minutes || 0,
+                ),
+
+              points:
+                Number(
+                  line.points || 0,
+                ),
+
+              field_goals_made:
+                twoMade +
+                threeMade,
+
+              field_goals_attempted:
+                twoAttempted +
+                threeAttempted,
+
+              two_made:
+                twoMade,
+
+              two_attempted:
+                twoAttempted,
+
+              three_made:
+                threeMade,
+
+              three_attempted:
+                threeAttempted,
+
+              ft_made:
+                Number(
+                  line.ft_made || 0,
+                ),
+
+              ft_attempted:
+                Number(
+                  line.ft_attempted || 0,
+                ),
+
+              offensive_rebounds:
+                Number(
+                  line.offensive_rebounds || 0,
+                ),
+
+              defensive_rebounds:
+                Number(
+                  line.defensive_rebounds || 0,
+                ),
+
+              rebounds:
+                Number(
+                  line.rebounds || 0,
+                ),
+
+              assists:
+                Number(
+                  line.assists || 0,
+                ),
+
+              turnovers:
+                Number(
+                  line.turnovers || 0,
+                ),
+
+              steals:
+                Number(
+                  line.steals || 0,
+                ),
+
+              blocks:
+                Number(
+                  line.blocks || 0,
+                ),
+
+              fouls:
+                Number(
+                  line.fouls || 0,
+                ),
+
+              plus_minus:
+                Number(
+                  line.plus_minus || 0,
+                ),
+
+              period_values:
+                line.period_values &&
+                typeof line.period_values === "object" &&
+                !Array.isArray(line.period_values)
+                  ? line.period_values
+                  : {},
+
+              extra_stats: {},
+
+              source_line_key:
+                `team:${teamId}:roster:${line.roster_member_id}`,
+
+              source_type:
+                session.data.mode === "live"
+                  ? "live_capture"
+                  : "team_import",
+
+              source_import_id:
+                session.data.source_import_id || null,
+
+              source_session_id:
+                sessionId,
+
+              source_submission_id:
+                null,
+
+              verification_status:
+                "verified",
+
+              is_public:
+                true,
+
+              verified_at:
+                now,
+
+              verified_by:
+                userId,
+            };
+          },
+        );
+
+      const canonicalWrite =
+        await db
+          .from(
+            "game_box_score_lines",
+          )
+          .upsert(
+            canonicalLines,
+            {
+              onConflict:
+                "game_id,source_line_key",
+            },
+          );
+
+      if (canonicalWrite.error) {
+        throw canonicalWrite.error;
+      }
+
+      /*
+       * The team's confirmed player total becomes
+       * that team's canonical score.
+       *
+       * We do not touch the opponent score here.
+       */
+      const gameUpdate:
+        Record<string, any> = {
+          verification_status:
+            "verified",
+
+          is_public:
+            true,
+
+          status:
+            "completed",
+
+          is_upcoming:
+            false,
+
+          updated_at:
+            now,
+        };
+
+      if (teamSide === "home") {
+        gameUpdate.home_score =
+          teamPoints;
+      } else {
+        gameUpdate.away_score =
+          teamPoints;
+      }
+
+      const [
+        gameUpdateResult,
+        sessionUpdate,
+        lineUpdate,
+      ] =
+        await Promise.all([
+          db
+            .from("games")
+            .update(
+              gameUpdate,
+            )
+            .eq(
+              "id",
+              canonicalGame.data.id,
+            ),
+
+          db
+            .from(
+              "team_stat_sessions",
+            )
+            .update({
+              status:
+                "approved",
+
+              submitted_at:
+                now,
+
+              reviewed_at:
+                now,
+
+              source_submission_id:
+                null,
+
+              updated_at:
+                now,
+            })
+            .eq(
+              "id",
+              sessionId,
+            )
+            .eq(
+              "team_id",
+              teamId,
+            ),
+
+          db
+            .from(
+              "team_player_stat_lines",
+            )
+            .update({
+              status:
+                "approved",
+
+              updated_at:
+                now,
+            })
+            .eq(
+              "session_id",
+              sessionId,
+            ),
+        ]);
+
+      if (
+        gameUpdateResult.error
+      ) {
+        throw gameUpdateResult.error;
+      }
+
+      if (
+        sessionUpdate.error
+      ) {
+        throw sessionUpdate.error;
+      }
+
+      if (
+        lineUpdate.error
+      ) {
+        throw lineUpdate.error;
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+
+          approved:
+            true,
+
+          game_id:
+            canonicalGame.data.id,
+
+          session_id:
+            sessionId,
+
+          team_side:
+            teamSide,
+
+          team_score:
+            teamPoints,
+
+          canonical_rows_written:
+            canonicalLines.length,
+
+          message:
+            "Game statistics approved and saved. They are now part of the canonical FACKTS game. Admin can edit the game later if a correction is needed.",
+        },
+        {
+          status: 200,
+        },
+      );
+    }
     if (action === "publish_briefing") {
       if (!BRIEFING_ROLES.has(access.membership.role)) return NextResponse.json({ ok: false, error: "This team role cannot publish performance briefings." }, { status: 403 });
       const audience = text(body.audience, 30) === "player" ? "player" : "team";
@@ -231,4 +690,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Basketball IQ update failed." }, { status: 500 });
   }
 }
+
 

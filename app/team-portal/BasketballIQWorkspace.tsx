@@ -1,4 +1,5 @@
 ﻿"use client";
+
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 
 import {
@@ -7,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+
 import { readBasketballReportPdf } from "@/lib/basketball-iq/browserReportOcr";
 
 type JsonRecord = Record<string, any>;
@@ -116,7 +118,7 @@ function metric(
 ) {
   return value === null ||
     value === undefined
-    ? "â€”"
+    ? "-"
     : `${value}${suffix}`;
 }
 
@@ -141,10 +143,15 @@ export default function BasketballIQWorkspace({
   const [mode, setMode] =
     useState<Mode>("live");
 
+  /*
+   * IMPORTANT:
+   * Do not automatically select the first historical game.
+   *
+   * A blank game means a newly uploaded PDF can become
+   * its own match instead of inheriting the previous game.
+   */
   const [gameId, setGameId] =
-    useState(
-      games[0]?.id || "",
-    );
+    useState("");
 
   const [
     sessionId,
@@ -290,26 +297,37 @@ export default function BasketballIQWorkspace({
             payload,
           );
 
+          /*
+           * Recover the latest imported rows after refresh.
+           */
           const latestImport =
             payload.imports?.[0];
 
           if (
-            latestImport?.extracted_rows?.length
+            latestImport
+              ?.extracted_rows
+              ?.length
           ) {
-            setImportRows((current) =>
-              current.length
-                ? current
-                : latestImport.extracted_rows,
+            setImportRows(
+              (current) =>
+                current.length
+                  ? current
+                  : latestImport.extracted_rows,
             );
 
-            setSourceImportId((current) =>
-              current || latestImport.id || "",
+            setSourceImportId(
+              (current) =>
+                current ||
+                latestImport.id ||
+                "",
             );
 
-            setImportWarnings((current) =>
-              current.length
-                ? current
-                : latestImport.warnings || [],
+            setImportWarnings(
+              (current) =>
+                current.length
+                  ? current
+                  : latestImport.warnings ||
+                    [],
             );
           }
         } else {
@@ -394,8 +412,13 @@ export default function BasketballIQWorkspace({
         draft.id,
       );
 
+      /*
+       * A saved draft may legitimately belong
+       * to an existing game.
+       */
       setGameId(
-        draft.game_id,
+        draft.game_id ||
+          "",
       );
 
       setCurrentPeriod(
@@ -991,7 +1014,7 @@ export default function BasketballIQWorkspace({
     onMessage(
       payload.message ||
         payload.error ||
-        "Submission finished.",
+        "Game approval finished.",
     );
 
     if (response.ok) {
@@ -1004,15 +1027,25 @@ export default function BasketballIQWorkspace({
     }
   }
 
+  /*
+   * targetGameId is deliberately separate from state.
+   *
+   * This is important because React state updates are
+   * asynchronous. A fresh PDF can explicitly pass ""
+   * here and can NEVER accidentally inherit the game
+   * that was selected before the upload.
+   */
   async function storeImport(
     file: File,
     report: JsonRecord | null =
       null,
+    targetGameId:
+      string = gameId,
   ) {
     setImporting(true);
 
     setImportProgress(
-      "Securing the reportâ€¦",
+      "Securing the report...",
     );
 
     const formData =
@@ -1028,10 +1061,12 @@ export default function BasketballIQWorkspace({
       teamId,
     );
 
-    formData.set(
-      "game_id",
-      gameId,
-    );
+    if (targetGameId) {
+      formData.set(
+        "game_id",
+        targetGameId,
+      );
+    }
 
     if (report) {
       formData.set(
@@ -1046,7 +1081,8 @@ export default function BasketballIQWorkspace({
       formData.set(
         "home_team_name",
         String(
-          (report as JsonRecord).match
+          (report as JsonRecord)
+            .match
             .home_team_name ??
             "",
         ),
@@ -1055,7 +1091,8 @@ export default function BasketballIQWorkspace({
       formData.set(
         "away_team_name",
         String(
-          (report as JsonRecord).match
+          (report as JsonRecord)
+            .match
             .away_team_name ??
             "",
         ),
@@ -1064,7 +1101,8 @@ export default function BasketballIQWorkspace({
       formData.set(
         "game_date",
         String(
-          (report as JsonRecord).match
+          (report as JsonRecord)
+            .match
             .game_date ??
             "",
         ),
@@ -1073,7 +1111,8 @@ export default function BasketballIQWorkspace({
       formData.set(
         "home_score",
         String(
-          (report as JsonRecord).match
+          (report as JsonRecord)
+            .match
             .home_score ??
             "",
         ),
@@ -1082,7 +1121,8 @@ export default function BasketballIQWorkspace({
       formData.set(
         "away_score",
         String(
-          (report as JsonRecord).match
+          (report as JsonRecord)
+            .match
             .away_score ??
             "",
         ),
@@ -1091,7 +1131,8 @@ export default function BasketballIQWorkspace({
       formData.set(
         "team_side",
         String(
-          (report as JsonRecord).match
+          (report as JsonRecord)
+            .match
             .team_side ??
             "",
         ),
@@ -1100,15 +1141,20 @@ export default function BasketballIQWorkspace({
       formData.set(
         "period_scores",
         JSON.stringify(
-          (report as JsonRecord).match
+          (report as JsonRecord)
+            .match
             .period_scores ||
             [],
         ),
       );
     }
 
+    /*
+     * No target game means this report is proposing
+     * its own game.
+     */
     if (
-      !gameId &&
+      !targetGameId &&
       report?.match
     ) {
       formData.set(
@@ -1222,6 +1268,10 @@ export default function BasketballIQWorkspace({
             "",
         );
 
+        /*
+         * After the server creates or resolves the
+         * correct game, THAT game becomes active.
+         */
         if (
           payload.game_id
         ) {
@@ -1260,6 +1310,13 @@ export default function BasketballIQWorkspace({
 
         await load();
       }
+    } catch (error) {
+      onMessage(
+        error instanceof
+          Error
+          ? error.message
+          : "The report could not be saved.",
+      );
     } finally {
       setImporting(false);
 
@@ -1288,16 +1345,6 @@ export default function BasketballIQWorkspace({
       return;
     }
 
-    if (
-      !roster.length
-    ) {
-      onMessage(
-        "Add the team players before importing their box score.",
-      );
-
-      return;
-    }
-
     const isPdf =
       file.name
         .toLowerCase()
@@ -1307,6 +1354,12 @@ export default function BasketballIQWorkspace({
       file.type ===
         "application/pdf";
 
+    /*
+     * Excel / CSV / Word currently work against a
+     * deliberately chosen existing game.
+     *
+     * PDF reports can identify and create their own game.
+     */
     if (!isPdf) {
       if (!gameId) {
         onMessage(
@@ -1318,6 +1371,8 @@ export default function BasketballIQWorkspace({
 
       await storeImport(
         file,
+        null,
+        gameId,
       );
 
       form.reset();
@@ -1325,10 +1380,48 @@ export default function BasketballIQWorkspace({
       return;
     }
 
+    /*
+     * CRITICAL FIX:
+     *
+     * Every new PDF starts fresh.
+     *
+     * It does NOT matter which game was active before
+     * this upload. That old game is intentionally cleared.
+     */
+    if (
+      dirty &&
+      !window.confirm(
+        "This PDF will start a fresh match import. Continue?",
+      )
+    ) {
+      return;
+    }
+
+    setGameId("");
+
+    setSessionId("");
+
+    setSourceImportId("");
+
+    setImportRows([]);
+
+    setImportWarnings([]);
+
+    setReportFile(null);
+
+    setReportDraft(null);
+
+    setHistory([]);
+
+    setDirty(false);
+
+    revision.current =
+      0;
+
     setImporting(true);
 
     setImportProgress(
-      "Opening the reportâ€¦",
+      "Opening the report...",
     );
 
     try {
@@ -1339,55 +1432,48 @@ export default function BasketballIQWorkspace({
           setImportProgress,
         );
 
+      const detectedMatch =
+        (report as JsonRecord)
+          .match;
+
       setImportWarnings(
-        report.warnings,
+        report.warnings ||
+          [],
+      );
+
+      /*
+       * Save the file in local state only.
+       * Nothing reaches the database until the user
+       * confirms the match below.
+       */
+      setReportFile(
+        file,
       );
 
       if (
-        !(report as JsonRecord).match
+        !detectedMatch
       ) {
-        onMessage(
-          "The report pages were read, but the game header needs manual confirmation. Nothing has been saved yet.",
-        );
-
-        setReportFile(
-          file,
-        );
-
         setReportDraft({
           match: {
             home_team_name:
-  (report as JsonRecord).match
-    ?.home_team_name ||
-  "",
+              "",
 
-away_team_name:
-  (report as JsonRecord).match
-    ?.away_team_name ||
-  "",
+            away_team_name:
+              "",
 
             game_date:
-              (report as JsonRecord).match
-                ?.game_date ||
               "",
 
             home_score:
-              (report as JsonRecord).match
-                ?.home_score ||
               0,
 
             away_score:
-              (report as JsonRecord).match
-                ?.away_score ||
               0,
 
             team_side:
-              (report as JsonRecord).match
-                ?.team_side ||
               "home",
+
             period_scores:
-              (report as JsonRecord).match
-                ?.period_scores ||
               [],
           },
 
@@ -1411,34 +1497,37 @@ away_team_name:
             report.warnings ||
             [],
         });
-      } else if (
-        !gameId
-      ) {
-        setReportFile(
-          file,
-        );
 
+        onMessage(
+          "The report was read, but the match header needs confirmation. Nothing has been saved yet.",
+        );
+      } else {
+        /*
+         * ALWAYS show the newly detected report.
+         *
+         * Do not auto-save against the previously
+         * selected game.
+         */
         setReportDraft(
           report,
         );
 
         onMessage(
-          `${(report as JsonRecord).match.home_team_name} ${(report as JsonRecord).match.home_score}â€“${(report as JsonRecord).match.away_score} ${(report as JsonRecord).match.away_team_name} detected. Confirm it below before the private game is created.`,
-        );
-      } else {
-        await storeImport(
-          file,
-          report,
+          `${detectedMatch.home_team_name || "Home"} ${detectedMatch.home_score ?? 0}-${detectedMatch.away_score ?? 0} ${detectedMatch.away_team_name || "Away"} detected. Confirm this match below before it is saved.`,
         );
       }
 
       form.reset();
     } catch (error) {
+      setReportFile(null);
+
+      setReportDraft(null);
+
       onMessage(
         error instanceof
           Error
           ? error.message
-          : "The image-based PDF could not be read.",
+          : "The PDF could not be read.",
       );
     } finally {
       setImporting(false);
@@ -1525,6 +1614,12 @@ away_team_name:
           "",
         );
 
+    /*
+     * Try to resolve imported names automatically.
+     * Name token order does not matter:
+     *
+     * "PRINCE SAMORA" === "Samora Prince"
+     */
     const resolvedRows =
       importRows.map(
         (row) => {
@@ -1592,8 +1687,10 @@ away_team_name:
           return match
             ? {
                 ...row,
+
                 roster_member_id:
                   match.id,
+
                 player_id:
                   match.player_id ||
                   null,
@@ -1683,12 +1780,13 @@ away_team_name:
       "box_score",
     );
 
-    revision.current += 1;
+    revision.current +=
+      1;
 
     setDirty(true);
 
     onMessage(
-      "Imported rows loaded into the review grid. Confirm every value, then submit the complete game.",
+      "Imported statistics loaded for optional manual correction.",
     );
   }
 
@@ -1938,9 +2036,9 @@ away_team_name:
             >
               <option value="">
                 Choose a
-                linked gameâ€”or
-                create one from
-                a PDF report
+                linked game - or
+                upload a new PDF
+                match
               </option>
 
               {availableGames.map(
@@ -1962,7 +2060,7 @@ away_team_name:
                       "unverified" ||
                     game.official_game ===
                       false
-                      ? " Â· awaiting verification"
+                      ? " | awaiting verification"
                       : ""}
                   </option>
                 ),
@@ -2009,12 +2107,11 @@ away_team_name:
             No game is linked
             yet. Open Import
             and upload the PDF
-            reportâ€”the portal
-            will read the match
-            and let you create
-            it privately for
-            Super Admin
-            verification.
+            report. The portal
+            will read that match
+            and create it
+            privately for Super
+            Admin verification.
           </div>
         ) : null}
 
@@ -2077,7 +2174,7 @@ away_team_name:
             }
           >
             {saving
-              ? "Autosavingâ€¦"
+              ? "Autosaving..."
               : dirty
                 ? "Unsaved changes"
                 : lastSaved
@@ -2096,7 +2193,7 @@ away_team_name:
           </span>
 
           <span className="text-slate-700">
-            Â·
+            |
           </span>
 
           <span className="text-slate-500">
@@ -2108,7 +2205,7 @@ away_team_name:
           </span>
 
           <span className="text-slate-700">
-            Â·
+            |
           </span>
 
           <span className="text-slate-500">
@@ -2166,8 +2263,8 @@ away_team_name:
                           : "Roster"}
 
                         {row.player_id
-                          ? " Â· linked"
-                          : " Â· club record"}
+                          ? " | linked"
+                          : " | club record"}
                       </span>
                     </span>
 
@@ -2188,8 +2285,7 @@ away_team_name:
                 <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">
-                      Active
-                      player
+                      Active player
                     </p>
 
                     <h3 className="mt-2 break-words text-3xl font-black uppercase">
@@ -2203,15 +2299,15 @@ away_team_name:
                       {
                         activeRow.points
                       }{" "}
-                      Â· REB{" "}
+                      | REB{" "}
                       {
                         activeRow.rebounds
                       }{" "}
-                      Â· AST{" "}
+                      | AST{" "}
                       {
                         activeRow.assists
                       }{" "}
-                      Â· TO{" "}
+                      | TO{" "}
                       {
                         activeRow.turnovers
                       }
@@ -2404,8 +2500,7 @@ away_team_name:
 
                 <div className="mt-5 min-w-0 rounded-xl border border-white/10 bg-black/25 p-4">
                   <p className="text-[9px] font-black uppercase text-slate-500">
-                    Missed
-                    shots
+                    Missed shots
                   </p>
 
                   <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
@@ -2519,19 +2614,16 @@ away_team_name:
             </h3>
 
             <p className="mt-3 break-words text-sm leading-6 text-slate-400">
-              Upload the report
-              even when the game
-              is missing.
-              Image-based
-              Basketball Stats
-              Assistant PDFs are
-              read securely in
-              this browser, then
-              you confirm the
-              detected match
-              before an
-              unverified game is
-              created.
+              Every new PDF is
+              treated as a new
+              match candidate.
+              The score, teams,
+              date, periods and
+              player rows come
+              from that report -
+              never from the
+              previously selected
+              game.
             </p>
 
             <form
@@ -2565,10 +2657,8 @@ away_team_name:
               >
                 {importing
                   ? importProgress ||
-                    "Reading documentâ€¦"
-                  : gameId
-                    ? "Upload and extract rows"
-                    : "Read report and create missing game"}
+                    "Reading document..."
+                  : "Read new stat report"}
               </button>
             </form>
 
@@ -2584,13 +2674,15 @@ away_team_name:
                     </p>
 
                     <p className="mt-1 break-words text-xs text-slate-400">
+                      This data
+                      belongs only
+                      to this
+                      uploaded
+                      report.
                       Nothing is
-                      public. The
-                      new game
-                      will wait
-                      for Super
-                      Admin
-                      verification.
+                      public until
+                      governed
+                      approval.
                     </p>
                   </div>
 
@@ -2796,7 +2888,7 @@ away_team_name:
 
                     <p className="mt-2 break-words text-xs text-slate-300">
                       {reportDraft.officials.join(
-                        " Â· ",
+                        " | ",
                       )}
                     </p>
                   </div>
@@ -2809,9 +2901,14 @@ away_team_name:
                       importing
                     }
                     onClick={() =>
+                      /*
+                       * Explicit "" guarantees this report
+                       * cannot attach to an old selected game.
+                       */
                       void storeImport(
                         reportFile,
                         reportDraft,
+                        "",
                       )
                     }
                     className={
@@ -2820,8 +2917,8 @@ away_team_name:
                   >
                     {importing
                       ? importProgress ||
-                        "Savingâ€¦"
-                      : "Confirm, create game and continue"}
+                        "Saving..."
+                      : "Confirm this game and continue"}
                   </button>
 
                   <button
@@ -2912,157 +3009,41 @@ away_team_name:
           </div>
 
           <div className="min-w-0 rounded-[1.75rem] border border-white/10 bg-slate-950 p-4 sm:p-6">
-            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">
-                  Human review
-                  required
+            <p className="text-[9px] font-black uppercase tracking-[.18em] text-[var(--club-accent)]">
+              Direct import
+            </p>
+
+            <h3 className="mt-2 break-words text-2xl font-black uppercase">
+              Team-approved stats
+            </h3>
+
+            <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-slate-400">
+              Once the official report is checked and approved,
+              the game and box score are saved directly into FACKTS.
+              A player who cannot be matched automatically is kept
+              safely as a game-only identity. Admin can correct or
+              link identities later without blocking the game.
+            </p>
+
+            {sourceImportId ? (
+              <div className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-500/[.06] p-4">
+                <p className="text-xs font-black uppercase text-emerald-300">
+                  Report saved
                 </p>
 
-                <h3 className="mt-2 break-words text-2xl font-black uppercase">
-                  Match extracted
-                  players
-                </h3>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  The original report remains stored as evidence.
+                  No second approval is required.
+                </p>
               </div>
-
-              <button
-                disabled={
-                  !importRows.length
-                }
-                onClick={
-                  loadImport
-                }
-                className={
-                  primary
-                }
-              >
-                Load review
-                grid
-              </button>
-            </div>
-
-            <div className="mt-5 grid min-w-0 gap-3">
-              {importRows.map(
-                (
-                  row,
-                  index,
-                ) => (
-                  <div
-                    key={`${row.player_name}-${index}`}
-                    className="grid min-w-0 gap-3 rounded-xl border border-white/10 bg-black/25 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center"
-                  >
-                    <div className="min-w-0">
-                      <p className="break-words font-black">
-                        {
-                          row.player_name
-                        }
-                      </p>
-
-                      <p className="mt-1 break-words text-[9px] text-slate-500">
-                        PTS{" "}
-                        {
-                          row.points
-                        }{" "}
-                        Â· REB{" "}
-                        {
-                          row.rebounds
-                        }{" "}
-                        Â· AST{" "}
-                        {
-                          row.assists
-                        }
-                      </p>
-                    </div>
-
-                    <select
-                      value={
-                        row.roster_member_id ||
-                        ""
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        setImportRows(
-                          (
-                            current,
-                          ) =>
-                            current.map(
-                              (
-                                item,
-                                itemIndex,
-                              ) =>
-                                itemIndex ===
-                                index
-                                  ? {
-                                      ...item,
-
-                                      roster_member_id:
-                                        event
-                                          .target
-                                          .value ||
-                                        null,
-                                    }
-                                  : item,
-                            ),
-                        )
-                      }
-                      className={
-                        input
-                      }
-                    >
-                      <option value="">
-                        Choose
-                        roster
-                        player
-                      </option>
-
-                      {roster.map(
-                        (
-                          member,
-                        ) => (
-                          <option
-                            key={
-                              member.id
-                            }
-                            value={
-                              member.id
-                            }
-                          >
-                            {
-                              member.display_name
-                            }
-
-                            {member.jersey_number
-                              ? ` Â· #${member.jersey_number}`
-                              : ""}
-                          </option>
-                        ),
-                      )}
-                    </select>
-
-                    <span
-                      className={`self-start rounded-full px-2.5 py-1 text-[8px] font-black uppercase sm:self-auto ${
-                        row.roster_member_id
-                          ? "bg-emerald-500/15 text-emerald-300"
-                          : "bg-yellow-500/15 text-yellow-200"
-                      }`}
-                    >
-                      {row.roster_member_id
-                        ? "Matched"
-                        : "Check"}
-                    </span>
-                  </div>
-                ),
-              )}
-
-              {!importRows.length ? (
-                <p className="rounded-xl border border-dashed border-white/15 p-8 text-center text-sm text-slate-500">
-                  Upload a stat
-                  report to begin
-                  the review.
+            ) : (
+              <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs leading-5 text-slate-500">
+                  Upload an official game report, check the detected
+                  teams, score and date, then approve and save it.
                 </p>
-              ) : null}
-            </div>
+              </div>
+            )}
           </div>
         </section>
       ) : null}
@@ -3191,7 +3172,7 @@ away_team_name:
 
                           {member.player_id
                             ? ""
-                            : " Â· login not linked"}
+                            : " | login not linked"}
                         </option>
                       ),
                     )}
@@ -3452,7 +3433,7 @@ away_team_name:
                       "_",
                       " ",
                     )}{" "}
-                    Â·{" "}
+                    |{" "}
                     {
                       session.status
                     }
@@ -3544,7 +3525,7 @@ function Recommendation({
         }
         className="mt-4 max-w-full break-words text-left text-[8px] font-black uppercase text-[var(--club-accent)]"
       >
-        Send as briefing â†’
+        Send as briefing -&gt;
       </button>
     </article>
   );
@@ -3826,8 +3807,8 @@ function BoxScore({
                         : "Roster"}
 
                       {row.player_id
-                        ? " Â· linked player"
-                        : " Â· club record"}
+                        ? " | linked player"
+                        : " | club record"}
                     </span>
                   </span>
                 </label>
@@ -3962,7 +3943,7 @@ function BoxScore({
                   className="mt-4 max-w-full break-words text-left text-[9px] font-black uppercase text-[var(--club-accent)]"
                 >
                   Add player to
-                  this game â†’
+                  this game -&gt;
                 </button>
               )}
             </article>
@@ -3972,7 +3953,3 @@ function BoxScore({
     </section>
   );
 }
-
-
-
-

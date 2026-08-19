@@ -1,656 +1,788 @@
-import { NextRequest, NextResponse } from "next/server";
-import { isSuperAdmin } from "@/lib/admin/permissions";
-import { getAdminAccess } from "@/lib/auth/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
-type JsonRecord = Record<string, unknown>;
+import {
+  isSuperAdmin,
+} from "@/lib/admin/permissions";
 
-const REVIEWABLE_STATUSES = [
-  "parsed",
-  "partial",
-  "review_required",
-  "failed",
-];
+import {
+  getAdminAccess,
+} from "@/lib/auth/server";
 
-const STAT_FIELDS = [
-  "points",
-  "rebounds",
-  "offensive_rebounds",
-  "defensive_rebounds",
-  "assists",
-  "steals",
-  "blocks",
-  "turnovers",
-  "fouls",
-  "two_made",
-  "two_attempted",
-  "three_made",
-  "three_attempted",
-  "ft_made",
-  "ft_attempted",
-] as const;
+import {
+  createSupabaseAdminClient,
+} from "@/lib/supabase/admin";
 
-function text(value: unknown, max = 300) {
-  return String(value ?? "").trim().slice(0, max);
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
+
+type JsonRecord =
+  Record<string, any>;
+
+function text(
+  value: unknown,
+  max = 500,
+) {
+  return String(
+    value ?? "",
+  )
+    .trim()
+    .slice(0, max);
 }
 
-function wholeNumber(value: unknown, allowNegative = false) {
-  const parsed = Number(value ?? 0);
-
-  if (!Number.isFinite(parsed)) return 0;
-
-  const integer = Math.trunc(parsed);
-
-  if (!allowNegative && integer < 0) return 0;
-
-  return integer;
+function isUuid(
+  value: unknown,
+) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    text(value, 100),
+  );
 }
 
-function decimalNumber(value: unknown) {
-  const parsed = Number(value ?? 0);
-
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-
-  return Math.round(parsed * 100) / 100;
-}
-
-function stringList(value: unknown) {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map((item) => text(item, 1000))
-    .filter(Boolean)
-    .slice(0, 50);
-}
-
-function rowObjects(value: unknown) {
-  if (!Array.isArray(value)) return [] as JsonRecord[];
-
-  return value
-    .filter(
-      (item): item is JsonRecord =>
-        Boolean(item) &&
-        typeof item === "object" &&
-        !Array.isArray(item),
+function objectRows(
+  value: unknown,
+) {
+  if (
+    !Array.isArray(
+      value,
     )
+  ) {
+    return [] as JsonRecord[];
+  }
+
+  return value.filter(
+    (
+      item,
+    ): item is JsonRecord =>
+      Boolean(item) &&
+      typeof item ===
+        "object" &&
+      !Array.isArray(
+        item,
+      ),
+  );
+}
+
+function stringList(
+  value: unknown,
+) {
+  if (
+    !Array.isArray(
+      value,
+    )
+  ) {
+    return [] as string[];
+  }
+
+  return value
+    .map(
+      (item) =>
+        text(
+          item,
+          1000,
+        ),
+    )
+    .filter(Boolean)
     .slice(0, 100);
 }
 
 async function requireSuperAdmin() {
-  const access = await getAdminAccess();
+  const access =
+    await getAdminAccess();
 
   return {
     ...access,
+
     allowed: Boolean(
       access.user &&
         access.profile &&
-        isSuperAdmin(access.profile),
+        isSuperAdmin(
+          access.profile,
+        ),
     ),
   };
 }
 
-export async function GET(request: NextRequest) {
-  const access = await requireSuperAdmin();
+export async function GET(
+  request: NextRequest,
+) {
+  const access =
+    await requireSuperAdmin();
 
-  if (!access.allowed) {
+  if (
+    !access.allowed
+  ) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Super Admin access required.",
+
+        error:
+          "Super Admin access required.",
       },
-      { status: 403 },
+      {
+        status: 403,
+      },
     );
   }
 
   try {
-    const admin = createSupabaseAdminClient();
+    const requestedTeamId =
+      text(
+        request.nextUrl
+          .searchParams
+          .get(
+            "team_id",
+          ),
+        100,
+      );
 
-    const requestedTeamId = text(
-      request.nextUrl.searchParams.get("team_id"),
-      100,
-    );
+    const admin =
+      createSupabaseAdminClient();
 
-    let importQuery = admin
-      .from("team_stat_imports")
-      .select(
-        [
-          "id",
-          "team_id",
-          "game_id",
-          "uploaded_by_user_id",
-          "file_name",
-          "storage_path",
-          "mime_type",
-          "file_size",
-          "extraction_status",
-          "extracted_rows",
-          "warnings",
+    /*
+     * Some of the canonical basketball tables
+     * are newer than the generated Supabase
+     * typings in this repo.
+     */
+    const db =
+      admin as any;
+
+    /*
+     * IMPORTANT:
+     *
+     * We deliberately do NOT filter by
+     * extraction_status or session status.
+     *
+     * Admin must be able to inspect successful,
+     * approved, partial and failed imports.
+     */
+    let importQuery =
+      db
+        .from(
+          "team_stat_imports",
+        )
+        .select(
+          [
+            "id",
+            "team_id",
+            "game_id",
+            "uploaded_by_user_id",
+            "file_name",
+            "storage_path",
+            "mime_type",
+            "file_size",
+            "extraction_status",
+            "extracted_rows",
+            "warnings",
+            "created_at",
+            "updated_at",
+          ].join(","),
+        )
+        .order(
           "created_at",
-          "updated_at",
-        ].join(","),
-      )
-      .in("extraction_status", REVIEWABLE_STATUSES)
-      .order("created_at", { ascending: false })
-      .limit(150);
+          {
+            ascending:
+              false,
+          },
+        )
+        .limit(120);
 
-    if (requestedTeamId) {
-      importQuery = importQuery.eq("team_id", requestedTeamId);
+    if (
+      requestedTeamId
+    ) {
+      importQuery =
+        importQuery.eq(
+          "team_id",
+          requestedTeamId,
+        );
     }
 
-    const importResult = await importQuery;
+    const importResult =
+      await importQuery;
 
-    if (importResult.error) {
+    if (
+      importResult.error
+    ) {
       throw importResult.error;
     }
 
-    const imports = (importResult.data ?? []) as unknown as JsonRecord[];
+    const imports =
+      (importResult.data ??
+        []) as JsonRecord[];
 
-    if (!imports.length) {
+    if (
+      !imports.length
+    ) {
       return NextResponse.json({
         ok: true,
+
         imports: [],
       });
     }
 
-    const importIds = imports
-      .map((item) => text(item.id, 100))
-      .filter(Boolean);
+    const importIds =
+      imports
+        .map(
+          (item) =>
+            text(
+              item.id,
+              100,
+            ),
+        )
+        .filter(Boolean);
 
-    const gameIds = Array.from(
-      new Set(
-        imports
-          .map((item) => text(item.game_id, 160))
-          .filter(Boolean),
-      ),
-    );
+    const teamIds =
+      Array.from(
+        new Set(
+          imports
+            .map(
+              (item) =>
+                text(
+                  item.team_id,
+                  100,
+                ),
+            )
+            .filter(Boolean),
+        ),
+      );
 
-    const sessionPromise = importIds.length
-      ? admin
-          .from("team_stat_sessions")
-          .select(
-            "id,team_id,game_id,source_import_id,status,submitted_at,reviewed_at,updated_at",
-          )
-          .in("source_import_id", importIds)
-      : Promise.resolve({
-          data: [],
-          error: null,
-        });
+    /*
+     * games.id is UUID.
+     * Ignore legacy non-UUID portal references
+     * instead of allowing one old record to break
+     * the whole Admin page.
+     */
+    const gameIds =
+      Array.from(
+        new Set(
+          imports
+            .map(
+              (item) =>
+                text(
+                  item.game_id,
+                  100,
+                ),
+            )
+            .filter(
+              (value) =>
+                isUuid(
+                  value,
+                ),
+            ),
+        ),
+      );
 
-    const gamePromise = gameIds.length
-      ? admin
-          .from("games")
-          .select(
-            [
+    const sessionPromise =
+      importIds.length
+        ? db
+            .from(
+              "team_stat_sessions",
+            )
+            .select(
+              [
+                "id",
+                "team_id",
+                "game_id",
+                "source_import_id",
+                "status",
+                "mode",
+                "submitted_at",
+                "reviewed_at",
+                "created_at",
+                "updated_at",
+              ].join(
+                ",",
+              ),
+            )
+            .in(
+              "source_import_id",
+              importIds,
+            )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          });
+
+    const gamePromise =
+      gameIds.length
+        ? db
+            .from(
+              "games",
+            )
+            .select(
+              [
+                "id",
+                "title",
+                "game_title",
+                "game_date",
+                "date",
+                "status",
+                "home_team_id",
+                "away_team_id",
+                "home_team_name",
+                "away_team_name",
+                "home_score",
+                "away_score",
+                "team_score",
+                "opponent_score",
+                "game_format",
+                "match_type",
+                "league_id",
+                "season_label",
+                "division",
+                "competition_name",
+                "venue",
+                "officials",
+                "verification_status",
+                "is_public",
+              ].join(
+                ",",
+              ),
+            )
+            .in(
               "id",
-              "title",
-              "game_title",
-              "game_date",
-              "status",
-              "home_team_id",
-              "away_team_id",
-              "home_team_name",
-              "away_team_name",
-              "home_score",
-              "away_score",
-              "team_score",
-              "opponent_score",
-              "verification_status",
-              "is_public",
-            ].join(","),
-          )
-          .in("id", gameIds)
-      : Promise.resolve({
-          data: [],
-          error: null,
-        });
+              gameIds,
+            )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          });
 
-    const [sessionResult, gameResult] = await Promise.all([
-      sessionPromise,
-      gamePromise,
-    ]);
+    const teamPromise =
+      teamIds.length
+        ? db
+            .from(
+              "team_profiles",
+            )
+            .select(
+              "id,name,short_name,slug",
+            )
+            .in(
+              "id",
+              teamIds,
+            )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          });
 
-    if (sessionResult.error) {
-      throw sessionResult.error;
+    /*
+     * This is the most useful debugging check.
+     *
+     * It tells Admin whether the uploaded report
+     * actually reached the canonical game box score.
+     */
+    const canonicalPromise =
+      importIds.length
+        ? db
+            .from(
+              "game_box_score_lines",
+            )
+            .select(
+              [
+                "id",
+                "game_id",
+                "team_side",
+                "team_name",
+                "team_id",
+                "roster_member_id",
+                "player_id",
+                "identity_type",
+                "display_name",
+                "jersey_number",
+                "points",
+                "verification_status",
+                "is_public",
+                "source_import_id",
+              ].join(
+                ",",
+              ),
+            )
+            .in(
+              "source_import_id",
+              importIds,
+            )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          });
+
+    const [
+      sessionResult,
+      gameResult,
+      teamResult,
+      canonicalResult,
+    ] =
+      await Promise.all([
+        sessionPromise,
+        gamePromise,
+        teamPromise,
+        canonicalPromise,
+      ]);
+
+    for (
+      const result of [
+        sessionResult,
+        gameResult,
+        teamResult,
+        canonicalResult,
+      ]
+    ) {
+      if (
+        result.error
+      ) {
+        throw result.error;
+      }
     }
 
-    if (gameResult.error) {
-      throw gameResult.error;
-    }
+    const sessions =
+      (sessionResult.data ??
+        []) as JsonRecord[];
 
-    const sessions = (sessionResult.data ?? []) as JsonRecord[];
-    const games = (gameResult.data ?? []) as JsonRecord[];
+    const games =
+      (gameResult.data ??
+        []) as JsonRecord[];
 
-    const sessionByImport = new Map<string, JsonRecord>();
+    const teams =
+      (teamResult.data ??
+        []) as JsonRecord[];
 
-    for (const session of sessions) {
-      const sourceImportId = text(session.source_import_id, 100);
+    const canonicalLines =
+      (canonicalResult.data ??
+        []) as JsonRecord[];
 
-      if (!sourceImportId) continue;
+    const gameById =
+      new Map(
+        games.map(
+          (game) => [
+            text(
+              game.id,
+              100,
+            ),
+            game,
+          ],
+        ),
+      );
 
-      const existing = sessionByImport.get(sourceImportId);
+    const teamById =
+      new Map(
+        teams.map(
+          (team) => [
+            text(
+              team.id,
+              100,
+            ),
+            team,
+          ],
+        ),
+      );
 
-      if (!existing) {
-        sessionByImport.set(sourceImportId, session);
+    /*
+     * An import can theoretically have more
+     * than one historical stat session.
+     *
+     * Keep the most recently updated one.
+     */
+    const sessionByImport =
+      new Map<
+        string,
+        JsonRecord
+      >();
+
+    for (
+      const session of
+      sessions
+    ) {
+      const importId =
+        text(
+          session.source_import_id,
+          100,
+        );
+
+      if (
+        !importId
+      ) {
         continue;
       }
 
-      const existingUpdated = new Date(
-        text(existing.updated_at) || 0,
-      ).getTime();
+      const existing =
+        sessionByImport.get(
+          importId,
+        );
 
-      const nextUpdated = new Date(
-        text(session.updated_at) || 0,
-      ).getTime();
-
-      if (nextUpdated >= existingUpdated) {
-        sessionByImport.set(sourceImportId, session);
-      }
-    }
-
-    const gameById = new Map(
-      games.map((game) => [
-        text(game.id, 160),
-        game,
-      ]),
-    );
-
-    /*
-     * Once an import has already reached a submitted or approved
-     * stat session, it belongs in the normal governance queue rather
-     * than the unresolved-import queue.
-     *
-     * Rejected sessions deliberately remain recoverable so Admin can
-     * correct the original import instead of uploading the document again.
-     */
-    const reviewable = imports.filter((item) => {
-      const importId = text(item.id, 100);
-      const session = sessionByImport.get(importId);
-
-      if (!session) return true;
-
-      const status = text(session.status, 40);
-
-      return !["submitted", "approved", "archived"].includes(status);
-    });
-
-    const output = await Promise.all(
-      reviewable.map(async (item) => {
-        const importId = text(item.id, 100);
-        const gameId = text(item.game_id, 160);
-        const storagePath = text(item.storage_path, 1000);
-
-        const game = gameById.get(gameId) ?? null;
-        const session = sessionByImport.get(importId) ?? null;
-
-        let originalUrl: string | null = null;
-
-        if (storagePath) {
-          const signed = await admin.storage
-            .from("team-stat-imports")
-            .createSignedUrl(storagePath, 60 * 30);
-
-          if (!signed.error) {
-            originalUrl = signed.data.signedUrl;
-          }
-        }
-
-        const extractedRows = rowObjects(item.extracted_rows);
-        const warnings = stringList(item.warnings);
-
-        const unmatchedRows = extractedRows.filter(
-          (row) => !text(row.roster_member_id, 100),
-        ).length;
-
-        return {
-          ...item,
-
-          extracted_rows: extractedRows,
-          warnings,
-
-          extracted_row_count: extractedRows.length,
-          unmatched_row_count: unmatchedRows,
-
-          requires_manual_review:
-            extractedRows.length === 0 ||
-            unmatchedRows > 0 ||
-            warnings.length > 0 ||
-            text(item.extraction_status, 50) !== "parsed",
-
-          game,
-          session,
-
-          /*
-           * This URL expires automatically.
-           * The Storage bucket remains private.
-           */
-          original_url: originalUrl,
-        };
-      }),
-    );
-
-    return NextResponse.json({
-      ok: true,
-      imports: output,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Stat imports could not be loaded.",
-      },
-      { status: 500 },
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const access = await requireSuperAdmin();
-
-  if (!access.allowed || !access.user) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Super Admin access required.",
-      },
-      { status: 403 },
-    );
-  }
-
-  try {
-    const body = (await request.json()) as JsonRecord;
-
-    const action = text(body.action, 80);
-
-    if (action !== "save_import") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Unsupported stat import review action.",
-        },
-        { status: 400 },
-      );
-    }
-
-    const teamId = text(body.team_id, 100);
-    const importId = text(body.import_id, 100);
-
-    if (!teamId || !importId) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Team and stat import are required.",
-        },
-        { status: 400 },
-      );
-    }
-
-    const admin = createSupabaseAdminClient();
-
-    const currentImport = await admin
-      .from("team_stat_imports")
-      .select(
-        "id,team_id,game_id,file_name,storage_path,extraction_status,extracted_rows,warnings",
-      )
-      .eq("id", importId)
-      .eq("team_id", teamId)
-      .maybeSingle();
-
-    if (currentImport.error) {
-      throw currentImport.error;
-    }
-
-    if (!currentImport.data) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "That stat import could not be found for this team.",
-        },
-        { status: 404 },
-      );
-    }
-
-    const submittedRows = rowObjects(body.rows);
-    const submittedWarnings = stringList(body.warnings);
-
-    const rosterResult = await admin
-      .from("team_roster_members")
-      .select(
-        "id,player_id,display_name,nickname,jersey_number,status",
-      )
-      .eq("team_id", teamId)
-      .eq("status", "active")
-      .limit(500);
-
-    if (rosterResult.error) {
-      throw rosterResult.error;
-    }
-
-    const roster = (rosterResult.data ?? []) as JsonRecord[];
-
-    const rosterById = new Map(
-      roster.map((member) => [
-        text(member.id, 100),
-        member,
-      ]),
-    );
-
-    let invalidRosterMatches = 0;
-
-    const correctedRows = submittedRows.map((row) => {
-      const requestedRosterMemberId = text(
-        row.roster_member_id,
-        100,
-      );
-
-      const member = requestedRosterMemberId
-        ? rosterById.get(requestedRosterMemberId)
-        : null;
-
-      if (requestedRosterMemberId && !member) {
-        invalidRosterMatches += 1;
-      }
-
-      const playerName =
-        text(row.player_name, 180) ||
-        text(row.display_name, 180) ||
-        text(member?.display_name, 180) ||
-        "Player";
-
-      const offensiveRebounds = wholeNumber(
-        row.offensive_rebounds,
-      );
-
-      const defensiveRebounds = wholeNumber(
-        row.defensive_rebounds,
-      );
-
-      const suppliedRebounds = wholeNumber(
-        row.rebounds,
-      );
-
-      const twoMade = wholeNumber(row.two_made);
-      const twoAttempted = Math.max(
-        twoMade,
-        wholeNumber(row.two_attempted),
-      );
-
-      const threeMade = wholeNumber(row.three_made);
-      const threeAttempted = Math.max(
-        threeMade,
-        wholeNumber(row.three_attempted),
-      );
-
-      const ftMade = wholeNumber(row.ft_made);
-      const ftAttempted = Math.max(
-        ftMade,
-        wholeNumber(row.ft_attempted),
-      );
-
-      const output: JsonRecord = {
-        player_name: playerName,
-
-        jersey_number:
-          text(row.jersey_number, 24) ||
-          text(member?.jersey_number, 24) ||
-          undefined,
-
-        roster_member_id: member
-          ? text(member.id, 100)
-          : null,
-
-        player_id: member?.player_id
-          ? text(member.player_id, 100)
-          : null,
-
-        points: wholeNumber(row.points),
-
-        rebounds:
-          offensiveRebounds + defensiveRebounds > 0
-            ? offensiveRebounds + defensiveRebounds
-            : suppliedRebounds,
-
-        offensive_rebounds: offensiveRebounds,
-        defensive_rebounds: defensiveRebounds,
-
-        assists: wholeNumber(row.assists),
-        steals: wholeNumber(row.steals),
-        blocks: wholeNumber(row.blocks),
-        turnovers: wholeNumber(row.turnovers),
-        fouls: wholeNumber(row.fouls),
-
-        minutes: decimalNumber(row.minutes),
-
-        two_made: twoMade,
-        two_attempted: twoAttempted,
-
-        three_made: threeMade,
-        three_attempted: threeAttempted,
-
-        ft_made: ftMade,
-        ft_attempted: ftAttempted,
-
-        plus_minus: wholeNumber(
-          row.plus_minus,
-          true,
-        ),
-      };
-
-      /*
-       * Keep any additional harmless parser metadata so that
-       * future OCR improvements do not lose source information.
-       */
       if (
-        row.period_values &&
-        typeof row.period_values === "object" &&
-        !Array.isArray(row.period_values)
+        !existing
       ) {
-        output.period_values = row.period_values;
+        sessionByImport.set(
+          importId,
+          session,
+        );
+
+        continue;
       }
 
-      return output;
-    });
+      const existingTime =
+        new Date(
+          text(
+            existing.updated_at,
+          ) || 0,
+        ).getTime();
 
-    const unmatchedRows = correctedRows.filter(
-      (row) => !text(row.roster_member_id, 100),
-    ).length;
+      const nextTime =
+        new Date(
+          text(
+            session.updated_at,
+          ) || 0,
+        ).getTime();
 
-    const generatedWarnings: string[] = [];
+      if (
+        nextTime >=
+        existingTime
+      ) {
+        sessionByImport.set(
+          importId,
+          session,
+        );
+      }
+    }
 
-    if (invalidRosterMatches > 0) {
-      generatedWarnings.push(
-        `${invalidRosterMatches} saved roster match${
-          invalidRosterMatches === 1 ? " is" : "es are"
-        } no longer valid and must be selected again.`,
+    const linesByImport =
+      new Map<
+        string,
+        JsonRecord[]
+      >();
+
+    for (
+      const line of
+      canonicalLines
+    ) {
+      const importId =
+        text(
+          line.source_import_id,
+          100,
+        );
+
+      if (
+        !importId
+      ) {
+        continue;
+      }
+
+      const existing =
+        linesByImport.get(
+          importId,
+        ) || [];
+
+      existing.push(
+        line,
+      );
+
+      linesByImport.set(
+        importId,
+        existing,
       );
     }
 
-    if (unmatchedRows > 0) {
-      generatedWarnings.push(
-        `${unmatchedRows} player row${
-          unmatchedRows === 1 ? "" : "s"
-        } still need an active roster match before submission.`,
+    const output =
+      await Promise.all(
+        imports.map(
+          async (
+            item,
+          ) => {
+            const importId =
+              text(
+                item.id,
+                100,
+              );
+
+            const gameId =
+              text(
+                item.game_id,
+                100,
+              );
+
+            const teamId =
+              text(
+                item.team_id,
+                100,
+              );
+
+            const extractedRows =
+              objectRows(
+                item.extracted_rows,
+              );
+
+            const warnings =
+              stringList(
+                item.warnings,
+              );
+
+            const unmatchedRows =
+              extractedRows.filter(
+                (row) =>
+                  !text(
+                    row.roster_member_id,
+                    100,
+                  ),
+              ).length;
+
+            const game =
+              gameById.get(
+                gameId,
+              ) || null;
+
+            const team =
+              teamById.get(
+                teamId,
+              ) || null;
+
+            const session =
+              sessionByImport.get(
+                importId,
+              ) || null;
+
+            const lines =
+              linesByImport.get(
+                importId,
+              ) || [];
+
+            const verifiedLines =
+              lines.filter(
+                (line) =>
+                  line.verification_status ===
+                    "verified" &&
+                  line.is_public ===
+                    true,
+              ).length;
+
+            let originalUrl:
+              | string
+              | null =
+              null;
+
+            const storagePath =
+              text(
+                item.storage_path,
+                1000,
+              );
+
+            if (
+              storagePath
+            ) {
+              const signed =
+                await admin.storage
+                  .from(
+                    "team-stat-imports",
+                  )
+                  .createSignedUrl(
+                    storagePath,
+                    60 *
+                      30,
+                  );
+
+              if (
+                !signed.error
+              ) {
+                originalUrl =
+                  signed.data
+                    .signedUrl;
+              }
+            }
+
+            const gameIsLive =
+              Boolean(
+                game &&
+                  game.verification_status ===
+                    "verified" &&
+                  game.is_public ===
+                    true,
+              );
+
+            const boxScoreIsLive =
+              lines.length >
+                0 &&
+              verifiedLines ===
+                lines.length;
+
+            return {
+              ...item,
+
+              extracted_rows:
+                extractedRows,
+
+              warnings,
+
+              extracted_row_count:
+                extractedRows.length,
+
+              unmatched_row_count:
+                unmatchedRows,
+
+              team,
+
+              game,
+
+              session,
+
+              original_url:
+                originalUrl,
+
+              canonical_line_count:
+                lines.length,
+
+              canonical_verified_line_count:
+                verifiedLines,
+
+              game_is_live:
+                gameIsLive,
+
+              box_score_is_live:
+                boxScoreIsLive,
+
+              saved_directly:
+                gameIsLive &&
+                boxScoreIsLive,
+
+              /*
+               * This is information for Admin,
+               * not an approval gate.
+               */
+              needs_attention:
+                !game ||
+                !lines.length ||
+                warnings.length >
+                  0,
+            };
+          },
+        ),
       );
-    }
-
-    if (!correctedRows.length) {
-      generatedWarnings.push(
-        "No structured player rows are currently saved. Use the original report to add the box score manually.",
-      );
-    }
-
-    const warnings = Array.from(
-      new Set([
-        ...submittedWarnings,
-        ...generatedWarnings,
-      ]),
-    );
-
-    const extractionStatus = !correctedRows.length
-      ? "review_required"
-      : unmatchedRows > 0 || warnings.length > 0
-        ? "partial"
-        : "parsed";
-
-    const updated = await admin
-      .from("team_stat_imports")
-      .update({
-        extracted_rows: correctedRows,
-        warnings,
-        extraction_status: extractionStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", importId)
-      .eq("team_id", teamId)
-      .select(
-        [
-          "id",
-          "team_id",
-          "game_id",
-          "file_name",
-          "storage_path",
-          "mime_type",
-          "file_size",
-          "extraction_status",
-          "extracted_rows",
-          "warnings",
-          "created_at",
-          "updated_at",
-        ].join(","),
-      )
-      .single();
-
-    if (updated.error) {
-      throw updated.error;
-    }
 
     return NextResponse.json({
       ok: true,
-      import: updated.data,
-      message:
-        unmatchedRows > 0
-          ? `Review saved. ${unmatchedRows} player row${
-              unmatchedRows === 1 ? "" : "s"
-            } still need roster matching.`
-          : correctedRows.length
-            ? "Stat import corrections saved. This review can now survive refresh or logout."
-            : "The import remains saved for manual reconstruction. The original report has not been lost.",
+
+      imports:
+        output,
     });
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
+
         error:
-          error instanceof Error
+          error instanceof
+          Error
             ? error.message
-            : "Stat import review could not be saved.",
+            : "Recent team stat imports could not be loaded.",
       },
-      { status: 500 },
+      {
+        status: 500,
+      },
     );
   }
 }
