@@ -16,6 +16,7 @@ import {
   TEAM_ROLE_LABELS,
   type TeamCapability,
 } from "@/lib/team-portal/capabilities";
+import { TEAM_PORTAL_TUTORIALS } from "@/lib/team-portal/tutorials";
 
 type JsonRecord = Record<string, any>;
 
@@ -331,6 +332,10 @@ export default function TeamPortalClient({
 
   const team =
     data?.portal.team;
+
+  const featuredTutorial =
+    TEAM_PORTAL_TUTORIALS.find((tutorial) => tutorial.featured) ||
+    TEAM_PORTAL_TUTORIALS[0];
 
   const primaryColor =
     safeColor(
@@ -822,7 +827,7 @@ export default function TeamPortalClient({
               <button
                 type="button"
                 onClick={() => setShowWelcome(true)}
-                className="max-w-full rounded-xl border border-white/10 px-4 py-3 text-xs font-black"
+                className="relative z-10 max-w-full cursor-pointer rounded-xl border border-white/10 px-4 py-3 text-xs font-black hover:border-orange-300 hover:text-orange-200"
               >
                 Help &amp; tour
               </button>
@@ -894,23 +899,52 @@ export default function TeamPortalClient({
       </header>
 
       {showWelcome ? (
-        <section className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8" aria-label="Team Portal introduction">
-          <div className="rounded-3xl border border-orange-400/25 bg-slate-950 p-5 shadow-2xl sm:p-7">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Help and tutorials">
+          <section className="mx-auto my-4 w-full max-w-4xl rounded-3xl border border-orange-400/25 bg-slate-950 p-5 shadow-2xl sm:my-10 sm:p-7">
+            <div className="flex items-start justify-between gap-4">
               <div className="max-w-3xl">
-                <p className="text-[9px] font-black uppercase tracking-[.2em] text-orange-300">Welcome to your team workspace</p>
-                <h2 className="mt-2 text-2xl font-black">Start with the job you need to do</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-400">Plan training, manage players, prepare game media or turn a complete box score into practical coaching priorities. Public records still require FACKTS verification.</p>
+                <p className="text-[9px] font-black uppercase tracking-[.2em] text-orange-300">Help &amp; tutorials</p>
+                <h2 className="mt-2 text-2xl font-black">Welcome to your team workspace</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-400">Choose a quick route below or watch the complete staff tutorial. Public records still require FACKTS verification.</p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {has("training_manage") ? <button type="button" onClick={() => closeWelcome("training")} className={button}>Plan training</button> : null}
-                {has("stats_submit") ? <button type="button" onClick={() => closeWelcome("stats")} className={button}>Open Basketball IQ</button> : null}
-                <button type="button" onClick={() => closeWelcome()} className="rounded-xl border border-white/10 px-4 py-3 text-xs font-black">Explore myself</button>
+              <button type="button" onClick={() => setShowWelcome(false)} className="shrink-0 cursor-pointer rounded-xl border border-white/10 px-4 py-2 text-sm font-black hover:border-orange-300" aria-label="Close help">Close</button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-[1.25fr_.75fr]">
+              <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
+                <p className="text-[9px] font-black uppercase tracking-[.16em] text-orange-300">Featured tutorial · {featuredTutorial?.duration || "Video"}</p>
+                <h3 className="mt-2 text-xl font-black">{featuredTutorial?.title || "Team Portal tutorial"}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-400">{featuredTutorial?.description || "Learn how to use your club workspace."}</p>
+                {featuredTutorial?.url ? (
+                  <a href={featuredTutorial.url} target="_blank" rel="noreferrer" className={`${button} mt-5 inline-block`}>Watch on YouTube</a>
+                ) : (
+                  <p className="mt-5 rounded-xl border border-amber-400/20 bg-amber-500/10 p-4 text-xs text-amber-100">Add NEXT_PUBLIC_TEAM_PORTAL_TUTORIAL_URL to the project settings to activate this video.</p>
+                )}
+              </article>
+
+              <div className="grid gap-3">
+                {has("training_manage") ? <button type="button" onClick={() => closeWelcome("training")} className="cursor-pointer rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left hover:border-orange-300"><span className="block font-black">Plan training</span><span className="mt-1 block text-xs text-slate-400">Create and review team sessions.</span></button> : null}
+                {has("roster_manage") ? <button type="button" onClick={() => closeWelcome("team")} className="cursor-pointer rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left hover:border-orange-300"><span className="block font-black">Team &amp; players</span><span className="mt-1 block text-xs text-slate-400">Manage the working roster.</span></button> : null}
+                {has("stats_submit") ? <button type="button" onClick={() => closeWelcome("stats")} className="cursor-pointer rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left hover:border-orange-300"><span className="block font-black">Basketball IQ</span><span className="mt-1 block text-xs text-slate-400">Capture a game and create coaching priorities.</span></button> : null}
               </div>
             </div>
-            <p className="mt-4 text-xs text-slate-500">The full staff tutorial can be added here when its video link is available. You can reopen this guide from Help &amp; tour.</p>
-          </div>
-        </section>
+
+            {TEAM_PORTAL_TUTORIALS.length > 1 ? (
+              <div className="mt-6 border-t border-white/10 pt-6">
+                <h3 className="text-lg font-black">More tutorials</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {TEAM_PORTAL_TUTORIALS.filter((tutorial) => tutorial.id !== featuredTutorial?.id).map((tutorial) => (
+                    <a key={tutorial.id} href={tutorial.url} target="_blank" rel="noreferrer" className="rounded-2xl border border-white/10 bg-black/25 p-4 hover:border-orange-300">
+                      <span className="block text-[9px] font-black uppercase text-orange-300">{tutorial.duration}</span>
+                      <span className="mt-2 block font-black">{tutorial.title}</span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-400">{tutorial.description}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </section>
+        </div>
       ) : null}
 
       {tab ===
