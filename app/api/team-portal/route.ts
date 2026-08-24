@@ -118,7 +118,21 @@ export async function GET(request: NextRequest) {
         .map((game): JsonRecord => ({ ...game, id: text(game.game_id) || text(game.id), attached_team_game_id: game.id })),
     ];
 
-    const games = allGameRows.map((game) => {
+    // Legacy team_games rows can describe the same match with a different id.
+    // Keep the canonical row when possible and otherwise collapse exact
+    // date/title matches so every portal workspace receives one game list.
+    const uniqueGameRows = new Map<string, JsonRecord>();
+    for (const game of allGameRows) {
+      const titleKey = gameTitle(game).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const dateKey = text(game.game_date || game.date).slice(0, 16);
+      const semanticKey = titleKey && dateKey ? `match:${dateKey}:${titleKey}` : `id:${text(game.id)}`;
+      const existing = uniqueGameRows.get(semanticKey);
+      if (!existing || (canonicalIds.has(text(game.id)) && !canonicalIds.has(text(existing.id)))) {
+        uniqueGameRows.set(semanticKey, game);
+      }
+    }
+
+    const games = Array.from(uniqueGameRows.values()).map((game) => {
       const id = text(game.id);
       const gameLinks = links.filter((link) => text(link.owner_id) === id);
       const publicRoles = new Set(

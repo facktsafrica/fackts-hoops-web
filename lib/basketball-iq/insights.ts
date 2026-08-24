@@ -89,7 +89,7 @@ function recommendationsFor(lines: BasketballStatLine[], games: number): Basketb
       focus: "Ball security",
       headline: "Reduce empty possessions",
       evidence: `${rounded(turnoversPerGame)} turnovers per game and a ${rounded(assists / Math.max(turnovers, 1), 2)} assist-to-turnover ratio.`,
-      training: "Run pressured advantage games, two-second decisions and end each possession with a paint touch or clean pass.",
+      training: "Why it matters: turnovers remove scoring chances and expose transition defence. Run 4v3 and 5v4 advantage games with a two-second decision rule. Track turnovers per 10 possessions and review the trend after the next two complete games.",
       audience: "team",
     });
   }
@@ -101,7 +101,7 @@ function recommendationsFor(lines: BasketballStatLine[], games: number): Basketb
       focus: "Free throws",
       headline: "Turn fouls into points",
       evidence: `${ftPct}% from the line across ${ftAttempted} attempts.`,
-      training: "Finish training with pressure pairs: two makes to advance, sprint consequence for split or miss.",
+      training: "Why it matters: missed free throws waste uncontested points late in close games. Finish practice with pressure pairs using the same breathing routine each time. Log 30 attempts per player and target a five-point improvement over the next two games.",
       audience: "team",
     });
   }
@@ -113,7 +113,7 @@ function recommendationsFor(lines: BasketballStatLine[], games: number): Basketb
       focus: "Shot quality",
       headline: "Create cleaner finishes",
       evidence: `${fgPct}% on recorded field-goal attempts.`,
-      training: "Chart paint touches, catch-and-shoot rhythm and finishing through contact before adding contested pull-ups.",
+      training: "Why it matters: low-percentage attempts make the offence harder to sustain. Chart paint touches, catch-and-shoot chances and finishes through contact before allowing contested pull-ups. Compare shot quality and field-goal percentage across the next two games.",
       audience: "team",
     });
   }
@@ -125,7 +125,7 @@ function recommendationsFor(lines: BasketballStatLine[], games: number): Basketb
       focus: "Defensive rebounding",
       headline: "Finish defensive possessions",
       evidence: `${rounded(defensiveReboundsPerPlayerGame)} defensive rebounds per player-game in the current sample.`,
-      training: "Use hit-find-get box-out reps and reward five-player rebound-and-outlet possessions.",
+      training: "Why it matters: the defence has not finished its job until it controls the rebound. Use hit-find-get box-out reps, then play live possessions that only score after a five-player rebound and outlet. Track second-chance possessions conceded next game.",
       audience: "team",
     });
   }
@@ -137,7 +137,7 @@ function recommendationsFor(lines: BasketballStatLine[], games: number): Basketb
       focus: "Defensive discipline",
       headline: "Defend without bailing out the offence",
       evidence: `${rounded(foulsPerGame)} team fouls per game in the recorded sample.`,
-      training: "Work verticality, gap positioning and late-clock containment with no-reach scoring rules.",
+      training: "Why it matters: unnecessary fouls give away free points and disrupt rotations. Train verticality, gap positioning and late-clock containment with no-reach scoring rules. Set a team foul target before the next game and review fouls by quarter.",
       audience: "team",
     });
   }

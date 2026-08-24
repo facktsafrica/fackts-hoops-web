@@ -245,6 +245,9 @@ export default function TeamPortalClient({
   const [message, setMessage] =
     useState("");
 
+  const [showWelcome, setShowWelcome] =
+    useState(false);
+
   const [encoder, setEncoder] =
     useState<{
       ingestion_address: string;
@@ -306,6 +309,18 @@ export default function TeamPortalClient({
       setTheme(saved);
     }
   }, [teamId]);
+
+  useEffect(() => {
+    setShowWelcome(
+      window.localStorage.getItem(`fackts-portal-welcome:${teamId}`) !== "done",
+    );
+  }, [teamId]);
+
+  function closeWelcome(nextTab?: PortalTab) {
+    window.localStorage.setItem(`fackts-portal-welcome:${teamId}`, "done");
+    setShowWelcome(false);
+    if (nextTab) setTab(nextTab);
+  }
 
   const has = (
     capability: TeamCapability,
@@ -805,6 +820,14 @@ export default function TeamPortalClient({
               </Link>
 
               <button
+                type="button"
+                onClick={() => setShowWelcome(true)}
+                className="max-w-full rounded-xl border border-white/10 px-4 py-3 text-xs font-black"
+              >
+                Help &amp; tour
+              </button>
+
+              <button
                 onClick={
                   logout
                 }
@@ -869,6 +892,26 @@ export default function TeamPortalClient({
           </nav>
         </div>
       </header>
+
+      {showWelcome ? (
+        <section className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8" aria-label="Team Portal introduction">
+          <div className="rounded-3xl border border-orange-400/25 bg-slate-950 p-5 shadow-2xl sm:p-7">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="text-[9px] font-black uppercase tracking-[.2em] text-orange-300">Welcome to your team workspace</p>
+                <h2 className="mt-2 text-2xl font-black">Start with the job you need to do</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-400">Plan training, manage players, prepare game media or turn a complete box score into practical coaching priorities. Public records still require FACKTS verification.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {has("training_manage") ? <button type="button" onClick={() => closeWelcome("training")} className={button}>Plan training</button> : null}
+                {has("stats_submit") ? <button type="button" onClick={() => closeWelcome("stats")} className={button}>Open Basketball IQ</button> : null}
+                <button type="button" onClick={() => closeWelcome()} className="rounded-xl border border-white/10 px-4 py-3 text-xs font-black">Explore myself</button>
+              </div>
+            </div>
+            <p className="mt-4 text-xs text-slate-500">The full staff tutorial can be added here when its video link is available. You can reopen this guide from Help &amp; tour.</p>
+          </div>
+        </section>
+      ) : null}
 
       {tab ===
       "stats" ? (
@@ -2265,7 +2308,7 @@ export default function TeamPortalClient({
               title="Posters, full games & highlights"
             >
               <div className="mt-5 grid min-w-0 gap-3">
-                {data.games.map(
+                {data.games.slice(0, 24).map(
                   (
                     game,
                   ) => (
@@ -2397,6 +2440,12 @@ export default function TeamPortalClient({
                   .games
                   .length ? (
                   <Empty text="No games are linked to this permanent team yet." />
+                ) : null}
+
+                {data.games.length > 24 ? (
+                  <p className="rounded-xl border border-white/10 bg-black/25 p-4 text-xs text-slate-400">
+                    Showing the 24 most recent linked games. Use the game selector above for older matches.
+                  </p>
                 ) : null}
               </div>
             </Panel>
