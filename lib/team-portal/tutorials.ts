@@ -16,7 +16,7 @@ export const TEAM_PORTAL_TUTORIALS: TeamPortalTutorial[] = [
     description:
       "The complete workflow for training, players, media, game statistics and Basketball IQ.",
     duration: "21 minutes",
-    url: process.env.NEXT_PUBLIC_TEAM_PORTAL_TUTORIAL_URL?.trim() || "",
+    url: "https://youtu.be/UYH3sPM997c",
     featured: true,
   },
 ];

@@ -918,7 +918,7 @@ export default function TeamPortalClient({
                 {featuredTutorial?.url ? (
                   <a href={featuredTutorial.url} target="_blank" rel="noreferrer" className={`${button} mt-5 inline-block`}>Watch on YouTube</a>
                 ) : (
-                  <p className="mt-5 rounded-xl border border-amber-400/20 bg-amber-500/10 p-4 text-xs text-amber-100">Add NEXT_PUBLIC_TEAM_PORTAL_TUTORIAL_URL to the project settings to activate this video.</p>
+                  <p className="mt-5 rounded-xl border border-amber-400/20 bg-amber-500/10 p-4 text-xs text-amber-100">This tutorial video has not been published yet.</p>
                 )}
               </article>
 
