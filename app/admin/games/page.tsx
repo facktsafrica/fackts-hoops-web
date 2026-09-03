@@ -11,6 +11,7 @@ import {
 import {
   useAdminPermission,
 } from "@/app/components/AdminPermissionContext";
+import { getGameCategory } from "@/lib/hoops/gameContext";
 
 type RosterParticipant = {
   player_id: string;
@@ -33,6 +34,14 @@ type GameStatus =
 
 type GameRow = {
   id: string;
+
+  game_category?:
+    | string
+    | null;
+
+  competition_id?:
+    | string
+    | null;
 
   event_id?:
     | string
@@ -334,69 +343,7 @@ function categoryForGame(
   CategoryKey,
   "all"
 > {
-  const text =
-    gameSearchText(
-      game,
-    );
-
-  if (
-    /\b1\s*v\s*1\b/.test(
-      text,
-    ) ||
-    /one[\s-]?on[\s-]?one/.test(
-      text,
-    ) ||
-    /fackts kings/.test(
-      text,
-    )
-  ) {
-    return "one_on_one";
-  }
-
-  if (
-    /court takeover/.test(
-      text,
-    ) ||
-    /\btakeover\b/.test(
-      text,
-    )
-  ) {
-    return "court_takeover";
-  }
-
-  if (
-    game.league_id
-  ) {
-    return "league";
-  }
-
-  if (
-    /\bfriendly\b/.test(
-      text,
-    ) ||
-    /\bscrimmage\b/.test(
-      text,
-    )
-  ) {
-    return "friendly";
-  }
-
-  if (
-    game.event_id
-  ) {
-    return "event";
-  }
-
-  if (
-    game.competition_name &&
-    !/^fackts hoops$/i.test(
-      game.competition_name.trim(),
-    )
-  ) {
-    return "competition";
-  }
-
-  return "other";
+  return getGameCategory(game);
 }
 
 function isFacktsOwnedGame(

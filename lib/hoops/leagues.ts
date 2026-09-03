@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { getAwayScore, getHomeScore, type GameRecord } from "@/lib/hoops/gamePresentation";
+import { getGameCategory, type GameContextRecord } from "@/lib/hoops/gameContext";
 
 export type LeagueProfile = {
   id: string;
@@ -95,6 +96,22 @@ function finished(status: unknown) {
   return ["completed", "complete", "final", "finished", "played"].includes(String(status || "").toLowerCase());
 }
 
+function sameContextValue(left: unknown, right: unknown) {
+  return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
+}
+
+function belongsToMembershipContext(
+  game: GameContextRecord,
+  membership: LeagueMembership
+) {
+  return (
+    getGameCategory(game) === "league" &&
+    sameContextValue(game.league_id, membership.league_id) &&
+    sameContextValue(game.season_label, membership.season_label) &&
+    sameContextValue(game.division, membership.division)
+  );
+}
+
 export async function loadLeagueDirectory(): Promise<LeagueDirectoryItem[]> {
   const [leagueResult, membershipResult] = await Promise.all([
     supabase.from("leagues").select("*").eq("is_public", true).order("display_order").order("name"),
@@ -156,6 +173,7 @@ export async function loadLeaguePortal(slug: string) {
     const records = new Map<string, { scored: number; allowed: number }>();
 
     games.forEach((game) => {
+      if (!belongsToMembershipContext(game, membership)) return;
       const side = game.home_team_id === membership.team_id ? "home" : game.away_team_id === membership.team_id ? "away" : null;
       if (!side || !finished(game.status)) return;
       const scored = side === "home" ? getHomeScore(game) : getAwayScore(game);
@@ -165,6 +183,8 @@ export async function loadLeaguePortal(slug: string) {
     });
 
     teamGames.filter((game) => game.team_id === membership.team_id).forEach((game) => {
+      if (!belongsToMembershipContext(game as GameContextRecord, membership)) return;
+      if (game.status && !finished(game.status)) return;
       const scored = number(game.team_score);
       const allowed = number(game.opponent_score);
       if (scored === null || allowed === null || scored === allowed) return;

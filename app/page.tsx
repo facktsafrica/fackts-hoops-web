@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { DEFAULT_FACKTS_KINGS_SEASON, resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -84,6 +85,7 @@ type KingsMatchRow = {
   points_allowed?: number | string | null;
   status?: string | null;
   result?: string | null;
+  season_label?: string | null;
   poster_url?: string | null;
   participant_cutout_url?: string | null;
   opponent_cutout_url?: string | null;
@@ -470,14 +472,18 @@ export default async function HomePage() {
     (event) => getEventState(event, today) === "completed"
   );
 
-  const kingsCompleted = kingsMatches
+  const currentKingsMatches = kingsMatches.filter(
+    (match) => resolveFacktsKingsSeason(match) === DEFAULT_FACKTS_KINGS_SEASON
+  );
+
+  const kingsCompleted = currentKingsMatches
     .filter((match) => getKingsMatchStatus(match) === "completed")
     .sort(
       (left, right) =>
         dateTime(right.match_date || right.created_at) -
         dateTime(left.match_date || left.created_at)
     );
-  const kingsUpcoming = kingsMatches
+  const kingsUpcoming = currentKingsMatches
     .filter((match) => getKingsMatchStatus(match) === "upcoming")
     .sort(
       (left, right) =>
@@ -488,7 +494,7 @@ export default async function HomePage() {
   const nextKingsMatch = kingsUpcoming[0] || null;
   const featuredKingsMatch = nextKingsMatch || latestKingsResult;
   const kingsCompetitors = new Set(
-    kingsMatches.flatMap((match) => [
+    currentKingsMatches.flatMap((match) => [
       meaningfulKingsName(
         match.participant_display_name || match.participant_name
       ).toLowerCase(),

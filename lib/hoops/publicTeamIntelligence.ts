@@ -1,6 +1,8 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { supabase } from "@/lib/supabase";
+import { getGameCategory, getTeamSide } from "@/lib/hoops/gameContext";
+import { resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
 
 /* =========================================================
    PUBLIC TYPES
@@ -213,6 +215,8 @@ type JsonRecord = Record<string, any>;
 
 type GameRow = JsonRecord & {
   id: string;
+  game_category?: string | null;
+  competition_id?: string | null;
   event_id?: string | null;
   league_id?: string | null;
   legacy_one_on_one_id?: string | null;
@@ -654,13 +658,13 @@ function gameDate(game: GameRow) {
 }
 
 function gameSide(game: GameRow, team: PublicTeamIdentity) {
-  if (team.id && text(game.home_team_id) === text(team.id)) return "home" as const;
-  if (team.id && text(game.away_team_id) === text(team.id)) return "away" as const;
-
-  const aliases = normalizedAliasesForTeam(team);
-  if (aliases.has(normalize(homeTeamName(game)))) return "home" as const;
-  if (aliases.has(normalize(awayTeamName(game)))) return "away" as const;
-  return null;
+  return getTeamSide(game, {
+    id: team.id,
+    slug: team.slug,
+    name: team.name,
+    short_name: team.shortName,
+    aliases: aliasesForTeam(team),
+  });
 }
 
 function gameText(game: GameRow, event?: EventRow | null) {
@@ -696,22 +700,20 @@ function isFacktsOwnedEvent(event?: EventRow | null) {
 
 function activityKind(game: GameRow, event?: EventRow | null): PublicActivityKind {
   const identity = gameText(game, event);
+  const category = getGameCategory(game);
 
   // Takeovers must be resolved before 1v1 so a takeover never becomes Kings.
-  if (/high school/.test(identity) && /takeover/.test(identity)) return "high_school_takeover";
-  if (/(university|college|campus)/.test(identity) && /takeover/.test(identity)) return "university_takeover";
-  if (/court takeover/.test(identity) || /community takeover/.test(identity) || /community court/.test(identity)) {
+  if (category === "court_takeover" && /high school/.test(identity)) return "high_school_takeover";
+  if (category === "court_takeover" && /(university|college|campus)/.test(identity)) return "university_takeover";
+  if (category === "court_takeover") {
     return "community_takeover";
   }
 
-  if (/fackts kings/.test(identity) || /\b1v1\b/.test(identity) || /one on one/.test(identity)) {
-    return "one_on_one";
-  }
-
-  if (game.league_id) return "league";
-  if (game.event_id) return "event";
-  if (/\bfriendly\b/.test(identity) || /\bscrimmage\b/.test(identity)) return "friendly";
-  if (text(game.competition_name) && normalize(game.competition_name) !== "fackts hoops") return "competition";
+  if (category === "one_on_one") return "one_on_one";
+  if (category === "league") return "league";
+  if (category === "event") return "event";
+  if (category === "friendly") return "friendly";
+  if (category === "competition") return "competition";
   return "other";
 }
 
@@ -790,6 +792,13 @@ function competitionSlugForGame(
   event: EventRow | undefined,
   competitions: CompetitionRow[],
 ) {
+  if (game.competition_id) {
+    const linked = competitions.find(
+      (competition) => text(competition.id) === text(game.competition_id),
+    );
+    if (linked?.slug) return text(linked.slug);
+  }
+
   const identity = compactIdentity(gameText(game, event));
 
   if (identity.includes("courttakeover") || identity.includes("communitytakeover")) {
@@ -835,13 +844,28 @@ function activityKey(
     ].join(":");
   }
   if (kind === "event" && game.event_id) return `event:${game.event_id}`;
-  if (kind === "one_on_one") return "competition:fackts-kings";
-  if (kind === "community_takeover") return "competition:court-takeovers:community";
-  if (kind === "high_school_takeover") return "competition:court-takeovers:high-school";
-  if (kind === "university_takeover") return "competition:court-takeovers:university";
+  const season = keyText(
+    kind === "one_on_one"
+      ? resolveFacktsKingsSeason(game.season_label, gameDate(game))
+      : game.season_label || "season-unspecified",
+  );
+  const division = keyText(game.division || "division-unspecified");
+  const competitionId = text(game.competition_id);
+  if (kind === "one_on_one") {
+    return `competition:${competitionId || "fackts-kings"}:${season}`;
+  }
+  if (kind === "community_takeover") {
+    return `competition:${competitionId || "court-takeovers"}:${season}:community`;
+  }
+  if (kind === "high_school_takeover") {
+    return `competition:${competitionId || "court-takeovers"}:${season}:high-school`;
+  }
+  if (kind === "university_takeover") {
+    return `competition:${competitionId || "court-takeovers"}:${season}:university`;
+  }
   if (kind === "competition") {
     const slug = competitionSlugForGame(game, event, competitions);
-    return `competition:${slug || keyText(game.competition_name || "competition")}`;
+    return `competition:${competitionId || slug || keyText(game.competition_name || "competition")}:${season}:${division}`;
   }
   if (kind === "friendly") return "friendly";
   return `other:${keyText(game.competition_name || game.match_type || "games")}`;

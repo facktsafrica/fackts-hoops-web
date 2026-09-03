@@ -13,6 +13,13 @@ export type GamePeriodScore = {
 
 export type GameRecord = {
   id: string;
+  game_category?: string | null;
+  competition_id?: string | null;
+  league_id?: string | null;
+  season_label?: string | null;
+  division?: string | null;
+  home_team_id?: string | null;
+  away_team_id?: string | null;
   title?: string | null;
   game_title?: string | null;
   opponent?: string | null;

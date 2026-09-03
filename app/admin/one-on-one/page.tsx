@@ -10,6 +10,7 @@ import {
 } from "react";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import { supabase } from "@/lib/supabase";
+import { resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
 
 type PlayerType = "fackts_player" | "guest_hooper" | "external";
 type MatchStatus = "upcoming" | "completed" | "cancelled";
@@ -445,7 +446,7 @@ export default function AdminOneOnOnePage() {
       matchTitle: row.match_title || "",
       matchType: row.match_type || "1v1",
       court: row.court || "",
-      seasonLabel: row.season_label || "2026",
+      seasonLabel: resolveFacktsKingsSeason(row),
       verificationStatus: row.verification_status || (row.status === "completed" ? "verified" : "scheduled"),
       isPublic: row.is_public !== false,
 
@@ -1097,7 +1098,7 @@ export default function AdminOneOnOnePage() {
                         </span>
 
                         <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-200">
-                          {match.season_label || "2026"} · {match.verification_status || "pending"}
+                          {resolveFacktsKingsSeason(match)} · {match.verification_status || "pending"}
                         </span>
                       </div>
 

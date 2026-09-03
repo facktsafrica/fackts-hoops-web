@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import AnimatedNumber from "@/app/components/AnimatedNumber";
 import GameMedia, { type GameMediaItem } from "@/app/games/[id]/GameMedia";
+import { resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
 
 export const revalidate = 60;
 
@@ -361,7 +362,7 @@ export default async function OneOnOneMatchPage({
   const opponentScore = numberValue(row.points_allowed);
   const fullVideoUrl = row.video_url || "";
   const highlightUrl = row.highlight_url || "";
-  const seasonLabel = row.season_label || "2026";
+  const seasonLabel = resolveFacktsKingsSeason(row);
   const verificationStatus = row.verification_status || (String(row.status).toLowerCase() === "completed" ? "verified" : "scheduled");
   const mediaItems: GameMediaItem[] = [];
   if (fullVideoUrl) {

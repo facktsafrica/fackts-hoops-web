@@ -17,6 +17,7 @@ import {
 import {
   supabase,
 } from "@/lib/supabase";
+import type { GameCategory } from "@/lib/hoops/gameContext";
 
 type GameStatus =
   | "upcoming"
@@ -24,15 +25,6 @@ type GameStatus =
   | "completed"
   | "postponed"
   | "cancelled";
-
-type GameCategory =
-  | "one_on_one"
-  | "league"
-  | "court_takeover"
-  | "event"
-  | "competition"
-  | "friendly"
-  | "other";
 
 type TeamSide =
   | "home"
@@ -57,6 +49,14 @@ type EventRow = {
   title: string;
 };
 
+type CompetitionRow = {
+  id: string;
+  name: string;
+  short_name?: string | null;
+  slug: string;
+  current_season_label?: string | null;
+};
+
 type PeriodDraft = {
   period: string;
   home: string;
@@ -77,6 +77,8 @@ type GameRecord = {
   division?: string | null;
 
   competition_name?: string | null;
+  competition_id?: string | null;
+  game_category?: string | null;
 
   home_team_id?: string | null;
   away_team_id?: string | null;
@@ -124,6 +126,7 @@ type GameForm = {
   division: string;
 
   competition_name: string;
+  competition_id: string;
 
   home_team_id: string;
   away_team_id: string;
@@ -236,6 +239,7 @@ const EMPTY_FORM: GameForm = {
 
   competition_name:
     "FACKTS Hoops",
+  competition_id: "",
 
   home_team_id: "",
   away_team_id: "",
@@ -306,6 +310,20 @@ function toDateTimeLocal(
 function deriveCategory(
   game: GameRecord,
 ): GameCategory {
+  if (
+    [
+      "one_on_one",
+      "league",
+      "court_takeover",
+      "event",
+      "competition",
+      "friendly",
+      "other",
+    ].includes(game.game_category || "")
+  ) {
+    return game.game_category as GameCategory;
+  }
+
   const text = [
     game.title,
     game.game_title,
@@ -319,6 +337,17 @@ function deriveCategory(
     .toLowerCase();
 
   if (
+    /court takeover/.test(
+      text,
+    ) ||
+    /\btakeover\b/.test(
+      text,
+    )
+  ) {
+    return "court_takeover";
+  }
+
+  if (
     /\b1\s*v\s*1\b/.test(
       text,
     ) ||
@@ -330,17 +359,6 @@ function deriveCategory(
     )
   ) {
     return "one_on_one";
-  }
-
-  if (
-    /court takeover/.test(
-      text,
-    ) ||
-    /\btakeover\b/.test(
-      text,
-    )
-  ) {
-    return "court_takeover";
   }
 
   if (game.league_id) {
@@ -839,6 +857,14 @@ export default function FullGameEditorPage() {
       [],
     );
 
+  const [
+    competitions,
+    setCompetitions,
+  ] =
+    useState<CompetitionRow[]>(
+      [],
+    );
+
   useEffect(() => {
     const params =
       new URLSearchParams(
@@ -955,6 +981,11 @@ export default function FullGameEditorPage() {
             [],
         );
 
+        setCompetitions(
+          result.competitions ||
+            [],
+        );
+
         setForm({
           title:
             game.title ||
@@ -985,6 +1016,10 @@ export default function FullGameEditorPage() {
           competition_name:
             game.competition_name ||
             "FACKTS Hoops",
+
+          competition_id:
+            game.competition_id ||
+            "",
 
           home_team_id:
             game.home_team_id ||
@@ -1125,6 +1160,7 @@ export default function FullGameEditorPage() {
           gamesResponse,
           teamsResult,
           leaguesResult,
+          competitionsResult,
         ] =
           await Promise.all([
             fetch(
@@ -1156,6 +1192,21 @@ export default function FullGameEditorPage() {
               .order(
                 "name",
               ),
+
+            supabase
+              .from(
+                "competitions",
+              )
+              .select(
+                "id,name,short_name,slug,current_season_label",
+              )
+              .eq(
+                "is_public",
+                true,
+              )
+              .order(
+                "name",
+              ),
           ]);
 
         const gamesPayload =
@@ -1178,6 +1229,14 @@ export default function FullGameEditorPage() {
         setLeagues(
           (leaguesResult.data ||
             []) as LeagueRow[],
+        );
+
+        const competitionRows =
+          (competitionsResult.data ||
+            []) as CompetitionRow[];
+
+        setCompetitions(
+          competitionRows,
         );
 
         const startingTeam =
@@ -1214,6 +1273,7 @@ export default function FullGameEditorPage() {
             ...categoryDefaults(
               sourceCategory,
               current,
+              competitionRows,
             ),
           }),
         );
@@ -1340,9 +1400,32 @@ export default function FullGameEditorPage() {
         ...categoryDefaults(
           category,
           current,
+          competitions,
         ),
       }),
     );
+  }
+
+  function selectCompetition(
+    competitionId: string,
+  ) {
+    const competition =
+      competitions.find(
+        (item) =>
+          item.id === competitionId,
+      );
+
+    setForm((current) => ({
+      ...current,
+      competition_id: competitionId,
+      competition_name:
+        competition?.name ||
+        current.competition_name,
+      season_label:
+        current.season_label ||
+        competition?.current_season_label ||
+        "",
+    }));
   }
 
   function updatePeriod(
@@ -1517,12 +1600,40 @@ export default function FullGameEditorPage() {
       }
 
       if (
+        form.category === "league" &&
+        (!form.season_label.trim() || !form.division.trim())
+      ) {
+        throw new Error(
+          "Add both season and division for a League Game.",
+        );
+      }
+
+      if (
+        form.category === "league" &&
+        !form.home_team_id &&
+        !form.away_team_id
+      ) {
+        throw new Error(
+          "Link at least one registered team for a League Game.",
+        );
+      }
+
+      if (
         form.category ===
           "event" &&
         !form.event_id
       ) {
         throw new Error(
           "Choose the linked event for an Event game.",
+        );
+      }
+
+      if (
+        ["one_on_one", "court_takeover", "competition"].includes(form.category) &&
+        !form.competition_id
+      ) {
+        throw new Error(
+          "Choose the permanent competition profile for this game.",
         );
       }
 
@@ -1604,12 +1715,19 @@ export default function FullGameEditorPage() {
       const payload = {
         title,
 
+        game_category:
+          form.category,
+
         event_id:
           form.event_id ||
           null,
 
         competition_name:
           form.competition_name ||
+          null,
+
+        competition_id:
+          form.competition_id ||
           null,
 
         league_id:
@@ -2093,22 +2211,26 @@ export default function FullGameEditorPage() {
                   />
                 </Field>
 
-                <Field label="Competition">
-                  <input
-                    name="competition_name"
-                    value={
-                      form.competition_name
-                    }
+                <Field label="Permanent competition profile">
+                  <select
+                    name="competition_id"
+                    value={form.competition_id}
                     disabled={
-                      readOnly
+                      readOnly ||
+                      !["one_on_one", "court_takeover", "competition"].includes(form.category)
                     }
-                    onChange={
-                      updateForm
-                    }
-                    className={
-                      CONTROL
-                    }
-                  />
+                    onChange={(event) => selectCompetition(event.target.value)}
+                    className={CONTROL}
+                  >
+                    <option value="">No permanent competition</option>
+                    {competitions.map((competition) => (
+                      <option key={competition.id} value={competition.id}>
+                        {competition.short_name
+                          ? `${competition.short_name} — ${competition.name}`
+                          : competition.name}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
 
                 <Field label="Linked event">
@@ -2201,6 +2323,9 @@ export default function FullGameEditorPage() {
                   />
                 </Field>
               </div>
+              <p className="mt-4 rounded-xl border border-orange-400/15 bg-orange-500/[.06] px-4 py-3 text-xs leading-5 text-slate-400">
+                This context controls counting. League games are isolated by league, season and division; 1v1 and Court Takeover records never become team fixtures unless the registered team IDs actually participate in a team-format game.
+              </p>
             </Panel>
 
             <Panel
@@ -2945,7 +3070,11 @@ export default function FullGameEditorPage() {
 function categoryDefaults(
   category: GameCategory,
   current: GameForm,
+  competitions: CompetitionRow[] = [],
 ): Partial<GameForm> {
+  const kings = competitions.find((competition) => competition.slug === "fackts-kings");
+  const takeovers = competitions.find((competition) => competition.slug === "court-takeovers");
+
   if (
     category ===
     "one_on_one"
@@ -2953,13 +3082,14 @@ function categoryDefaults(
     return {
       game_format: "1v1",
       match_type: "1v1",
-
-      competition_name:
-        current.competition_name ===
-          "FACKTS Hoops" ||
-        !current.competition_name
-          ? "FACKTS Kings"
-          : current.competition_name,
+      event_id: "",
+      league_id: "",
+      division: "",
+      home_team_id: "",
+      away_team_id: "",
+      competition_id: kings?.id || "",
+      competition_name: kings?.name || "FACKTS Kings",
+      season_label: kings?.current_season_label || current.season_label,
     };
   }
 
@@ -2968,15 +3098,13 @@ function categoryDefaults(
     "court_takeover"
   ) {
     return {
+      event_id: "",
+      league_id: "",
       match_type:
         "court_takeover",
-
-      competition_name:
-        current.competition_name ===
-          "FACKTS Hoops" ||
-        !current.competition_name
-          ? "FACKTS Court Takeover"
-          : current.competition_name,
+      competition_id: takeovers?.id || "",
+      competition_name: takeovers?.name || "Court Takeovers",
+      season_label: takeovers?.current_season_label || current.season_label,
     };
   }
 
@@ -2985,6 +3113,9 @@ function categoryDefaults(
     "league"
   ) {
     return {
+      event_id: "",
+      competition_id: "",
+      competition_name: "League",
       game_format:
         current.game_format ===
         "1v1"
@@ -3001,6 +3132,9 @@ function categoryDefaults(
     "friendly"
   ) {
     return {
+      event_id: "",
+      league_id: "",
+      competition_id: "",
       match_type:
         "friendly",
 
@@ -3014,6 +3148,8 @@ function categoryDefaults(
     "event"
   ) {
     return {
+      league_id: "",
+      competition_id: "",
       match_type:
         "event",
     };
@@ -3024,6 +3160,8 @@ function categoryDefaults(
     "competition"
   ) {
     return {
+      event_id: "",
+      league_id: "",
       match_type:
         "competition",
 
@@ -3036,6 +3174,10 @@ function categoryDefaults(
   }
 
   return {
+    event_id: "",
+    league_id: "",
+    competition_id: "",
+    competition_name: "FACKTS Hoops",
     match_type:
       current.game_format ||
       "5v5",

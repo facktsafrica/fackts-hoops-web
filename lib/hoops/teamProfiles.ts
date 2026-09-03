@@ -11,6 +11,11 @@ import {
   getPosterUrl,
   type GameRecord,
 } from "@/lib/hoops/gamePresentation";
+import {
+  getGameCategory,
+  getTeamSide,
+  type GameCategory,
+} from "@/lib/hoops/gameContext";
 
 export type TeamProfile = {
   id: string;
@@ -69,6 +74,11 @@ export type TeamGame = {
   id: string;
   title?: string | null;
   competition_name?: string | null;
+  competition_id?: string | null;
+  game_category?: GameCategory | null;
+  league_id?: string | null;
+  season_label?: string | null;
+  division?: string | null;
   opponent_name?: string | null;
   game_date?: string | null;
   venue?: string | null;
@@ -304,33 +314,6 @@ function sortProfiles(left: TeamProfile, right: TeamProfile) {
   );
 }
 
-function normalizeName(value?: string | null) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function profileAliases(profile: TeamProfile) {
-  return new Set(
-    [profile.name, profile.short_name, ...(profile.aliases || [])]
-      .map(normalizeName)
-      .filter(Boolean)
-  );
-}
-
-function gameSide(game: LinkedGameRecord, profile: TeamProfile) {
-  if (game.home_team_id && game.home_team_id === profile.id) return "home" as const;
-  if (game.away_team_id && game.away_team_id === profile.id) return "away" as const;
-
-  const aliases = profileAliases(profile);
-  if (aliases.has(normalizeName(getHomeTeam(game)))) return "home" as const;
-  if (aliases.has(normalizeName(getAwayTeam(game)))) return "away" as const;
-  return null;
-}
-
 function resultFromScores(teamScore: number | null, opponentScore: number | null) {
   if (teamScore === null || opponentScore === null) return null;
   if (teamScore === opponentScore) return null;
@@ -341,7 +324,7 @@ function gameFromPublicRecord(
   game: LinkedGameRecord,
   profile: TeamProfile
 ): TeamGame | null {
-  const side = gameSide(game, profile);
+  const side = getTeamSide(game, profile);
   if (!side) return null;
 
   const teamScore = side === "home" ? getHomeScore(game) : getAwayScore(game);
@@ -354,6 +337,11 @@ function gameFromPublicRecord(
     event_id: game.event_id || null,
     title: getGameTitle(game),
     competition_name: getCompetition(game),
+    competition_id: game.competition_id || null,
+    game_category: getGameCategory(game),
+    league_id: game.league_id || null,
+    season_label: game.season_label || null,
+    division: game.division || null,
     opponent_name: opponent,
     game_date: getGameDate(game),
     venue: game.venue || game.court || game.location || null,
@@ -371,6 +359,7 @@ function normalizeStoredGame(row: TeamGameRow): TeamGame {
   const opponentScore = optionalNumber(row.opponent_score);
   return {
     ...row,
+    game_category: getGameCategory(row),
     team_score: teamScore,
     opponent_score: opponentScore,
     result: row.result === "W" || row.result === "L"
@@ -824,7 +813,9 @@ export async function loadTeamProfileBundle(
 
   const storedGames = gamesResult.error
     ? []
-    : ((gamesResult.data || []) as TeamGameRow[]).map(normalizeStoredGame);
+    : ((gamesResult.data || []) as TeamGameRow[])
+        .map(normalizeStoredGame)
+        .filter((game) => game.game_category !== "one_on_one");
   const directGames = allGames
     .map((game) => gameFromPublicRecord(game, profile))
     .filter((game): game is TeamGame => Boolean(game));

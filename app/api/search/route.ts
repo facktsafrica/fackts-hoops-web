@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
 
 type SearchGroup =
   | "Players"
@@ -237,7 +238,20 @@ export async function GET(request: NextRequest) {
         type: isTakeover ? "Court Takeover" : "FACKTS Kings",
         group: "Games",
         title,
-        subtitle: text(battle.season_label || "2026", battle.match_number, battle.status, battle.venue),
+        subtitle: text(
+          resolveFacktsKingsSeason({
+            season_label:
+              typeof battle.season_label === "string" ||
+              typeof battle.season_label === "number"
+                ? battle.season_label
+                : null,
+            match_date:
+              typeof battle.match_date === "string" ? battle.match_date : null,
+          }),
+          battle.match_number,
+          battle.status,
+          battle.venue
+        ),
         href: isTakeover
           ? `/competitions/court-takeovers#leaderboards`
           : `/competitions/fackts-kings/matches/${value(battle.id)}`,

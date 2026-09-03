@@ -4,6 +4,12 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import GamesExplorer, { type GameDirectoryItem } from "./GamesExplorer";
 import {
+  gameCategoryLabel,
+  getGameCategory,
+  getGameContextKey,
+} from "@/lib/hoops/gameContext";
+import { resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
+import {
   formatGameDate,
   getAwayScore,
   getAwayTeam,
@@ -26,6 +32,19 @@ type EventRow = {
   event_id: string;
   slug: string;
   title: string;
+};
+
+type CompetitionRow = {
+  id: string;
+  name: string;
+  short_name?: string | null;
+  current_season_label?: string | null;
+};
+
+type LeagueRow = {
+  id: string;
+  name: string;
+  short_name?: string | null;
 };
 
 type RelatedRow = {
@@ -57,10 +76,57 @@ function countByGame(rows: RelatedRow[]) {
   return counts;
 }
 
+function compactFormat(value?: string | null) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function formatBucket(game: GameRecord) {
+  const category = getGameCategory(game);
+  if (category === "one_on_one") return "1v1";
+  const format = compactFormat(getGameFormat(game));
+  if (format.includes("3v3")) return "3v3";
+  if (format.includes("5v5") || category === "league" || category === "event") return "5v5";
+  return getGameFormat(game) || "Basketball";
+}
+
+function contextLabel(
+  game: GameRecord,
+  event: EventRow | undefined,
+  leagues: Map<string, LeagueRow>,
+  competitions: Map<string, CompetitionRow>
+) {
+  const category = getGameCategory(game);
+  const season =
+    category === "one_on_one"
+      ? resolveFacktsKingsSeason(game.season_label, getGameDate(game))
+      : game.season_label || "Season not assigned";
+  const division = game.division || "Division not assigned";
+
+  if (category === "league") {
+    const league = game.league_id ? leagues.get(game.league_id) : undefined;
+    return `${league?.short_name || league?.name || getCompetition(game)} · ${season} · ${division}`;
+  }
+  if (category === "event") return event?.title || getCompetition(game);
+  if (category === "one_on_one") {
+    const competition = game.competition_id
+      ? competitions.get(game.competition_id)
+      : undefined;
+    return `${competition?.short_name || competition?.name || "FACKTS Kings"} · ${season}`;
+  }
+  if (category === "court_takeover" || category === "competition") {
+    const competition = game.competition_id
+      ? competitions.get(game.competition_id)
+      : undefined;
+    const name = competition?.short_name || competition?.name || getCompetition(game);
+    return `${name} · ${season}${game.division ? ` · ${game.division}` : ""}`;
+  }
+  return gameCategoryLabel(category);
+}
+
 async function loadGames() {
   const supabase = getSupabase();
 
-  const [gamesResult, statsResult, guestStatsResult, rostersResult, mediaResult, eventsResult] =
+  const [gamesResult, statsResult, guestStatsResult, rostersResult, mediaResult, eventsResult, leaguesResult, competitionsResult] =
     await Promise.all([
       supabase.from("games").select("*").order("game_date", { ascending: false }),
       supabase.from("player_game_stats").select("game_id"),
@@ -68,6 +134,8 @@ async function loadGames() {
       supabase.from("game_rosters").select("game_id"),
       supabase.from("game_media").select("game_id").eq("is_public", true).eq("publish_status", "published"),
       supabase.from("event_case_studies").select("event_id,slug,title").eq("is_public", true),
+      supabase.from("leagues").select("id,name,short_name").eq("is_public", true),
+      supabase.from("competitions").select("id,name,short_name,current_season_label").eq("is_public", true),
     ]);
 
   const games = ((gamesResult.data || []) as GameRecord[]).filter(
@@ -81,6 +149,10 @@ async function loadGames() {
   const mediaCounts = countByGame((mediaResult.data || []) as RelatedRow[]);
   const eventMap = new Map<string, EventRow>();
   ((eventsResult.data || []) as EventRow[]).forEach((event) => eventMap.set(event.event_id, event));
+  const leagueMap = new Map<string, LeagueRow>();
+  ((leaguesResult.data || []) as LeagueRow[]).forEach((league) => leagueMap.set(league.id, league));
+  const competitionMap = new Map<string, CompetitionRow>();
+  ((competitionsResult.data || []) as CompetitionRow[]).forEach((competition) => competitionMap.set(competition.id, competition));
 
   const directory: GameDirectoryItem[] = games
     .sort((a, b) => {
@@ -96,6 +168,7 @@ async function loadGames() {
       const parsed = date ? new Date(date) : null;
       const year = parsed && !Number.isNaN(parsed.getTime()) ? String(parsed.getFullYear()) : "Date TBA";
       const builtInMedia = [game.video_url || game.game_video_url, game.highlight_url].filter(Boolean).length;
+      const category = getGameCategory(game);
 
       return {
         id: game.id,
@@ -112,9 +185,14 @@ async function loadGames() {
         venue: game.venue || game.court || "Venue TBA",
         location: game.location || "Location TBA",
         competition: getCompetition(game),
+        category,
+        categoryLabel: gameCategoryLabel(category),
+        contextKey: getGameContextKey(game),
+        contextLabel: contextLabel(game, event, leagueMap, competitionMap),
         eventTitle: event?.title || "",
         eventSlug: event?.slug || "",
         gameFormat: getGameFormat(game),
+        formatBucket: formatBucket(game),
         stage: getStage(game),
         imageUrl: getPosterUrl(game),
         verificationLabel: getVerificationLabel(game),
@@ -133,7 +211,9 @@ export default async function GamesPage() {
   const live = games.filter((game) => game.status === "live");
   const upcoming = games.filter((game) => game.status === "upcoming");
   const completed = games.filter((game) => game.status === "completed");
-  const verified = games.filter((game) => game.verified);
+  const fiveOnFive = games.filter((game) => game.formatBucket === "5v5" && game.category !== "court_takeover");
+  const oneOnOne = games.filter((game) => game.category === "one_on_one");
+  const takeovers = games.filter((game) => game.category === "court_takeover");
   const featured = live[0] || upcoming[0] || completed[0] || null;
 
   return (
@@ -176,9 +256,9 @@ export default async function GamesPage() {
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
             <HeroStat value={String(games.length)} label="Published games" />
-            <HeroStat value={String(live.length)} label="Live now" accent="red" />
-            <HeroStat value={String(upcoming.length)} label="Upcoming" accent="blue" />
-            <HeroStat value={String(verified.length)} label="Verified records" accent="green" />
+            <HeroStat value={String(fiveOnFive.length)} label="5v5 team games" accent="blue" />
+            <HeroStat value={String(oneOnOne.length)} label="Kings 1v1" accent="green" />
+            <HeroStat value={String(takeovers.length)} label="Court Takeovers" accent="red" />
           </div>
         </div>
       </section>

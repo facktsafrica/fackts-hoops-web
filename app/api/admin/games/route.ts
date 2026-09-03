@@ -21,6 +21,11 @@ import {
 import {
   createSupabaseAdminClient,
 } from "@/lib/supabase/admin";
+import {
+  GAME_CATEGORIES,
+  getGameCategory,
+  type GameCategory,
+} from "@/lib/hoops/gameContext";
 
 export const runtime =
   "nodejs";
@@ -55,6 +60,11 @@ type GameStatus =
 
 type VerificationStatus =
   (typeof VERIFICATION_STATUSES)[number];
+
+function cleanGameCategory(value: unknown): GameCategory | null {
+  const category = String(value ?? "").trim().toLowerCase() as GameCategory;
+  return GAME_CATEGORIES.includes(category) ? category : null;
+}
 
 type TeamSide =
   | "home"
@@ -719,6 +729,28 @@ function gameMutationPayload(
       180,
     );
 
+  const contextSource = {
+    ...(current || {}),
+    ...body,
+  };
+  const category =
+    cleanGameCategory(
+      "game_category" in body
+        ? body.game_category
+        : "category" in body
+          ? body.category
+          : current?.game_category,
+    ) || getGameCategory(contextSource);
+  const contextValue = (key: string) =>
+    key in body ? body[key] : current?.[key];
+  const eventId = cleanText(contextValue("event_id"), 160);
+  const competitionId = cleanText(contextValue("competition_id"), 100);
+  const leagueId = cleanText(contextValue("league_id"), 100);
+  const seasonLabel = cleanText(contextValue("season_label"), 100);
+  const division = cleanText(contextValue("division"), 100);
+  const homeTeamId = cleanText(contextValue("home_team_id"), 100);
+  const awayTeamId = cleanText(contextValue("away_team_id"), 100);
+
   const away =
     cleanText(
       body.away_team_name ??
@@ -779,6 +811,44 @@ function gameMutationPayload(
     errors.push(
       "Both game sides are required.",
     );
+  }
+
+  if (category === "league") {
+    if (!leagueId) errors.push("Choose the league for a League Game.");
+    if (!seasonLabel || !division) {
+      errors.push("League games require both a season and division.");
+    }
+    if (!homeTeamId && !awayTeamId) {
+      errors.push("League games must link at least one registered team.");
+    }
+    if (eventId || competitionId) {
+      errors.push("A League Game cannot also be linked as an event or permanent competition game.");
+    }
+  }
+
+  if (category === "event" && !eventId) {
+    errors.push("Choose the linked event for an Event game.");
+  }
+  if (category === "event" && (leagueId || competitionId)) {
+    errors.push("An Event game cannot also be linked to a league or permanent competition.");
+  }
+
+  if (
+    ["one_on_one", "court_takeover", "competition"].includes(category) &&
+    !competitionId
+  ) {
+    errors.push("Choose the permanent competition profile for this game.");
+  }
+
+  if (category === "one_on_one" && (homeTeamId || awayTeamId)) {
+    errors.push("A 1v1 game uses player participants, not team IDs.");
+  }
+
+  if (
+    ["one_on_one", "court_takeover", "competition"].includes(category) &&
+    (leagueId || eventId)
+  ) {
+    errors.push("Permanent competition games cannot also be linked to a league or one-off event.");
   }
 
   const gameDateValue =
@@ -872,12 +942,11 @@ function gameMutationPayload(
 
   const payload:
     JsonRecord = {
+      game_category:
+        category,
+
       event_id:
-        cleanText(
-          body.event_id ??
-            current?.event_id,
-          160,
-        ),
+        eventId,
 
       setup_key:
         cleanText(
@@ -898,40 +967,23 @@ function gameMutationPayload(
           180,
         ),
 
+      competition_id:
+        competitionId,
+
       league_id:
-        cleanText(
-          body.league_id ??
-            current?.league_id,
-          100,
-        ),
+        leagueId,
 
       season_label:
-        cleanText(
-          body.season_label ??
-            current?.season_label,
-          100,
-        ),
+        seasonLabel,
 
       division:
-        cleanText(
-          body.division ??
-            current?.division,
-          100,
-        ),
+        division,
 
       home_team_id:
-        cleanText(
-          body.home_team_id ??
-            current?.home_team_id,
-          100,
-        ),
+        homeTeamId,
 
       away_team_id:
-        cleanText(
-          body.away_team_id ??
-            current?.away_team_id,
-          100,
-        ),
+        awayTeamId,
 
       home_team_name:
         home,
@@ -1437,6 +1489,7 @@ async function loadDetail(
     leaguesResult,
     teamsResult,
     eventsResult,
+    competitionsResult,
   ] =
     await Promise.all([
       db
@@ -1492,6 +1545,21 @@ async function loadDetail(
               false,
           },
         ),
+
+      db
+        .from(
+          "competitions",
+        )
+        .select(
+          "id,name,short_name,slug,current_season_label,is_public",
+        )
+        .eq(
+          "is_public",
+          true,
+        )
+        .order(
+          "name",
+        ),
     ]);
 
   for (
@@ -1500,6 +1568,7 @@ async function loadDetail(
       leaguesResult,
       teamsResult,
       eventsResult,
+      competitionsResult,
     ]
   ) {
     if (
@@ -1534,6 +1603,10 @@ async function loadDetail(
 
     events:
       eventsResult.data ??
+      [],
+
+    competitions:
+      competitionsResult.data ??
       [],
   };
 }
@@ -1799,6 +1872,7 @@ export async function GET(
       legacyMediaResult,
       gameMediaLinksResult,
       oneOnOneMediaLinksResult,
+      competitionsResult,
     ] =
       await Promise.all([
         db
@@ -1891,6 +1965,21 @@ export async function GET(
               data: [],
               error: null,
             }),
+
+        db
+          .from(
+            "competitions",
+          )
+          .select(
+            "id,name,short_name,slug,current_season_label,is_public",
+          )
+          .eq(
+            "is_public",
+            true,
+          )
+          .order(
+            "name",
+          ),
       ]);
 
     for (
@@ -1900,6 +1989,7 @@ export async function GET(
         legacyMediaResult,
         gameMediaLinksResult,
         oneOnOneMediaLinksResult,
+        competitionsResult,
       ]
     ) {
       if (
@@ -2155,6 +2245,10 @@ export async function GET(
 
       events:
         eventsResult.data ??
+        [],
+
+      competitions:
+        competitionsResult.data ??
         [],
     });
   } catch (error) {

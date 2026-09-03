@@ -402,16 +402,9 @@ export default async function TeamProfilePage({
 
   const competitionActivities =
     activities.filter(
-      (
-        activity,
-      ) =>
-        [
-          "one_on_one",
-          "community_takeover",
-          "competition",
-        ].includes(
-          activity.kind,
-        ),
+      (activity) =>
+        ["community_takeover", "competition"].includes(activity.kind) ||
+        (activity.kind === "one_on_one" && !isFackts),
     );
 
   const highSchoolActivities =
@@ -508,44 +501,17 @@ export default async function TeamProfilePage({
     );
 
   /*
-   * Canonical performance is preferred.
-   * Existing bundle performance remains
-   * the fallback.
+   * Official team performance must come from the same team-fixture bundle
+   * used by the Teams directory. Organization-owned competitions such as
+   * FACKTS Kings remain separate from FACKTS Hoops team statistics.
    */
-  const played =
-    intelligence?.performance
-      .played ??
-    performance.played;
-
-  const wins =
-    intelligence?.performance
-      .wins ??
-    performance.wins;
-
-  const losses =
-    intelligence?.performance
-      .losses ??
-    performance.losses;
-
-  const pointsFor =
-    intelligence?.performance
-      .pointsFor ??
-    performance.pointsFor;
-
-  const pointsAgainst =
-    intelligence?.performance
-      .pointsAgainst ??
-    performance.pointsAgainst;
-
-  const pointDifference =
-    intelligence?.performance
-      .pointDifference ??
-    performance.pointDifference;
-
-  const winPercentage =
-    intelligence?.performance
-      .winPercentage ??
-    performance.winPercentage;
+  const played = performance.played;
+  const wins = performance.wins;
+  const losses = performance.losses;
+  const pointsFor = performance.pointsFor;
+  const pointsAgainst = performance.pointsAgainst;
+  const pointDifference = performance.pointDifference;
+  const winPercentage = performance.winPercentage;
 
   const pointsPerGame =
     played
@@ -594,12 +560,10 @@ export default async function TeamProfilePage({
   const summary =
     intelligence?.summary;
 
-  const publicGameCount =
-    Math.max(
-      games.length,
-      summary?.totalGames ||
-        0,
-    );
+  // The directory and profile must use the exact same official team-game set.
+  // Organization-owned competitions such as FACKTS Kings are displayed as
+  // competition history, never as FACKTS Hoops team fixtures.
+  const publicGameCount = games.length;
 
   const publicLeagueCount =
     Math.max(

@@ -394,6 +394,7 @@ export async function PATCH(request: NextRequest) {
         const gameDate = cleanText(game.game_date, 40);
         const title = cleanText(game.title, 240) || `${home || "Home"} vs ${away || "Away"}`;
         return {
+          game_category: "event",
           event_id: eventId,
           setup_key: cleanKey(game.setup_key),
           title,

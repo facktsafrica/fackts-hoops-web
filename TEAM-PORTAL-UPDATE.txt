@@ -1,0 +1,21 @@
+FACKTS Hoops Team Portal update
+
+Changed files:
+- app/api/team-portal/route.ts
+- app/team-portal/TeamPortalClient.tsx
+- lib/basketball-iq/insights.ts
+
+Copy these files into the same paths in the main project, then deploy normally.
+
+This update:
+- deduplicates canonical and legacy game records before they reach the portal;
+- limits the long media audit to the 24 most recent linked games;
+- adds a first-login welcome guide and a permanent Help & tour button;
+- opens Help & tour as a visible modal with a dedicated tutorial library;
+- includes the 21-minute YouTube tutorial directly, with no Vercel variable required;
+- uses one shared tutorial catalogue for every club portal;
+- displays future catalogue entries automatically under More tutorials.
+- expands Basketball IQ recommendations with context, drills, targets and review steps.
+
+The protected coach-material library is intentionally not included. It requires
+a dedicated private bucket, NDA acceptance records and audited team-scoped access.

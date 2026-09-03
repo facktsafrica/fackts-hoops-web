@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { PublicGameStatus } from "@/lib/hoops/gamePresentation";
+import type { GameCategory } from "@/lib/hoops/gameContext";
 
 export type GameDirectoryItem = {
   id: string;
@@ -19,9 +20,14 @@ export type GameDirectoryItem = {
   venue: string;
   location: string;
   competition: string;
+  category: GameCategory;
+  categoryLabel: string;
+  contextKey: string;
+  contextLabel: string;
   eventTitle: string;
   eventSlug: string;
   gameFormat: string;
+  formatBucket: string;
   stage: string;
   imageUrl: string;
   verificationLabel: string;
@@ -55,12 +61,27 @@ export default function GamesExplorer({ games }: { games: GameDirectoryItem[] })
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | PublicGameStatus>("all");
   const [event, setEvent] = useState("all");
+  const [category, setCategory] = useState("all");
+  const [context, setContext] = useState("all");
+  const [format, setFormat] = useState("all");
   const [team, setTeam] = useState("all");
   const [year, setYear] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const events = useMemo(
     () => unique(games.map((game) => game.eventTitle || game.competition)),
+    [games]
+  );
+  const categories = useMemo(
+    () => unique(games.map((game) => game.categoryLabel)),
+    [games]
+  );
+  const contexts = useMemo(
+    () => unique(games.map((game) => game.contextLabel)),
+    [games]
+  );
+  const formats = useMemo(
+    () => unique(games.map((game) => game.formatBucket)),
     [games]
   );
   const teams = useMemo(
@@ -97,6 +118,8 @@ export default function GamesExplorer({ games }: { games: GameDirectoryItem[] })
           game.awayTeam,
           game.competition,
           game.eventTitle,
+          game.categoryLabel,
+          game.contextLabel,
           game.venue,
           game.location,
           game.stage,
@@ -107,17 +130,23 @@ export default function GamesExplorer({ games }: { games: GameDirectoryItem[] })
       return (
         matchesSearch &&
         (status === "all" || game.status === status) &&
+        (category === "all" || game.categoryLabel === category) &&
+        (context === "all" || game.contextLabel === context) &&
+        (format === "all" || game.formatBucket === format) &&
         (event === "all" || gameEvent === event) &&
         (team === "all" || game.homeTeam === team || game.awayTeam === team) &&
         (year === "all" || game.year === year)
       );
     });
-  }, [event, games, query, status, team, year]);
+  }, [category, context, event, format, games, query, status, team, year]);
 
   function reset() {
     setQuery("");
     setStatus("all");
     setEvent("all");
+    setCategory("all");
+    setContext("all");
+    setFormat("all");
     setTeam("all");
     setYear("all");
   }
@@ -163,10 +192,13 @@ export default function GamesExplorer({ games }: { games: GameDirectoryItem[] })
             onClick={() => setFiltersOpen((current) => !current)}
             className="mt-3 flex w-full items-center justify-between rounded-xl border border-white/[.08] bg-white/[.025] px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-zinc-300 sm:hidden"
           >
-            Event, team and date filters <span>{filtersOpen ? "−" : "+"}</span>
+            Context, team and date filters <span>{filtersOpen ? "−" : "+"}</span>
           </button>
 
-          <div className={`${filtersOpen ? "grid" : "hidden"} mt-3 gap-2 sm:grid sm:grid-cols-3`}>
+          <div className={`${filtersOpen ? "grid" : "hidden"} mt-3 gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-4`}>
+            <FilterSelect label="Game type" value={category} onChange={setCategory} options={categories} />
+            <FilterSelect label="Context" value={context} onChange={setContext} options={contexts} />
+            <FilterSelect label="Format" value={format} onChange={setFormat} options={formats} />
             <FilterSelect label="Event" value={event} onChange={setEvent} options={events} />
             <FilterSelect label="Team" value={team} onChange={setTeam} options={teams} />
             <FilterSelect label="Year" value={year} onChange={setYear} options={years} />
@@ -223,7 +255,7 @@ function GameCard({ game }: { game: GameDirectoryItem }) {
             {game.gameFormat}
           </span>
           <div className="absolute bottom-4 left-4 right-4">
-            <p className="text-[9px] font-black uppercase tracking-[.14em] text-orange-200">{game.eventTitle || game.competition}</p>
+            <p className="text-[9px] font-black uppercase tracking-[.14em] text-orange-200">{game.contextLabel}</p>
             <p className="mt-1 text-xs font-bold text-zinc-200">{game.dateLabel}</p>
           </div>
         </div>

@@ -4,6 +4,11 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { FACKTS_PLAYER_TYPE } from "@/lib/hoops/playerClassification";
 import GameMedia, { type GameMediaItem } from "@/app/games/[id]/GameMedia";
+import {
+  DEFAULT_FACKTS_KINGS_SEASON,
+  FACKTS_KINGS_SLUG,
+  resolveFacktsKingsSeason,
+} from "@/lib/hoops/facktsKings";
 
 type Player = {
   id: string;
@@ -106,8 +111,8 @@ type OneOnOneSearchParams = Promise<{
 }>;
 
 const BATTLES_PER_PAGE = 6;
-const DEFAULT_SEASON = "2026";
-const COMPETITION_SLUG = "fackts-kings";
+const DEFAULT_SEASON = DEFAULT_FACKTS_KINGS_SEASON;
+const COMPETITION_SLUG = FACKTS_KINGS_SLUG;
 const COMPETITION_PATH = "/competitions/fackts-kings";
 
 function getRequestedPage(value?: string | string[]) {
@@ -752,7 +757,7 @@ export default async function OneOnOnePage({
     return competitionSlug === COMPETITION_SLUG && row.is_public !== false;
   });
   const availableSeasons = Array.from(
-    new Set(competitionRows.map((row) => row.season_label || DEFAULT_SEASON))
+    new Set(competitionRows.map((row) => resolveFacktsKingsSeason(row)))
   ).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
   if (!availableSeasons.length) availableSeasons.push(DEFAULT_SEASON);
   const requestedSeason = Array.isArray(query.season) ? query.season[0] : query.season;
@@ -760,7 +765,7 @@ export default async function OneOnOnePage({
     ? requestedSeason!
     : availableSeasons[0];
   const rows = competitionRows.filter(
-    (row) => (row.season_label || DEFAULT_SEASON) === activeSeason
+    (row) => resolveFacktsKingsSeason(row) === activeSeason
   );
 
   const leaderboard = buildLeaderboard(
