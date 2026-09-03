@@ -1,7 +1,11 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { supabase } from "@/lib/supabase";
-import { getGameCategory, getTeamSide } from "@/lib/hoops/gameContext";
+import {
+  getGameCategory,
+  getTeamSide,
+  resolveGameSeasonLabel,
+} from "@/lib/hoops/gameContext";
 import { resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
 
 /* =========================================================
@@ -847,7 +851,7 @@ function activityKey(
   const season = keyText(
     kind === "one_on_one"
       ? resolveFacktsKingsSeason(game.season_label, gameDate(game))
-      : game.season_label || "season-unspecified",
+      : resolveGameSeasonLabel(game) || "season-unspecified",
   );
   const division = keyText(game.division || "division-unspecified");
   const competitionId = text(game.competition_id);
@@ -1661,6 +1665,7 @@ export async function loadPublicTeamIntelligence(
   for (const game of activityGames) {
     const event = events.get(text(game.event_id));
     const key = activityKey(game, event, competitions);
+    const kind = activityKind(game, event);
     const existing = activityMap.get(key);
     if (existing) {
       existing.games.push(game);
@@ -1669,11 +1674,14 @@ export async function loadPublicTeamIntelligence(
 
     activityMap.set(key, {
       key,
-      kind: activityKind(game, event),
+      kind,
       title: activityTitle(game, event, leagues),
       competitionSlug: competitionSlugForGame(game, event, competitions),
       href: activityHref(game, event, leagues, competitions),
-      seasonLabel: text(game.season_label) || null,
+      seasonLabel:
+        kind === "one_on_one"
+          ? resolveFacktsKingsSeason(game.season_label, gameDate(game))
+          : resolveGameSeasonLabel(game),
       division: text(game.division) || null,
       games: [game],
     });

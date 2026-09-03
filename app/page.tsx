@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { DEFAULT_FACKTS_KINGS_SEASON, resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
+import { getGameCategory, getTeamSide } from "@/lib/hoops/gameContext";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,6 +44,18 @@ type EventRecordRow = {
 
 type GameRow = {
   id: string;
+  game_category?: string | null;
+  competition_id?: string | null;
+  league_id?: string | null;
+  season_label?: string | null;
+  division?: string | null;
+  game_format?: string | null;
+  match_type?: string | null;
+  home_team_id?: string | null;
+  away_team_id?: string | null;
+  home_team_name?: string | null;
+  away_team_name?: string | null;
+  competition_name?: string | null;
   title?: string | null;
   game_title?: string | null;
   opponent?: string | null;
@@ -100,6 +113,45 @@ type PlayerRow = {
   position?: string | null;
   photo_url?: string | null;
   photo_position?: string | null;
+  current_team?: string | null;
+  jersey_number?: string | number | null;
+  bio?: string | null;
+  is_featured?: boolean | null;
+};
+
+type TeamRow = {
+  id: string;
+  slug: string;
+  name: string;
+  short_name?: string | null;
+  tagline?: string | null;
+  description?: string | null;
+  logo_url?: string | null;
+  cover_image_url?: string | null;
+  current_competition?: string | null;
+  is_featured?: boolean | null;
+  aliases?: string[] | null;
+};
+
+type CompetitionRow = {
+  id: string;
+  slug: string;
+  name: string;
+  short_name?: string | null;
+  summary?: string | null;
+  competition_format?: string | null;
+  current_season_label?: string | null;
+  status?: string | null;
+  cover_image_url?: string | null;
+  logo_url?: string | null;
+  is_featured?: boolean | null;
+};
+
+type HomepageFeatureSettings = {
+  featured_team_id?: string | null;
+  featured_event_id?: string | null;
+  featured_competition_id?: string | null;
+  featured_player_id?: string | null;
 };
 
 type PlayerStatRow = {
@@ -170,16 +222,22 @@ function eventImage(event?: EventRow | null) {
   return event?.hero_image_url || event?.poster_url || "";
 }
 
-function gameImage(game?: GameRow | null) {
-  return game?.poster_url || game?.game_poster_url || game?.image_url || "";
-}
-
 function getGameTitle(game?: GameRow | null) {
   return game?.game_title || game?.title || "FACKTS competition game";
 }
 
-function getOpponent(game?: GameRow | null) {
-  return game?.opponent || game?.opponent_name || game?.team_name || "Opponent";
+function getHomeName(game?: GameRow | null) {
+  return game?.home_team_name || game?.team_name || "Home";
+}
+
+function getAwayName(game?: GameRow | null) {
+  return game?.away_team_name || game?.opponent_name || game?.opponent || "Away";
+}
+
+function sameIdentity(left?: string | null, right?: string | null) {
+  const normalize = (value?: string | null) =>
+    String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return Boolean(normalize(left)) && normalize(left) === normalize(right);
 }
 
 function getGameDate(game?: GameRow | null) {
@@ -192,6 +250,14 @@ function getTeamScore(game?: GameRow | null) {
 
 function getOpponentScore(game?: GameRow | null) {
   return numberValue(game?.opponent_score, game?.away_score);
+}
+
+function getHomeGameScore(game?: GameRow | null) {
+  return numberValue(game?.home_score, game?.team_score, game?.fackts_score);
+}
+
+function getAwayGameScore(game?: GameRow | null) {
+  return numberValue(game?.away_score, game?.opponent_score);
 }
 
 function getGameStatus(game?: GameRow | null) {
@@ -294,21 +360,6 @@ function sameName(left?: string | null, right?: string | null) {
   return canonicalName(left).toLowerCase() === canonicalName(right).toLowerCase();
 }
 
-function resultWinner(record?: EventRecordRow | null) {
-  if (
-    !record ||
-    record.score_for == null ||
-    record.score_against == null ||
-    record.score_for === record.score_against
-  ) {
-    return null;
-  }
-
-  return record.score_for > record.score_against
-    ? canonicalName(record.team_name)
-    : canonicalName(record.opponent_name);
-}
-
 function playerContribution(row: PlayerStatRow) {
   return (
     Number(row.points ?? 0) +
@@ -321,7 +372,16 @@ function playerContribution(row: PlayerStatRow) {
 }
 
 async function loadHomepageData() {
-  const [eventsResult, recordsResult, gamesResult, kingsResult] = await Promise.all([
+  const [
+    eventsResult,
+    recordsResult,
+    gamesResult,
+    kingsResult,
+    settingsResult,
+    teamsResult,
+    competitionsResult,
+    featuredPlayersResult,
+  ] = await Promise.all([
     supabase
       .from("event_case_studies")
       .select("*")
@@ -339,6 +399,29 @@ async function loadHomepageData() {
       .from("guest_one_on_one_stats")
       .select("*")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("homepage_feature_settings")
+      .select("featured_team_id,featured_event_id,featured_competition_id,featured_player_id")
+      .eq("id", 1)
+      .maybeSingle(),
+    supabase
+      .from("team_profiles")
+      .select("id,slug,name,short_name,tagline,description,logo_url,cover_image_url,current_competition,is_featured,aliases")
+      .eq("is_public", true)
+      .order("is_featured", { ascending: false })
+      .order("display_order", { ascending: true }),
+    supabase
+      .from("competitions")
+      .select("id,slug,name,short_name,summary,competition_format,current_season_label,status,cover_image_url,logo_url,is_featured")
+      .eq("is_public", true)
+      .order("is_featured", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("players")
+      .select("id,full_name,name,nickname,position,photo_url,photo_position,current_team,jersey_number,bio,is_featured")
+      .eq("is_active", true)
+      .order("is_featured", { ascending: false })
+      .order("full_name", { ascending: true }),
   ]);
 
   const kingsMatches = (kingsResult.data || []) as KingsMatchRow[];
@@ -357,7 +440,7 @@ async function loadHomepageData() {
     )
   );
 
-  const [playersResult, guestsResult] = await Promise.all([
+  const [kingsPlayersResult, guestsResult] = await Promise.all([
     playerIds.length
       ? supabase.from("players").select("id,full_name,name,nickname").in("id", playerIds)
       : Promise.resolve({ data: [] }),
@@ -366,7 +449,7 @@ async function loadHomepageData() {
       : Promise.resolve({ data: [] }),
   ]);
   const playerNames = new Map(
-    ((playersResult.data || []) as PlayerRow[]).map((player) => [
+    ((kingsPlayersResult.data || []) as PlayerRow[]).map((player) => [
       player.id,
       canonicalName(player.full_name || player.name || player.nickname),
     ])
@@ -399,6 +482,10 @@ async function loadHomepageData() {
     records: (recordsResult.data || []) as EventRecordRow[],
     games: (gamesResult.data || []) as GameRow[],
     kingsMatches: resolvedKingsMatches,
+    settings: (settingsResult.data || {}) as HomepageFeatureSettings,
+    teams: (teamsResult.data || []) as TeamRow[],
+    competitions: (competitionsResult.data || []) as CompetitionRow[],
+    featuredPlayers: (featuredPlayersResult.data || []) as PlayerRow[],
   };
 }
 
@@ -440,10 +527,19 @@ async function loadTopPerformers(game?: GameRow | null): Promise<Performer[]> {
 }
 
 export default async function HomePage() {
-  const { events, records, games, kingsMatches } = await loadHomepageData();
+  const {
+    events,
+    records,
+    games,
+    kingsMatches,
+    settings,
+    teams,
+    competitions,
+    featuredPlayers,
+  } = await loadHomepageData();
   const today = nairobiToday();
 
-  const orderedEvents = [...events].sort((left, right) => {
+  const sortedEvents = [...events].sort((left, right) => {
     const priority: Record<EventState, number> = {
       live: 0,
       upcoming: 1,
@@ -461,6 +557,12 @@ export default async function HomePage() {
 
     return dateTime(right.start_date || right.created_at) - dateTime(left.start_date || left.created_at);
   });
+
+  const selectedEvent =
+    events.find((event) => event.event_id === settings.featured_event_id) || null;
+  const orderedEvents = selectedEvent
+    ? [selectedEvent, ...sortedEvents.filter((event) => event.event_id !== selectedEvent.event_id)]
+    : sortedEvents;
 
   const liveEvents = orderedEvents.filter(
     (event) => getEventState(event, today) === "live"
@@ -509,6 +611,87 @@ export default async function HomePage() {
     .sort((left, right) => dateTime(getGameDate(right)) - dateTime(getGameDate(left)));
   const latestCompletedGame = completedGames[0] || null;
   const performers = await loadTopPerformers(latestCompletedGame);
+
+  const featuredTeam =
+    teams.find((team) => team.id === settings.featured_team_id) ||
+    teams.find((team) => team.is_featured) ||
+    teams[0] ||
+    null;
+  const featuredTeamGames = featuredTeam
+    ? completedGames.filter(
+        (game) =>
+          getGameCategory(game) !== "one_on_one" &&
+          Boolean(getTeamSide(game, featuredTeam)),
+      )
+    : [];
+  const featuredTeamGame = featuredTeamGames[0] || null;
+  const featuredTeamSide =
+    featuredTeam && featuredTeamGame
+      ? getTeamSide(featuredTeamGame, featuredTeam)
+      : null;
+  const featuredTeamOpponent =
+    featuredTeamSide === "home"
+      ? getAwayName(featuredTeamGame)
+      : getHomeName(featuredTeamGame);
+  const featuredTeamScore =
+    featuredTeamSide === "home"
+      ? getHomeGameScore(featuredTeamGame)
+      : getAwayGameScore(featuredTeamGame);
+  const featuredOpponentScore =
+    featuredTeamSide === "home"
+      ? getAwayGameScore(featuredTeamGame)
+      : getHomeGameScore(featuredTeamGame);
+
+  const featuredPlayer =
+    featuredPlayers.find((player) => player.id === settings.featured_player_id) ||
+    featuredPlayers.find((player) => player.is_featured) ||
+    featuredPlayers.find((player) => player.photo_url) ||
+    featuredPlayers[0] ||
+    null;
+
+  const featuredCompetition =
+    competitions.find((competition) => competition.id === settings.featured_competition_id) ||
+    competitions.find((competition) => competition.is_featured) ||
+    competitions.find((competition) => competition.slug === "fackts-kings") ||
+    competitions[0] ||
+    null;
+  const isKingsFeatured = featuredCompetition?.slug === "fackts-kings";
+  const featuredCompetitionGames = featuredCompetition
+    ? games.filter(
+        (game) =>
+          game.competition_id === featuredCompetition.id ||
+          sameIdentity(game.competition_name, featuredCompetition.name) ||
+          (featuredCompetition.slug === "court-takeovers" &&
+            getGameCategory(game) === "court_takeover"),
+      )
+    : [];
+  const featuredCompetitionCompletedGames = featuredCompetitionGames
+    .filter((game) => getGameStatus(game) === "completed")
+    .sort((left, right) => dateTime(getGameDate(right)) - dateTime(getGameDate(left)));
+  const featuredCompetitionUpcomingGames = featuredCompetitionGames
+    .filter((game) => getGameStatus(game) === "upcoming")
+    .sort((left, right) => dateTime(getGameDate(left)) - dateTime(getGameDate(right)));
+  const featuredCompetitionLatestGame = featuredCompetitionCompletedGames[0] || null;
+  const featuredCompetitionParticipants = new Set(
+    featuredCompetitionGames.flatMap((game) => [getHomeName(game), getAwayName(game)]).filter(Boolean),
+  );
+  const featuredCompetitionCompleted = isKingsFeatured
+    ? kingsCompleted.length
+    : featuredCompetitionCompletedGames.length;
+  const featuredCompetitionUpcoming = isKingsFeatured
+    ? kingsUpcoming.length
+    : featuredCompetitionUpcomingGames.length;
+  const featuredCompetitionParticipantCount = isKingsFeatured
+    ? kingsCompetitors.size
+    : featuredCompetitionParticipants.size;
+  const featuredCompetitionImage =
+    featuredCompetition?.cover_image_url ||
+    featuredCompetition?.logo_url ||
+    (isKingsFeatured
+      ? latestKingsResult?.poster_url || featuredKingsMatch?.poster_url || nextKingsMatch?.poster_url
+      : "") ||
+    "/images/one-on-one-bg.png";
+  const featuredCompetitionNextGame = featuredCompetitionUpcomingGames[0] || null;
 
   const kingsHeroImage =
     latestKingsResult?.poster_url ||
@@ -697,6 +880,119 @@ export default async function HomePage() {
         )}
       </section>
 
+      {featuredTeam || featuredPlayer ? (
+        <section className="border-y border-slate-200 bg-white">
+          <div className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+            <SectionHeading
+              eyebrow="Featured profiles"
+              title="Teams and players worth following"
+              text="Admin-selected public profiles, connected to the latest verified basketball record available on the platform."
+            />
+
+            <div className="mt-7 grid gap-5 lg:grid-cols-2">
+              {featuredTeam ? (
+                <Link
+                  href={`/teams/${featuredTeam.slug}`}
+                  className="group overflow-hidden rounded-2xl border border-slate-200 bg-[#0B1F3A] text-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                >
+                  <div className="relative min-h-[250px] overflow-hidden sm:min-h-[320px]">
+                    {featuredTeam.cover_image_url ? (
+                      <img
+                        src={featuredTeam.cover_image_url}
+                        alt={featuredTeam.name}
+                        loading="lazy"
+                        className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 bg-[url('/images/one-on-one-bg.png')] bg-cover bg-center opacity-45" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-[#0B1F3A]/45 to-transparent" />
+                    <div className="absolute inset-x-5 bottom-5 sm:inset-x-7 sm:bottom-7">
+                      <div className="flex items-end gap-4">
+                        <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/20 bg-white text-sm font-black text-[#0B1F3A]">
+                          {featuredTeam.logo_url ? (
+                            <img src={featuredTeam.logo_url} alt="" className="h-full w-full object-contain p-1" />
+                          ) : (
+                            featuredTeam.name.slice(0, 2).toUpperCase()
+                          )}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-[.18em] text-orange-300">Featured team</p>
+                          <h3 className="mt-1 truncate text-3xl font-black uppercase">{featuredTeam.name}</h3>
+                          <p className="mt-1 text-xs font-semibold text-slate-300">
+                            {featuredTeam.current_competition || featuredTeam.tagline || "Permanent team profile"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-white/10 p-5 sm:p-6">
+                    <p className="text-[9px] font-black uppercase tracking-[.16em] text-orange-300">Latest completed game</p>
+                    {featuredTeamGame ? (
+                      <div className="mt-3 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate text-lg font-black">vs {featuredTeamOpponent}</p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {formatDate(getGameDate(featuredTeamGame), true)}
+                          </p>
+                        </div>
+                        <p className="shrink-0 text-3xl font-black text-white">
+                          {featuredTeamScore ?? "–"}<span className="px-1 text-slate-500">:</span>{featuredOpponentScore ?? "–"}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-400">The latest completed team game will appear after it is connected.</p>
+                    )}
+                  </div>
+                </Link>
+              ) : null}
+
+              {featuredPlayer ? (
+                <Link
+                  href={`/players/${featuredPlayer.id}`}
+                  className="group grid overflow-hidden rounded-2xl border border-slate-200 bg-[#F3F6F9] shadow-sm transition hover:-translate-y-1 hover:border-[#F58220] hover:shadow-xl sm:grid-cols-[.92fr_1.08fr]"
+                >
+                  <div className="relative min-h-[300px] overflow-hidden bg-[#102A4C]">
+                    {featuredPlayer.photo_url ? (
+                      <img
+                        src={featuredPlayer.photo_url}
+                        alt={featuredPlayer.full_name || featuredPlayer.name || "Featured player"}
+                        loading="lazy"
+                        className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                        style={{ objectPosition: featuredPlayer.photo_position || "center center" }}
+                      />
+                    ) : (
+                      <div className="grid h-full place-items-center text-xs font-black uppercase tracking-[.18em] text-white/60">Player photo pending</div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/80 via-transparent to-transparent" />
+                    <span className="absolute left-4 top-4 rounded-md bg-[#F58220] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.14em] text-white">Featured player</span>
+                  </div>
+                  <div className="flex flex-col justify-center p-6 sm:p-8">
+                    <p className="text-[10px] font-black uppercase tracking-[.18em] text-[#F58220]">
+                      {featuredPlayer.position || "Basketball player"}
+                    </p>
+                    <h3 className="mt-2 text-3xl font-black uppercase leading-none text-[#0B1F3A]">
+                      {featuredPlayer.full_name || featuredPlayer.name || featuredPlayer.nickname || "Player"}
+                    </h3>
+                    {featuredPlayer.nickname ? (
+                      <p className="mt-2 text-sm font-black text-slate-500">“{featuredPlayer.nickname}”</p>
+                    ) : null}
+                    <p className="mt-5 line-clamp-5 text-sm leading-6 text-slate-600">
+                      {featuredPlayer.bio || "Open the complete player profile for their team, position, game statistics and recorded basketball journey."}
+                    </p>
+                    <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-4 text-xs font-black text-[#0B1F3A]">
+                      <span>{featuredPlayer.current_team || "Independent player"}</span>
+                      <span className="text-[#F58220]">Open profile →</span>
+                    </div>
+                  </div>
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className="border-y border-slate-200 bg-white">
         <div className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
           <SectionHeading
@@ -730,113 +1026,98 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-        <SectionHeading
-          eyebrow="Featured competition"
-          title="FACKTS Kings"
-          text="The flagship FACKTS one-on-one competition: every matchup, result, player record and highlight connected in one place."
-        />
+      {featuredCompetition ? (
+        <section className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+          <SectionHeading
+            eyebrow="Featured competition"
+            title={featuredCompetition.name}
+            text={featuredCompetition.summary || "Fixtures, results, participants and media connected to one permanent competition record."}
+          />
 
-        <div className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-[#0B1F3A] text-white shadow-sm">
-          <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
-            <div className="relative min-h-[340px] overflow-hidden lg:min-h-[520px]">
-              <img
-                src={kingsHeroImage}
-                alt="FACKTS Kings one-on-one basketball"
-                loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-[#0B1F3A]/20 to-transparent" />
-              <div className="absolute inset-x-5 bottom-5 sm:inset-x-7 sm:bottom-7">
-                <span className="inline-flex rounded-md bg-[#F58220] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white">
-                  2026 season
-                </span>
-                <h3 className="mt-3 max-w-2xl text-4xl font-black uppercase leading-[0.92] tracking-[-0.04em] sm:text-6xl">
-                  Run the court. Earn the crown.
-                </h3>
-                <p className="mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-200">
-                  FACKTS Kings continues until every listed competitor completes
-                  the season target. Results stay tied to the right player and matchup.
+          <div className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-[#0B1F3A] text-white shadow-sm">
+            <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="relative min-h-[340px] overflow-hidden lg:min-h-[520px]">
+                <img
+                  src={featuredCompetitionImage}
+                  alt={featuredCompetition.name}
+                  loading="lazy"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-[#0B1F3A]/25 to-transparent" />
+                <div className="absolute inset-x-5 bottom-5 sm:inset-x-7 sm:bottom-7">
+                  <span className="inline-flex rounded-md bg-[#F58220] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+                    {featuredCompetition.current_season_label || "Current"} season
+                  </span>
+                  <h3 className="mt-3 max-w-2xl text-4xl font-black uppercase leading-[0.92] tracking-[-0.04em] sm:text-6xl">
+                    {featuredCompetition.short_name || featuredCompetition.name}
+                  </h3>
+                  <p className="mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-200">
+                    {featuredCompetition.summary || "Every game remains connected to the correct competition, season and participants."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-5 sm:p-7 lg:p-9">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">Competition snapshot</p>
+                <p className="mt-3 text-sm leading-7 text-slate-300">
+                  This homepage slot is controlled from Homepage Features in Admin. Changing it promotes another competition without changing historical games.
                 </p>
-              </div>
-            </div>
 
-            <div className="p-5 sm:p-7 lg:p-9">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">
-                Competition snapshot
-              </p>
-              <p className="mt-3 text-sm leading-7 text-slate-300">
-                FACKTS Kings is the primary home-grown competition on the platform.
-                Tournament and partner events remain discoverable in Events without
-                replacing the identity of FACKTS Hoops.
-              </p>
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <CompetitionMetric value={String(featuredCompetitionCompleted)} label="Games completed" />
+                  <CompetitionMetric value={String(featuredCompetitionUpcoming)} label="Upcoming games" />
+                  <CompetitionMetric value={String(featuredCompetitionParticipantCount)} label="Participants" />
+                  <CompetitionMetric value={featuredCompetition.competition_format || "Basketball"} label="Competition format" />
+                </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <CompetitionMetric
-                  value={String(kingsCompleted.length)}
-                  label="Games completed"
-                />
-                <CompetitionMetric
-                  value={String(kingsUpcoming.length)}
-                  label="Upcoming games"
-                />
-                <CompetitionMetric
-                  value={String(kingsCompetitors.size)}
-                  label="Listed competitors"
-                />
-                <CompetitionMetric value="1-on-1" label="Competition format" />
-              </div>
+                {isKingsFeatured && latestKingsResult ? (
+                  <div className="mt-6 rounded-xl border border-white/15 bg-white/5 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">Latest result</p>
+                    <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                      <ScoreTeam name={kingsParticipant(latestKingsResult)} score={numberValue(latestKingsResult.points_scored)} />
+                      <span className="text-xs font-black uppercase text-slate-500">Final</span>
+                      <ScoreTeam name={kingsOpponent(latestKingsResult)} score={numberValue(latestKingsResult.points_allowed)} align="right" />
+                    </div>
+                  </div>
+                ) : featuredCompetitionLatestGame ? (
+                  <Link href={`/games/${featuredCompetitionLatestGame.id}`} className="mt-6 block rounded-xl border border-white/15 bg-white/5 p-4 transition hover:border-orange-400/50">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">Latest result</p>
+                    <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                      <ScoreTeam name={getHomeName(featuredCompetitionLatestGame)} score={getHomeGameScore(featuredCompetitionLatestGame)} />
+                      <span className="text-xs font-black uppercase text-slate-500">Final</span>
+                      <ScoreTeam name={getAwayName(featuredCompetitionLatestGame)} score={getAwayGameScore(featuredCompetitionLatestGame)} align="right" />
+                    </div>
+                  </Link>
+                ) : null}
 
-              {latestKingsResult ? (
-                <div className="mt-6 rounded-xl border border-white/15 bg-white/5 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">
-                      Latest result
+                {(isKingsFeatured ? nextKingsMatch : featuredCompetitionNextGame) ? (
+                  <div className="mt-4 rounded-xl border border-white/15 px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Next matchup</p>
+                    <p className="mt-1 font-black text-white">
+                      {isKingsFeatured && nextKingsMatch
+                        ? `${kingsParticipant(nextKingsMatch)} vs ${kingsOpponent(nextKingsMatch)}`
+                        : `${getHomeName(featuredCompetitionNextGame)} vs ${getAwayName(featuredCompetitionNextGame)}`}
                     </p>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">
-                      {kingsMatchLabel(latestKingsResult)}
-                    </span>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {formatDate(
+                        isKingsFeatured ? nextKingsMatch?.match_date : getGameDate(featuredCompetitionNextGame),
+                        true,
+                      )}
+                    </p>
                   </div>
-                  <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                    <ScoreTeam
-                      name={kingsParticipant(latestKingsResult)}
-                      score={numberValue(latestKingsResult.points_scored)}
-                    />
-                    <span className="text-xs font-black uppercase text-slate-500">Final</span>
-                    <ScoreTeam
-                      name={kingsOpponent(latestKingsResult)}
-                      score={numberValue(latestKingsResult.points_allowed)}
-                      align="right"
-                    />
-                  </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              {nextKingsMatch ? (
-                <div className="mt-4 rounded-xl border border-white/15 px-4 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-                    Next matchup
-                  </p>
-                  <p className="mt-1 font-black text-white">
-                    {kingsParticipant(nextKingsMatch)} vs {kingsOpponent(nextKingsMatch)}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    {formatDate(nextKingsMatch.match_date, true)}
-                    {nextKingsMatch.venue ? ` · ${nextKingsMatch.venue}` : ""}
-                  </p>
-                </div>
-              ) : null}
-
-              <Link
-                href="/competitions/fackts-kings"
-                className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-[#F58220] px-5 py-3 text-sm font-black text-white transition hover:bg-[#dc6d10] sm:w-auto"
-              >
-                Open FACKTS Kings
-              </Link>
+                <Link
+                  href={`/competitions/${featuredCompetition.slug}`}
+                  className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-[#F58220] px-5 py-3 text-sm font-black text-white transition hover:bg-[#dc6d10] sm:w-auto"
+                >
+                  Open {featuredCompetition.short_name || featuredCompetition.name}
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {performers.length && latestCompletedGame ? (
         <section className="border-y border-slate-200 bg-white">

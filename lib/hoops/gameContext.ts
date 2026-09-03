@@ -19,6 +19,10 @@ export type GameContextRecord = {
   season_label?: string | null;
   division?: string | null;
   event_id?: string | null;
+  game_date?: string | null;
+  date?: string | null;
+  match_date?: string | null;
+  created_at?: string | null;
   game_format?: string | null;
   match_type?: string | null;
   title?: string | null;
@@ -114,6 +118,23 @@ export function isTeamGame(game: GameContextRecord) {
   return !isOneOnOneGame(game);
 }
 
+/**
+ * Seasons are explicit whenever the database has one. Older competition
+ * records fall back to the year in which the game was actually played so the
+ * public UI never assigns them to the current season by accident.
+ */
+export function resolveGameSeasonLabel(game: GameContextRecord) {
+  const stored = text(game.season_label);
+  if (stored) return stored;
+
+  const value = game.game_date || game.date || game.match_date || game.created_at;
+  if (!value) return null;
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return String(parsed.getFullYear());
+}
+
 function aliasesForTeam(team: TeamIdentity) {
   return new Set(
     [team.name, team.short_name, ...(team.aliases || [])]
@@ -178,7 +199,7 @@ export function getTeamSide(
 
 export function getGameContextKey(game: GameContextRecord) {
   const category = getGameCategory(game);
-  const season = normalizeGameIdentity(game.season_label) || "season-unspecified";
+  const season = normalizeGameIdentity(resolveGameSeasonLabel(game)) || "season-unspecified";
   const division = normalizeGameIdentity(game.division) || "division-unspecified";
 
   if (category === "league") {

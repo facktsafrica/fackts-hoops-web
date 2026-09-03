@@ -61,6 +61,7 @@ const groups: AdminNavGroup[] = [
   {
     label: "Content & growth",
     items: [
+      { label: "Homepage Features", href: "/admin/homepage", code: "HF", capability: "highlights" },
       { label: "Media Centre", href: "/admin/media", code: "MC", capability: "media" },
       { label: "Homepage Player of Game", href: "/admin/highlights", code: "PG", capability: "highlights" },
       { label: "Media Stories", href: "/admin/media-stories", code: "MS", capability: "media_stories" },

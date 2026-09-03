@@ -13,6 +13,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("games")
       .select("*")
+      .is("archived_at", null)
       .order("game_date", { ascending: false });
 
     if (error) {

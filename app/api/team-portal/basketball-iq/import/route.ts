@@ -518,7 +518,67 @@ export async function POST(request: NextRequest) {
     const venue = text(form.get("venue"), 180);
     const gameTime = text(form.get("game_time"), 8);
 
-    let createdGame: Record<string, any> | null = null;
+    const [leagueResult, membershipResult] = await Promise.all([
+      db.from("leagues").select("id,slug,name,short_name").limit(200),
+      db
+        .from("team_league_memberships")
+        .select("league_id,season_label,division,status")
+        .eq("team_id", teamId)
+        .neq("status", "withdrawn"),
+    ]);
+
+    const leagueRows = (leagueResult.data || []) as Array<{
+      id: string;
+      slug?: string | null;
+      name?: string | null;
+      short_name?: string | null;
+    }>;
+    const membershipRows = (membershipResult.data || []) as Array<{
+      league_id: string;
+      season_label?: string | null;
+      division?: string | null;
+    }>;
+    const namedLeague = leagueName
+      ? leagueRows.find((league) =>
+          [league.name, league.short_name, league.slug].some((value) =>
+            namesMatch(value, leagueName),
+          ),
+        )
+      : null;
+    const matchingMemberships = membershipRows.filter(
+      (membership) =>
+        (!seasonLabel || namesMatch(membership.season_label, seasonLabel)) &&
+        (!division || namesMatch(membership.division, division)),
+    );
+    const uniqueMemberships = Array.from(
+      new Map(
+        matchingMemberships.map((membership) => [
+          `${membership.league_id}:${membership.season_label || ""}:${membership.division || ""}`,
+          membership,
+        ]),
+      ).values(),
+    );
+    const inferredMembership = uniqueMemberships.length === 1 ? uniqueMemberships[0] : null;
+    const resolvedLeague =
+      namedLeague ||
+      (inferredMembership
+        ? leagueRows.find((league) => league.id === inferredMembership.league_id)
+        : null);
+    const resolvedLeagueId = resolvedLeague?.id || "";
+    const resolvedLeagueName = resolvedLeague?.name || leagueName;
+    const resolvedSeasonLabel = seasonLabel || inferredMembership?.season_label || "";
+    const resolvedDivision = division || inferredMembership?.division || "";
+    const gameCategory = resolvedLeagueId ? "league" : "other";
+
+    if (leagueResult.error || membershipResult.error) {
+      warnings.push(
+        "The league register could not be checked. The game was preserved as an unassigned team game for admin review.",
+      );
+    } else if (leagueName && !resolvedLeagueId) {
+      warnings.push(
+        `The league “${leagueName}” did not match a permanent league profile. Link it from Games Admin before using it in standings.`,
+      );
+    }
 
     if (gameId) {
       const [canonical, attached] = await Promise.all([
@@ -633,7 +693,6 @@ export async function POST(request: NextRequest) {
 
       if (existing.data) {
         gameId = existing.data.id;
-        createdGame = existing.data;
       } else {
         const opponentName = teamSide === "home" ? awayName : homeName;
         const teamScore = teamSide === "home" ? homeScore : awayScore;
@@ -644,10 +703,11 @@ export async function POST(request: NextRequest) {
             : `${gameDate}T12:00:00+03:00`;
 
         const insertPayload: Record<string, any> = {
+          game_category: gameCategory,
           team_name: teamName,
           opponent: opponentName,
           game_date: gameDate,
-          match_type: "team_report",
+          match_type: requestedGameFormat || "5v5",
           notes:
             "Approved by the team from an official stat report. Admin may edit corrections at any time.",
           team_score: teamScore,
@@ -670,10 +730,11 @@ export async function POST(request: NextRequest) {
             teamNameMatches && teamSide === "home" ? teamId : null,
           away_team_id:
             teamNameMatches && teamSide === "away" ? teamId : null,
-          ...(requestedGameFormat ? { game_format: requestedGameFormat } : {}),
-          ...(leagueName ? { competition_name: leagueName } : {}),
-          ...(seasonLabel ? { season_label: seasonLabel } : {}),
-          ...(division ? { division } : {}),
+          game_format: requestedGameFormat || "5v5",
+          competition_name: resolvedLeagueName || "Team game",
+          ...(resolvedLeagueId ? { league_id: resolvedLeagueId } : {}),
+          ...(resolvedSeasonLabel ? { season_label: resolvedSeasonLabel } : {}),
+          ...(resolvedDivision ? { division: resolvedDivision } : {}),
           ...(venue ? { venue } : {}),
           ...(officials.length ? { officials: officials.join(", ") } : {}),
         };
@@ -691,7 +752,6 @@ export async function POST(request: NextRequest) {
         }
 
         gameId = created.data.id;
-        createdGame = created.data;
       }
     }
 
@@ -702,7 +762,7 @@ export async function POST(request: NextRequest) {
     const gameResult = await db
       .from("games")
       .select(
-        "id,title,game_title,game_date,home_team_name,away_team_name,home_team_id,away_team_id,home_score,away_score,verification_status,is_public,officials,period_scores,report_metadata",
+        "id,title,game_title,game_date,home_team_name,away_team_name,home_team_id,away_team_id,home_score,away_score,verification_status,is_public,officials,period_scores,report_metadata,game_category,competition_name,league_id,season_label,division,game_format,match_type",
       )
       .eq("id", gameId)
       .maybeSingle();
@@ -1051,16 +1111,28 @@ export async function POST(request: NextRequest) {
     };
 
     const gameUpdate: Record<string, any> = {
+      game_category:
+        resolvedLeagueId
+          ? "league"
+          : canonicalGame.game_category || gameCategory,
       verification_status: "verified",
       is_public: true,
       report_metadata: reportMetadata,
       ...(officials.length ? { officials: officials.join(", ") } : {}),
       ...(periodScores.length ? { period_scores: periodScores } : {}),
-      ...(leagueName ? { competition_name: leagueName } : {}),
-      ...(seasonLabel ? { season_label: seasonLabel } : {}),
-      ...(division ? { division } : {}),
+      competition_name:
+        resolvedLeagueName || canonicalGame.competition_name || "Team game",
+      league_id: resolvedLeagueId || canonicalGame.league_id || null,
+      season_label:
+        resolvedSeasonLabel || canonicalGame.season_label || null,
+      division:
+        resolvedDivision || canonicalGame.division || null,
       ...(venue ? { venue } : {}),
-      ...(requestedGameFormat ? { game_format: requestedGameFormat } : {}),
+      game_format: requestedGameFormat || canonicalGame.game_format || "5v5",
+      match_type:
+        requestedGameFormat ||
+        (canonicalGame.match_type === "team_report" ? "5v5" : canonicalGame.match_type) ||
+        "5v5",
     };
 
     if (

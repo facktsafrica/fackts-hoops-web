@@ -10,6 +10,7 @@ export async function GET() {
     const { data, error } = await access.supabase
       .from("games")
       .select("id, opponent, game_date")
+      .is("archived_at", null)
       .order("game_date", { ascending: false });
 
     if (error) {

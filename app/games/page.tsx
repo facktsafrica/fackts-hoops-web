@@ -7,6 +7,8 @@ import {
   gameCategoryLabel,
   getGameCategory,
   getGameContextKey,
+  normalizeGameIdentity,
+  resolveGameSeasonLabel,
 } from "@/lib/hoops/gameContext";
 import { resolveFacktsKingsSeason } from "@/lib/hoops/facktsKings";
 import {
@@ -45,6 +47,14 @@ type LeagueRow = {
   id: string;
   name: string;
   short_name?: string | null;
+};
+
+type TeamRow = {
+  id: string;
+  slug: string;
+  name: string;
+  short_name?: string | null;
+  aliases?: string[] | null;
 };
 
 type RelatedRow = {
@@ -89,17 +99,40 @@ function formatBucket(game: GameRecord) {
   return getGameFormat(game) || "Basketball";
 }
 
+function teamAliases(team: TeamRow) {
+  return [team.name, team.short_name, ...(team.aliases || [])]
+    .map(normalizeGameIdentity)
+    .filter(Boolean);
+}
+
+function teamsForGame(game: GameRecord, teams: TeamRow[]) {
+  const participantIds = new Set(
+    [game.home_team_id, game.away_team_id].filter((id): id is string => Boolean(id)),
+  );
+
+  if (participantIds.size) {
+    return teams.filter((team) => participantIds.has(team.id));
+  }
+
+  const participantNames = new Set(
+    [getHomeTeam(game), getAwayTeam(game)].map(normalizeGameIdentity).filter(Boolean),
+  );
+
+  return teams.filter((team) => teamAliases(team).some((alias) => participantNames.has(alias)));
+}
+
 function contextLabel(
   game: GameRecord,
   event: EventRow | undefined,
   leagues: Map<string, LeagueRow>,
-  competitions: Map<string, CompetitionRow>
+  competitions: Map<string, CompetitionRow>,
+  registeredTeams: TeamRow[],
 ) {
   const category = getGameCategory(game);
   const season =
     category === "one_on_one"
       ? resolveFacktsKingsSeason(game.season_label, getGameDate(game))
-      : game.season_label || "Season not assigned";
+      : resolveGameSeasonLabel(game) || "Season not recorded";
   const division = game.division || "Division not assigned";
 
   if (category === "league") {
@@ -120,13 +153,18 @@ function contextLabel(
     const name = competition?.short_name || competition?.name || getCompetition(game);
     return `${name} · ${season}${game.division ? ` · ${game.division}` : ""}`;
   }
+  if ((category === "friendly" || category === "other") && registeredTeams.length) {
+    const teamNames = registeredTeams.map((team) => team.short_name || team.name);
+    const owner = teamNames.length === 1 ? teamNames[0] : teamNames.join(" vs ");
+    return `${owner} · ${formatBucket(game)}`;
+  }
   return gameCategoryLabel(category);
 }
 
 async function loadGames() {
   const supabase = getSupabase();
 
-  const [gamesResult, statsResult, guestStatsResult, rostersResult, mediaResult, eventsResult, leaguesResult, competitionsResult] =
+  const [gamesResult, statsResult, guestStatsResult, rostersResult, mediaResult, eventsResult, leaguesResult, competitionsResult, teamsResult] =
     await Promise.all([
       supabase.from("games").select("*").order("game_date", { ascending: false }),
       supabase.from("player_game_stats").select("game_id"),
@@ -136,6 +174,7 @@ async function loadGames() {
       supabase.from("event_case_studies").select("event_id,slug,title").eq("is_public", true),
       supabase.from("leagues").select("id,name,short_name").eq("is_public", true),
       supabase.from("competitions").select("id,name,short_name,current_season_label").eq("is_public", true),
+      supabase.from("team_profiles").select("id,slug,name,short_name,aliases").eq("is_public", true),
     ]);
 
   const games = ((gamesResult.data || []) as GameRecord[]).filter(
@@ -153,6 +192,7 @@ async function loadGames() {
   ((leaguesResult.data || []) as LeagueRow[]).forEach((league) => leagueMap.set(league.id, league));
   const competitionMap = new Map<string, CompetitionRow>();
   ((competitionsResult.data || []) as CompetitionRow[]).forEach((competition) => competitionMap.set(competition.id, competition));
+  const teamRows = (teamsResult.data || []) as TeamRow[];
 
   const directory: GameDirectoryItem[] = games
     .sort((a, b) => {
@@ -169,6 +209,15 @@ async function loadGames() {
       const year = parsed && !Number.isNaN(parsed.getTime()) ? String(parsed.getFullYear()) : "Date TBA";
       const builtInMedia = [game.video_url || game.game_video_url, game.highlight_url].filter(Boolean).length;
       const category = getGameCategory(game);
+      const registeredTeams = teamsForGame(game, teamRows);
+      const teamContextKey = registeredTeams
+        .map((team) => team.id)
+        .sort()
+        .join("+");
+      const contextKey =
+        (category === "friendly" || category === "other") && teamContextKey
+          ? `${category}:team:${teamContextKey}:${formatBucket(game)}`
+          : getGameContextKey(game);
 
       return {
         id: game.id,
@@ -187,8 +236,8 @@ async function loadGames() {
         competition: getCompetition(game),
         category,
         categoryLabel: gameCategoryLabel(category),
-        contextKey: getGameContextKey(game),
-        contextLabel: contextLabel(game, event, leagueMap, competitionMap),
+        contextKey,
+        contextLabel: contextLabel(game, event, leagueMap, competitionMap, registeredTeams),
         eventTitle: event?.title || "",
         eventSlug: event?.slug || "",
         gameFormat: getGameFormat(game),
@@ -200,6 +249,7 @@ async function loadGames() {
         hasStats: (statsCounts.get(game.id) || 0) > 0,
         rosterCount: rosterCounts.get(game.id) || 0,
         mediaCount: builtInMedia + (mediaCounts.get(game.id) || 0),
+        registeredTeamSlugs: registeredTeams.map((team) => team.slug),
       };
     });
 
@@ -211,9 +261,14 @@ export default async function GamesPage() {
   const live = games.filter((game) => game.status === "live");
   const upcoming = games.filter((game) => game.status === "upcoming");
   const completed = games.filter((game) => game.status === "completed");
-  const fiveOnFive = games.filter((game) => game.formatBucket === "5v5" && game.category !== "court_takeover");
+  const facktsFiveOnFive = games.filter(
+    (game) =>
+      game.formatBucket === "5v5" &&
+      game.registeredTeamSlugs.some((slug) => normalizeGameIdentity(slug) === "fackts africa"),
+  );
   const oneOnOne = games.filter((game) => game.category === "one_on_one");
   const takeovers = games.filter((game) => game.category === "court_takeover");
+  const leagueGames = games.filter((game) => game.category === "league");
   const featured = live[0] || upcoming[0] || completed[0] || null;
 
   return (
@@ -255,9 +310,9 @@ export default async function GamesPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
-            <HeroStat value={String(games.length)} label="Published games" />
-            <HeroStat value={String(fiveOnFive.length)} label="5v5 team games" accent="blue" />
-            <HeroStat value={String(oneOnOne.length)} label="Kings 1v1" accent="green" />
+            <HeroStat value={String(facktsFiveOnFive.length)} label="FACKTS 5v5" />
+            <HeroStat value={String(oneOnOne.length)} label="FACKTS Kings 1v1" accent="green" />
+            <HeroStat value={String(leagueGames.length)} label="League games" accent="blue" />
             <HeroStat value={String(takeovers.length)} label="Court Takeovers" accent="red" />
           </div>
         </div>

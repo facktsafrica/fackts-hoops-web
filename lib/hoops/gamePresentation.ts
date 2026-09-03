@@ -157,6 +157,7 @@ export function canonicalCompetitionName(value?: string | null) {
   }
 
   if (identity === "facktskings") return "FACKTS Kings";
+  if (identity === "teamreport") return "Team game";
   return name || "FACKTS Hoops";
 }
 
@@ -167,7 +168,8 @@ export function getCompetition(game: GameRecord) {
 }
 
 export function getGameFormat(game: GameRecord) {
-  return game.game_format || game.match_type || "Basketball";
+  const value = game.game_format || game.match_type || "Basketball";
+  return String(value).trim().toLowerCase() === "team_report" ? "5v5" : value;
 }
 
 export function getStage(game: GameRecord) {

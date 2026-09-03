@@ -143,6 +143,22 @@ type GameRow = {
 
   version: number;
 
+  archived_at?:
+    | string
+    | null;
+
+  archived_by?:
+    | string
+    | null;
+
+  archive_reason?:
+    | string
+    | null;
+
+  archived_previous_is_public?:
+    | boolean
+    | null;
+
   roster_count: number;
   media_count: number;
 
@@ -155,6 +171,10 @@ type EventRow = {
   title: string;
   is_public?: boolean;
 };
+
+type ArchiveMode =
+  | "active"
+  | "archived";
 
 type CategoryKey =
   | "all"
@@ -542,6 +562,15 @@ function GameCard({
   ] =
     useState("");
 
+  const archived =
+    Boolean(
+      game.archived_at,
+    );
+
+  const controlsLocked =
+    readOnly ||
+    archived;
+
   const scoring =
     [
       "live",
@@ -635,8 +664,192 @@ function GameCard({
     setSaving(false);
   }
 
+  async function runLifecycleAction(
+    action:
+      | "archive"
+      | "restore",
+    archiveReason?: string,
+  ) {
+    setSaving(true);
+    setMessage("");
+
+    const response =
+      await fetch(
+        "/api/admin/games",
+        {
+          method:
+            "PATCH",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            id:
+              game.id,
+            expected_version:
+              game.version,
+            action,
+            archive_reason:
+              archiveReason ??
+              null,
+          }),
+        },
+      );
+
+    const result =
+      await response
+        .json()
+        .catch(
+          () => ({}),
+        );
+
+    if (
+      !response.ok ||
+      !result.ok
+    ) {
+      setMessage(
+        result.error ||
+          `Game could not be ${action === "archive" ? "archived" : "restored"}.`,
+      );
+    } else {
+      setMessage(
+        result.message ||
+          (action ===
+          "archive"
+            ? "Game archived."
+            : "Game restored."),
+      );
+      onSaved();
+    }
+
+    setSaving(false);
+  }
+
+  async function archiveGame() {
+    const reason =
+      window.prompt(
+        "Why are you archiving this game? This reason is stored in the admin audit trail.",
+        "",
+      );
+
+    if (reason === null) {
+      return;
+    }
+
+    const cleanedReason =
+      reason.trim();
+
+    if (!cleanedReason) {
+      setMessage(
+        "Add a reason before archiving the game.",
+      );
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Archive this game? It will leave the active Games Hub and be removed from public visibility. You can restore it later.",
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await runLifecycleAction(
+      "archive",
+      cleanedReason,
+    );
+  }
+
+  async function restoreGame() {
+    const confirmed =
+      window.confirm(
+        "Restore this game to the active Games Hub? Its previous public visibility will also be restored when safe.",
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await runLifecycleAction(
+      "restore",
+    );
+  }
+
+  async function deleteGame() {
+    const confirmation =
+      window.prompt(
+        'PERMANENT DELETE cannot be undone. Type "DELETE" exactly to continue.',
+        "",
+      );
+
+    if (confirmation === null) {
+      return;
+    }
+
+    if (confirmation !== "DELETE") {
+      setMessage(
+        'Permanent delete cancelled. Type "DELETE" exactly to confirm.',
+      );
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+
+    const response =
+      await fetch(
+        "/api/admin/games",
+        {
+          method:
+            "DELETE",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            id:
+              game.id,
+            expected_version:
+              game.version,
+            confirmation:
+              "DELETE",
+          }),
+        },
+      );
+
+    const result =
+      await response
+        .json()
+        .catch(
+          () => ({}),
+        );
+
+    if (
+      !response.ok ||
+      !result.ok
+    ) {
+      setMessage(
+        result.error ||
+          "Game could not be permanently deleted.",
+      );
+    } else {
+      setMessage(
+        result.message ||
+          "Game permanently deleted.",
+      );
+      onSaved();
+    }
+
+    setSaving(false);
+  }
+
   return (
-    <article className="min-w-0 rounded-3xl border border-white/10 bg-slate-950 p-4 sm:p-5">
+    <article className={`min-w-0 rounded-3xl border p-4 sm:p-5 ${
+      archived
+        ? "border-red-400/20 bg-red-950/10"
+        : "border-white/10 bg-slate-950"
+    }`}>
       <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap gap-2">
@@ -649,6 +862,12 @@ function GameCard({
                 game.status
               }
             </span>
+
+            {archived ? (
+              <span className="rounded-full border border-red-400/30 bg-red-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-red-200">
+                Archived
+              </span>
+            ) : null}
 
             <span className="rounded-full border border-orange-400/20 bg-orange-500/[.06] px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-orange-200">
               {categoryLabel(
@@ -699,6 +918,24 @@ function GameCard({
             {game.game_stage ||
               "Game"}
           </p>
+
+          {archived ? (
+            <div className="mt-4 rounded-xl border border-red-400/15 bg-red-500/[.05] p-3 text-xs leading-5 text-red-100/80">
+              <p>
+                <span className="font-black text-red-200">
+                  Archive reason:
+                </span>{" "}
+                {game.archive_reason ||
+                  "No reason recorded."}
+              </p>
+
+              <p className="mt-1 text-red-200/60">
+                Archived {formatDate(
+                  game.archived_at,
+                )}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div className="shrink-0 text-left text-sm text-slate-400 lg:text-right">
@@ -728,7 +965,7 @@ function GameCard({
 
           <select
             disabled={
-              readOnly
+              controlsLocked
             }
             value={
               status
@@ -761,7 +998,7 @@ function GameCard({
                 );
               }
             }}
-            className="mt-2 w-full min-w-0 rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white"
+            className="mt-2 w-full min-w-0 rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white disabled:opacity-40"
           >
             {transitions[
               game.status
@@ -792,7 +1029,7 @@ function GameCard({
             min="0"
             step="1"
             disabled={
-              readOnly ||
+              controlsLocked ||
               !scoring
             }
             value={
@@ -818,7 +1055,7 @@ function GameCard({
             min="0"
             step="1"
             disabled={
-              readOnly ||
+              controlsLocked ||
               !scoring
             }
             value={
@@ -839,7 +1076,7 @@ function GameCard({
         <button
           type="button"
           disabled={
-            readOnly ||
+            controlsLocked ||
             saving
           }
           onClick={() =>
@@ -849,9 +1086,11 @@ function GameCard({
         >
           {readOnly
             ? "Read only"
-            : saving
-              ? "Saving…"
-              : "Quick Save"}
+            : archived
+              ? "Archived"
+              : saving
+                ? "Saving…"
+                : "Quick Save"}
         </button>
 
         {noteRequired ||
@@ -864,7 +1103,7 @@ function GameCard({
 
             <textarea
               disabled={
-                readOnly
+                controlsLocked
               }
               value={
                 statusNote
@@ -889,57 +1128,110 @@ function GameCard({
         </p>
       ) : null}
 
-      <div className="mt-4 flex min-w-0 flex-wrap gap-2">
-        <Link
-          href={`/admin/games/editor?game_id=${encodeURIComponent(
-            game.id,
-          )}`}
-          className="rounded-xl bg-white px-4 py-2.5 text-[10px] font-black uppercase text-black"
-        >
-          Full Game Editor
-        </Link>
+      {!archived ? (
+        <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+          <Link
+            href={`/admin/games/editor?game_id=${encodeURIComponent(
+              game.id,
+            )}`}
+            className="rounded-xl bg-white px-4 py-2.5 text-[10px] font-black uppercase text-black"
+          >
+            Full Game Editor
+          </Link>
 
-        <Link
-          href={`/admin/rosters/${game.id}`}
-          className="rounded-xl border border-white/10 px-3 py-2.5 text-[10px] font-black uppercase hover:border-orange-300/40"
-        >
-          Roster (
-          {
-            game.roster_count
-          }
-          )
-        </Link>
+          <Link
+            href={`/admin/rosters/${game.id}`}
+            className="rounded-xl border border-white/10 px-3 py-2.5 text-[10px] font-black uppercase hover:border-orange-300/40"
+          >
+            Roster (
+            {
+              game.roster_count
+            }
+            )
+          </Link>
 
-        <Link
-          href={`/admin/stats?game_id=${encodeURIComponent(
-            game.id,
-          )}`}
-          className="rounded-xl border border-white/10 px-3 py-2.5 text-[10px] font-black uppercase hover:border-orange-300/40"
-        >
-          Statistics
-        </Link>
+          <Link
+            href={`/admin/stats?game_id=${encodeURIComponent(
+              game.id,
+            )}`}
+            className="rounded-xl border border-white/10 px-3 py-2.5 text-[10px] font-black uppercase hover:border-orange-300/40"
+          >
+            Statistics
+          </Link>
 
-        <Link
-          href={`/admin/media?game_id=${encodeURIComponent(
-            game.id,
-          )}`}
-          className="rounded-xl border border-white/10 px-3 py-2.5 text-[10px] font-black uppercase hover:border-orange-300/40"
-        >
-          Media (
-          {
-            game.media_count
-          }
-          )
-        </Link>
+          <Link
+            href={`/admin/media?game_id=${encodeURIComponent(
+              game.id,
+            )}`}
+            className="rounded-xl border border-white/10 px-3 py-2.5 text-[10px] font-black uppercase hover:border-orange-300/40"
+          >
+            Media (
+            {
+              game.media_count
+            }
+            )
+          </Link>
 
-        <Link
-          href={`/games/${game.id}`}
-          target="_blank"
-          className="rounded-xl border border-white/10 px-3 py-2.5 text-[10px] font-black uppercase hover:border-orange-300/40"
-        >
-          Match Centre ↗
-        </Link>
-      </div>
+          <Link
+            href={`/games/${game.id}`}
+            target="_blank"
+            className="rounded-xl border border-white/10 px-3 py-2.5 text-[10px] font-black uppercase hover:border-orange-300/40"
+          >
+            Match Centre ↗
+          </Link>
+
+          {!readOnly ? (
+            <button
+              type="button"
+              disabled={
+                saving
+              }
+              onClick={() =>
+                void archiveGame()
+              }
+              className="rounded-xl border border-amber-400/30 bg-amber-500/[.06] px-3 py-2.5 text-[10px] font-black uppercase text-amber-200 transition hover:bg-amber-500/10 disabled:opacity-50"
+            >
+              Archive Game
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+          {!readOnly ? (
+            <button
+              type="button"
+              disabled={
+                saving
+              }
+              onClick={() =>
+                void restoreGame()
+              }
+              className="rounded-xl bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase text-black transition hover:bg-emerald-400 disabled:opacity-50"
+            >
+              Restore Game
+            </button>
+          ) : null}
+
+          {!readOnly ? (
+            <button
+              type="button"
+              disabled={
+                saving
+              }
+              onClick={() =>
+                void deleteGame()
+              }
+              className="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-[10px] font-black uppercase text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+            >
+              Delete Permanently
+            </button>
+          ) : null}
+
+          <span className="self-center text-[9px] font-bold uppercase tracking-wider text-slate-600">
+            Permanent delete is blocked when linked stats, rosters, media or team-portal records exist.
+          </span>
+        </div>
+      )}
     </article>
   );
 }
@@ -977,6 +1269,14 @@ export default function GamesAdminPage() {
     setMessage,
   ] =
     useState("");
+
+  const [
+    archiveMode,
+    setArchiveMode,
+  ] =
+    useState<ArchiveMode>(
+      "active",
+    );
 
   const [
     search,
@@ -1042,7 +1342,7 @@ export default function GamesAdminPage() {
 
         const response =
           await fetch(
-            "/api/admin/games",
+            `/api/admin/games?archive=${archiveMode}`,
             {
               cache:
                 "no-store",
@@ -1088,12 +1388,20 @@ export default function GamesAdminPage() {
           false,
         );
       },
-      [],
+      [archiveMode],
     );
 
   useEffect(() => {
+    setShowBulk(false);
+    setSearch("");
+    setStatusFilter(
+      "all",
+    );
+    setCategory(
+      "all",
+    );
     void load();
-  }, [load]);
+  }, [archiveMode, load]);
 
   const teamFolders =
     useMemo<
@@ -1614,20 +1922,51 @@ export default function GamesAdminPage() {
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-                Enter through the
-                team first, then
-                work inside its
-                league games,
-                competitions,
-                events, 1v1s,
-                court takeovers
-                and other game
-                records.
+                {archiveMode ===
+                "active"
+                  ? "Enter through the team first, then work inside its league games, competitions, events, 1v1s, court takeovers and other game records."
+                  : "Archived games are removed from the active workspace and public visibility. Restore them here, or permanently delete only empty records that have no linked basketball data."}
               </p>
             </div>
 
             <div className="flex min-w-0 flex-wrap gap-2">
-              {!readOnly ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setArchiveMode(
+                    "active",
+                  )
+                }
+                className={`rounded-xl border px-4 py-3 text-xs font-black uppercase transition ${
+                  archiveMode ===
+                  "active"
+                    ? "border-orange-400 bg-orange-500/[.10] text-orange-200"
+                    : "border-white/15 text-slate-400 hover:border-white/30"
+                }`}
+              >
+                Active Games
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setArchiveMode(
+                    "archived",
+                  )
+                }
+                className={`rounded-xl border px-4 py-3 text-xs font-black uppercase transition ${
+                  archiveMode ===
+                  "archived"
+                    ? "border-red-400/50 bg-red-500/10 text-red-200"
+                    : "border-white/15 text-slate-400 hover:border-white/30"
+                }`}
+              >
+                Archived
+              </button>
+
+              {!readOnly &&
+              archiveMode ===
+                "active" ? (
                 <Link
                   href={
                     createUrl
@@ -1638,7 +1977,9 @@ export default function GamesAdminPage() {
                 </Link>
               ) : null}
 
-              {!readOnly ? (
+              {!readOnly &&
+              archiveMode ===
+                "active" ? (
                 <button
                   type="button"
                   onClick={() =>
@@ -1659,7 +2000,12 @@ export default function GamesAdminPage() {
 
           <div className="mt-7 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
             <DashboardMetric
-              label="All games"
+              label={
+                archiveMode ===
+                "active"
+                  ? "Active games"
+                  : "Archived games"
+              }
               value={
                 games.length
               }
@@ -1694,7 +2040,9 @@ export default function GamesAdminPage() {
           </div>
         ) : null}
 
-        {showBulk ? (
+        {showBulk &&
+        archiveMode ===
+          "active" ? (
           <section className="mt-6 rounded-[1.75rem] border border-white/10 bg-slate-950 p-5 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
@@ -1987,7 +2335,9 @@ export default function GamesAdminPage() {
                   </h2>
                 </div>
 
-                {!readOnly ? (
+                {!readOnly &&
+                archiveMode ===
+                  "active" ? (
                   <Link
                     href={
                       createUrl
@@ -2176,22 +2526,22 @@ export default function GamesAdminPage() {
                 ) : (
                   <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-10 text-center">
                     <p className="text-lg font-black">
-                      No games in
-                      this category
-                      yet.
+                      {archiveMode ===
+                      "active"
+                        ? "No games in this category yet."
+                        : "No archived games in this category."}
                     </p>
 
                     <p className="mt-2 text-sm text-slate-500">
-                      Add the first
-                      game directly
-                      into{" "}
-                      {
-                        selectedFolder.name
-                      }
-                      .
+                      {archiveMode ===
+                      "active"
+                        ? `Add the first game directly into ${selectedFolder.name}.`
+                        : "Archived games will appear here when you remove them from the active Games Hub."}
                     </p>
 
-                    {!readOnly ? (
+                    {!readOnly &&
+                    archiveMode ===
+                      "active" ? (
                       <Link
                         href={
                           createUrl

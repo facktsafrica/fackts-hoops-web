@@ -260,6 +260,7 @@ const ADMIN_ROUTE_CAPABILITIES: Array<{
   { prefix: "/admin/game-guests", capability: "rosters" },
   { prefix: "/admin/notifications", capability: "notifications" },
   { prefix: "/admin/one-on-one", capability: "one_on_one" },
+  { prefix: "/admin/homepage", capability: "highlights" },
   { prefix: "/admin/highlights", capability: "highlights" },
   { prefix: "/admin/partners", capability: "partners" },
   { prefix: "/admin/calendar", capability: "calendar" },

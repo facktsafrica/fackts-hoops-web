@@ -818,9 +818,6 @@ function gameMutationPayload(
     if (!seasonLabel || !division) {
       errors.push("League games require both a season and division.");
     }
-    if (!homeTeamId && !awayTeamId) {
-      errors.push("League games must link at least one registered team.");
-    }
     if (eventId || competitionId) {
       errors.push("A League Game cannot also be linked as an event or permanent competition game.");
     }
@@ -1746,6 +1743,14 @@ export async function GET(
       )?.toLowerCase() ??
       "";
 
+    const archiveView =
+      request.nextUrl
+        .searchParams
+        .get("archive") ===
+      "archived"
+        ? "archived"
+        : "active";
+
     let gamesQuery =
       db
         .from(
@@ -1762,6 +1767,19 @@ export async function GET(
         .limit(
           1000,
         );
+
+    gamesQuery =
+      archiveView ===
+      "archived"
+        ? gamesQuery.not(
+            "archived_at",
+            "is",
+            null,
+          )
+        : gamesQuery.is(
+            "archived_at",
+            null,
+          );
 
     if (eventId) {
       gamesQuery =
@@ -2777,6 +2795,248 @@ export async function PATCH(
       );
     }
 
+    const lifecycleAction =
+      cleanText(
+        body.action,
+        40,
+      )?.toLowerCase() ??
+      "";
+
+    if (
+      lifecycleAction ===
+        "archive" ||
+      lifecycleAction ===
+        "restore"
+    ) {
+      const isArchived =
+        Boolean(
+          existing.data
+            .archived_at,
+        );
+
+      if (
+        lifecycleAction ===
+          "archive" &&
+        isArchived
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "This game is already archived.",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (
+        lifecycleAction ===
+          "restore" &&
+        !isArchived
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "This game is not archived.",
+          },
+          { status: 400 },
+        );
+      }
+
+      const archiveReason =
+        cleanText(
+          body.archive_reason,
+          1000,
+        );
+
+      if (
+        lifecycleAction ===
+          "archive" &&
+        !archiveReason
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Add a reason before archiving this game.",
+          },
+          { status: 400 },
+        );
+      }
+
+      const now =
+        new Date().toISOString();
+
+      const existingStatus =
+        normalizedStatus(
+          existing.data.status,
+        );
+
+      const existingVerification =
+        cleanVerification(
+          existing.data
+            .verification_status,
+        );
+
+      const previousPublic =
+        cleanBoolean(
+          existing.data
+            .archived_previous_is_public,
+          false,
+        );
+
+      const restorePublic =
+        existingStatus ===
+          "completed" &&
+        existingVerification !==
+          "verified"
+          ? false
+          : previousPublic;
+
+      const lifecyclePayload =
+        lifecycleAction ===
+        "archive"
+          ? {
+              archived_at:
+                now,
+              archived_by:
+                String(
+                  access.profile.id,
+                ),
+              archive_reason:
+                archiveReason,
+              archived_previous_is_public:
+                cleanBoolean(
+                  existing.data
+                    .is_public,
+                  false,
+                ),
+              is_public:
+                false,
+              updated_at:
+                now,
+            }
+          : {
+              archived_at:
+                null,
+              archived_by:
+                null,
+              archive_reason:
+                null,
+              archived_previous_is_public:
+                null,
+              is_public:
+                restorePublic,
+              updated_at:
+                now,
+            };
+
+      const lifecycleResult =
+        await db
+          .from("games")
+          .update(
+            lifecyclePayload,
+          )
+          .eq("id", id)
+          .eq(
+            "version",
+            expectedVersion,
+          )
+          .select("*")
+          .maybeSingle();
+
+      if (
+        lifecycleResult.error
+      ) {
+        throw lifecycleResult.error;
+      }
+
+      if (
+        !lifecycleResult.data
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "This game changed in another session. Reload before trying again.",
+            conflict:
+              true,
+          },
+          { status: 409 },
+        );
+      }
+
+      const auditAssignment =
+        access.assignments?.find(
+          (
+            assignment: any,
+          ) =>
+            assignmentMatchesGame(
+              assignment,
+              existing.data,
+            ),
+        );
+
+      await recordAdminAuditEvent(
+        access.supabase,
+        {
+          action:
+            lifecycleAction,
+          entityType:
+            "game",
+          entityId:
+            id,
+          capability:
+            "games",
+          resourceType:
+            auditAssignment?.resource_type ??
+            "game",
+          resourceId:
+            auditAssignment?.resource_id ??
+            id,
+          before:
+            existing.data,
+          after:
+            lifecycleResult.data,
+          metadata: {
+            source:
+              "games_admin",
+            archive_reason:
+              lifecycleAction ===
+              "archive"
+                ? archiveReason
+                : null,
+          },
+        },
+      );
+
+      return NextResponse.json({
+        ok: true,
+        game:
+          lifecycleResult.data,
+        message:
+          lifecycleAction ===
+          "archive"
+            ? "Game archived and removed from public visibility."
+            : "Game restored to the active Games Hub.",
+      });
+    }
+
+    if (
+      existing.data
+        .archived_at
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Restore this game before editing it.",
+        },
+        { status: 409 },
+      );
+    }
+
     const currentStatus =
       normalizedStatus(
         existing.data
@@ -3709,3 +3969,409 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+) {
+  try {
+    const body =
+      (await request.json()) as JsonRecord;
+
+    const id =
+      cleanText(
+        body.id,
+        100,
+      );
+
+    const expectedVersion =
+      Number(
+        body.expected_version,
+      );
+
+    if (
+      !id ||
+      !Number.isInteger(
+        expectedVersion,
+      ) ||
+      expectedVersion < 1
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Game ID and current version are required.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (
+      cleanText(
+        body.confirmation,
+        40,
+      ) !== "DELETE"
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'Type "DELETE" to confirm permanent deletion.',
+        },
+        { status: 400 },
+      );
+    }
+
+    const access =
+      await gamesAccess(
+        true,
+      );
+
+    if (
+      !access.allowed ||
+      !access.user ||
+      !access.profile
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "You cannot permanently delete this game.",
+        },
+        { status: 403 },
+      );
+    }
+
+    const admin =
+      createSupabaseAdminClient();
+
+    const db =
+      admin as any;
+
+    const existing =
+      await db
+        .from("games")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+    if (existing.error) {
+      throw existing.error;
+    }
+
+    if (!existing.data) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Game not found.",
+        },
+        { status: 404 },
+      );
+    }
+
+    if (
+      access.assignments &&
+      !access.assignments.some(
+        (
+          assignment: any,
+        ) =>
+          assignmentMatchesGame(
+            assignment,
+            existing.data,
+          ),
+      )
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "You cannot permanently delete this game.",
+        },
+        { status: 403 },
+      );
+    }
+
+    if (
+      !existing.data
+        .archived_at
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Archive the game before permanently deleting it.",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (
+      Number(
+        existing.data.version,
+      ) !== expectedVersion
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "This game changed in another session. Reload before deleting it.",
+          conflict:
+            true,
+        },
+        { status: 409 },
+      );
+    }
+
+    const linkedChecks =
+      await Promise.all([
+        db
+          .from("game_rosters")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("game_guest_rosters")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("game_box_score_lines")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("game_media")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("player_game_stats")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("guest_game_stats")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("roster_import_batches")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("team_games")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("team_stat_sessions")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("team_stat_imports")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("team_player_stat_lines")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("team_stat_submissions")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("team_broadcasts")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq("game_id", id),
+        db
+          .from("media_links")
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
+          .eq(
+            "owner_type",
+            "game",
+          )
+          .eq(
+            "owner_id",
+            id,
+          ),
+      ]);
+
+    const linkedErrors =
+      linkedChecks
+        .map(
+          (result: any) =>
+            result.error,
+        )
+        .filter(Boolean);
+
+    if (linkedErrors.length) {
+      throw linkedErrors[0];
+    }
+
+    const linkedCount =
+      linkedChecks.reduce(
+        (
+          total: number,
+          result: any,
+        ) =>
+          total +
+          Number(
+            result.count ?? 0,
+          ),
+        0,
+      );
+
+    if (
+      linkedCount > 0 ||
+      existing.data
+        .legacy_one_on_one_id
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "This archived game still has linked stats, rosters, media, team-portal records or a legacy 1v1 record. Keep it archived instead of permanently deleting it.",
+          linked_records:
+            linkedCount,
+        },
+        { status: 409 },
+      );
+    }
+
+    const deletion =
+      await db
+        .from("games")
+        .delete()
+        .eq("id", id)
+        .eq(
+          "version",
+          expectedVersion,
+        )
+        .select("id")
+        .maybeSingle();
+
+    if (deletion.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "The database blocked permanent deletion because linked records still exist. Keep this game archived.",
+          details:
+            deletion.error.message,
+        },
+        { status: 409 },
+      );
+    }
+
+    if (!deletion.data) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "This game changed in another session. Reload before deleting it.",
+          conflict:
+            true,
+        },
+        { status: 409 },
+      );
+    }
+
+    const auditAssignment =
+      access.assignments?.find(
+        (
+          assignment: any,
+        ) =>
+          assignmentMatchesGame(
+            assignment,
+            existing.data,
+          ),
+      );
+
+    await recordAdminAuditEvent(
+      access.supabase,
+      {
+        action:
+          "delete",
+        entityType:
+          "game",
+        entityId:
+          id,
+        capability:
+          "games",
+        resourceType:
+          auditAssignment?.resource_type ??
+          "game",
+        resourceId:
+          auditAssignment?.resource_id ??
+          id,
+        before:
+          existing.data,
+        after: {
+          id,
+          deleted:
+            true,
+        },
+        metadata: {
+          source:
+            "games_admin",
+          permanent:
+            true,
+        },
+      },
+    );
+
+    return NextResponse.json({
+      ok: true,
+      message:
+        "Game permanently deleted.",
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof
+          Error
+            ? error.message
+            : "Game could not be permanently deleted.",
+      },
+      { status: 500 },
+    );
+  }
+}
+

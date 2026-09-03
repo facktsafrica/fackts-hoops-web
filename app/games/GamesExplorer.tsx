@@ -35,6 +35,7 @@ export type GameDirectoryItem = {
   hasStats: boolean;
   rosterCount: number;
   mediaCount: number;
+  registeredTeamSlugs: string[];
 };
 
 const statusOptions: { value: "all" | PublicGameStatus; label: string }[] = [
@@ -56,6 +57,16 @@ function statusClass(status: PublicGameStatus) {
   if (status === "postponed") return "border-amber-300/30 bg-amber-500/15 text-amber-200";
   return "border-rose-300/30 bg-rose-500/15 text-rose-200";
 }
+
+const categoryOrder: Record<GameCategory, number> = {
+  league: 1,
+  event: 2,
+  one_on_one: 3,
+  court_takeover: 4,
+  competition: 5,
+  friendly: 6,
+  other: 7,
+};
 
 export default function GamesExplorer({ games }: { games: GameDirectoryItem[] }) {
   const [query, setQuery] = useState("");
@@ -140,6 +151,42 @@ export default function GamesExplorer({ games }: { games: GameDirectoryItem[] })
     });
   }, [category, context, event, format, games, query, status, team, year]);
 
+  const grouped = useMemo(() => {
+    const records = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        category: GameCategory;
+        categoryLabel: string;
+        games: GameDirectoryItem[];
+      }
+    >();
+
+    filtered.forEach((game) => {
+      const key = game.contextKey || `${game.category}:${game.contextLabel}`;
+      const existing = records.get(key);
+      if (existing) {
+        existing.games.push(game);
+        return;
+      }
+
+      records.set(key, {
+        key,
+        label: game.contextLabel,
+        category: game.category,
+        categoryLabel: game.categoryLabel,
+        games: [game],
+      });
+    });
+
+    return Array.from(records.values()).sort(
+      (left, right) =>
+        categoryOrder[left.category] - categoryOrder[right.category] ||
+        left.label.localeCompare(right.label),
+    );
+  }, [filtered]);
+
   function reset() {
     setQuery("");
     setStatus("all");
@@ -218,8 +265,30 @@ export default function GamesExplorer({ games }: { games: GameDirectoryItem[] })
         </div>
 
         {filtered.length ? (
-          <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {filtered.map((game) => <GameCard key={game.id} game={game} />)}
+          <div className="mt-8 grid gap-12">
+            {grouped.map((group) => {
+              const headingId = `game-group-${group.key.replace(/[^a-z0-9]+/gi, "-")}`;
+              return (
+                <section key={group.key} aria-labelledby={headingId}>
+                  <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[.18em] text-orange-300">
+                        {group.categoryLabel}
+                      </p>
+                      <h3 id={headingId} className="mt-1 text-2xl font-black uppercase leading-tight text-white sm:text-3xl">
+                        {group.label}
+                      </h3>
+                    </div>
+                    <span className="w-fit rounded-full border border-white/10 bg-white/[.04] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.12em] text-zinc-400">
+                      {group.games.length} {group.games.length === 1 ? "game" : "games"}
+                    </span>
+                  </div>
+                  <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                    {group.games.map((game) => <GameCard key={game.id} game={game} />)}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         ) : (
           <div className="mt-7 rounded-[2rem] border border-dashed border-white/15 bg-slate-950/75 px-6 py-14 text-center">

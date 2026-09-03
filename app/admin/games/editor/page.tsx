@@ -870,45 +870,46 @@ export default function FullGameEditorPage() {
       new URLSearchParams(
         window.location.search,
       );
-
-    setGameId(
-      params.get(
-        "game_id",
-      ) || "",
-    );
-
-    setSourceTeamId(
-      params.get(
-        "team_id",
-      ) || "",
-    );
-
     const category =
       params.get(
         "category",
       );
 
-    if (
-      [
-        "one_on_one",
-        "league",
-        "court_takeover",
-        "event",
-        "competition",
-        "friendly",
-        "other",
-      ].includes(
-        category || "",
-      )
-    ) {
-      setSourceCategory(
-        category as GameCategory,
+    queueMicrotask(() => {
+      setGameId(
+        params.get(
+          "game_id",
+        ) || "",
       );
-    }
 
-    setInitialized(
-      true,
-    );
+      setSourceTeamId(
+        params.get(
+          "team_id",
+        ) || "",
+      );
+
+      if (
+        [
+          "one_on_one",
+          "league",
+          "court_takeover",
+          "event",
+          "competition",
+          "friendly",
+          "other",
+        ].includes(
+          category || "",
+        )
+      ) {
+        setSourceCategory(
+          category as GameCategory,
+        );
+      }
+
+      setInitialized(
+        true,
+      );
+    });
   }, []);
 
   const loadExistingGame =
@@ -1293,13 +1294,17 @@ export default function FullGameEditorPage() {
       return;
     }
 
-    if (gameId) {
-      void loadExistingGame(
-        gameId,
-      );
-    } else {
-      void loadCreationMetadata();
-    }
+    const timer = window.setTimeout(() => {
+      if (gameId) {
+        void loadExistingGame(
+          gameId,
+        );
+      } else {
+        void loadCreationMetadata();
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [
     gameId,
     initialized,
@@ -1403,6 +1408,22 @@ export default function FullGameEditorPage() {
           competitions,
         ),
       }),
+    );
+  }
+
+  function changeTeamName(side: TeamSide, value: string) {
+    setForm((current) => ({
+      ...current,
+      [`${side}_team_id`]: "",
+      [`${side}_team_name`]: value,
+    }));
+
+    setBoxLines((current) =>
+      current.map((line) =>
+        line.team_side === side
+          ? { ...line, team_id: "", team_name: value }
+          : line,
+      ),
     );
   }
 
@@ -1605,16 +1626,6 @@ export default function FullGameEditorPage() {
       ) {
         throw new Error(
           "Add both season and division for a League Game.",
-        );
-      }
-
-      if (
-        form.category === "league" &&
-        !form.home_team_id &&
-        !form.away_team_id
-      ) {
-        throw new Error(
-          "Link at least one registered team for a League Game.",
         );
       }
 
@@ -2330,7 +2341,7 @@ export default function FullGameEditorPage() {
 
             <Panel
               eyebrow="Participants"
-              title="Teams"
+              title="Teams and external opponents"
             >
               <div className="grid min-w-0 gap-5 lg:grid-cols-2">
                 <TeamEditor
@@ -2351,20 +2362,7 @@ export default function FullGameEditorPage() {
                   onTeamSelect={
                     selectTeam
                   }
-                  onNameChange={(
-                    value,
-                  ) =>
-                    setForm(
-                      (
-                        current,
-                      ) => ({
-                        ...current,
-
-                        home_team_name:
-                          value,
-                      }),
-                    )
-                  }
+                  onNameChange={(value) => changeTeamName("home", value)}
                 />
 
                 <TeamEditor
@@ -2385,35 +2383,15 @@ export default function FullGameEditorPage() {
                   onTeamSelect={
                     selectTeam
                   }
-                  onNameChange={(
-                    value,
-                  ) =>
-                    setForm(
-                      (
-                        current,
-                      ) => ({
-                        ...current,
-
-                        away_team_name:
-                          value,
-                      }),
-                    )
-                  }
+                  onNameChange={(value) => changeTeamName("away", value)}
                 />
               </div>
 
               <p className="mt-4 text-xs leading-5 text-slate-500">
-                Registered
-                FACKTS teams can
-                be linked above.
-                An opponent that
-                is not registered
-                can simply be
-                entered by name
-                and its players
-                can remain
-                game-only
-                identities.
+                Neither side has to be registered. Link a permanent team profile
+                when one exists; otherwise leave the selector on External team and
+                type the official display name. External players can be recorded as
+                game-only identities and linked to profiles later.
               </p>
             </Panel>
 
@@ -3222,7 +3200,7 @@ function TeamEditor({
       </p>
 
       <div className="mt-4 grid gap-3">
-        <Field label="Registered team">
+        <Field label="Permanent team profile (optional)">
           <select
             value={
               teamId
@@ -3244,8 +3222,7 @@ function TeamEditor({
             }
           >
             <option value="">
-              Not linked /
-              external team
+              External / not registered
             </option>
 
             {teams.map(
@@ -3288,6 +3265,7 @@ function TeamEditor({
             className={
               CONTROL
             }
+            placeholder="Type the team name exactly as it should appear"
           />
         </Field>
       </div>
