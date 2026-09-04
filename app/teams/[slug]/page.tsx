@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import TeamActions from "./TeamActions";
+import TeamGamesExplorer from "./TeamGamesExplorer";
 
 import GameMedia, {
   type GameMediaItem,
@@ -318,24 +319,6 @@ export default async function TeamProfilePage({
       ) =>
         member.status ===
         "alumni",
-    );
-
-  const completed =
-    games.filter(
-      (
-        game,
-      ) =>
-        Boolean(
-          game.result,
-        ),
-    );
-
-  const upcoming =
-    games.filter(
-      (
-        game,
-      ) =>
-        !game.result,
     );
 
   /*
@@ -1399,58 +1382,17 @@ export default async function TeamProfilePage({
           <SectionHeading
             eyebrow="Fixtures and results"
             title="Team game record"
-            text="Every linked game can open its Match Centre for the score, rosters, canonical box score, media and downloadable report."
+            text="Every game linked to this team lives here. Filter live, upcoming, final, postponed and cancelled records, then narrow the history by 1v1, 3v3, 5v5 or any other recorded format."
           />
 
-          {completed.length ? (
-            <div className="mt-7 grid gap-4 lg:grid-cols-2">
-              {completed.map(
-                (
-                  game,
-                ) => (
-                  <GameCard
-                    key={
-                      game.id
-                    }
-                    game={
-                      game
-                    }
-                  />
-                ),
-              )}
-            </div>
+          {games.length ? (
+            <TeamGamesExplorer games={games} />
           ) : (
             <EmptyState
-              title="No completed results"
-              body="Final scores will appear here when verified or linked from the Games section."
+              title="No team games published"
+              body="Verified fixtures and results will appear here when this team is linked as a participant in the canonical game record."
             />
           )}
-
-          {upcoming.length ? (
-            <div className="mt-12">
-              <SectionHeading
-                eyebrow="Next up"
-                title="Upcoming fixtures"
-              />
-
-              <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                {upcoming.map(
-                  (
-                    game,
-                  ) => (
-                    <GameCard
-                      key={
-                        game.id
-                      }
-                      game={
-                        game
-                      }
-                    />
-                  ),
-                )}
-              </div>
-            </div>
-          ) : null}
         </section>
       ) : null}
 
